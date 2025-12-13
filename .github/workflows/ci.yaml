@@ -30,10 +30,6 @@ jobs:
       - name: Build
         run: make
 
-      - name: Lint
-        run: |
-          ocicl lint icl.asd || true
-
       - name: Test binary
         run: |
           ./icl --version
