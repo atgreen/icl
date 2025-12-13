@@ -34,9 +34,8 @@ helper commands to explore and evaluate Common Lisp code quickly.
 ocicl setup > ~/.sbclrc
 ocicl install
 
-# Build the executable image
-ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") (:tree "./3rd-party/") :inherit-configuration)' \
-  sbcl --eval "(asdf:make :icl)" --quit
+# Build the executable
+make
 
 %install
 # Collect licenses from vendored dependencies
