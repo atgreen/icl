@@ -35,7 +35,7 @@ ocicl setup > ~/.sbclrc
 ocicl install
 
 # Build the executable image
-ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") :inherit-configuration)' \
+ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") (:tree "./3rd-party/") :inherit-configuration)' \
   sbcl --eval "(asdf:make :icl)" --quit
 
 %install

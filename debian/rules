@@ -6,7 +6,7 @@
 override_dh_auto_build:
 	ocicl setup > ~/.sbclrc
 	ocicl install
-	ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") :inherit-configuration)' \
+	ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") (:tree "./3rd-party/") :inherit-configuration)' \
 		sbcl --eval "(asdf:make :icl)" --quit
 	ocicl collect-licenses >VENDORED-LICENSES.txt
 
