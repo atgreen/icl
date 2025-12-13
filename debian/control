@@ -1,0 +1,23 @@
+Source: icl
+Section: devel
+Priority: optional
+Maintainer: Anthony Green <green@moxielogic.com>
+Build-Depends: debhelper-compat (= 13),
+               sbcl,
+               libfixposix-dev,
+               gcc,
+               make,
+               ocicl
+Standards-Version: 4.6.2
+Homepage: https://github.com/atgreen/icl
+Vcs-Browser: https://github.com/atgreen/icl
+Vcs-Git: https://github.com/atgreen/icl.git
+Rules-Requires-Root: no
+
+Package: icl
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Interactive Common Lisp REPL
+ icl provides a modern Common Lisp REPL with line editing, inline help, and
+ helper commands to explore and evaluate code quickly. It is built with SBCL
+ and bundles dependencies to make getting started easy.

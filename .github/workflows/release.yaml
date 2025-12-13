@@ -1,0 +1,130 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build-rpm:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          dnf install -y rpm-build rpmdevtools sbcl libfixposix-devel gcc make
+
+      - name: Setup rpmbuild directory
+        run: |
+          rpmdev-setuptree
+
+      - name: Create source tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd ..
+          tar czf ~/rpmbuild/SOURCES/icl-${VERSION}.tar.gz --transform "s,^icl,icl-${VERSION}," icl
+
+      - name: Update spec file version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" icl.spec
+          cp icl.spec ~/rpmbuild/SPECS/
+
+      - name: Build RPM and SRPM
+        run: |
+          cd ~/rpmbuild/SPECS
+          rpmbuild -ba icl.spec
+
+      - name: Copy RPM and SRPM to workspace
+        run: |
+          cp ~/rpmbuild/RPMS/x86_64/*.rpm ${GITHUB_WORKSPACE}/ || true
+          cp ~/rpmbuild/SRPMS/*.src.rpm ${GITHUB_WORKSPACE}/ || true
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages
+          path: ./*.rpm
+
+  build-deb:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y debhelper devscripts sbcl libfixposix-dev gcc make
+
+      - name: Update changelog version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^icl (.*)/icl (${VERSION}-1) unstable; urgency=medium/" debian/changelog
+
+      - name: Build DEB packages (binary and source)
+        run: |
+          dpkg-buildpackage -uc -us
+
+      - name: Copy DEB and source files to workspace
+        run: |
+          cp ../*.deb . 2>/dev/null || true
+          cp ../*.dsc . 2>/dev/null || true
+          cp ../*.tar.* . 2>/dev/null || true
+          cp ../*.buildinfo . 2>/dev/null || true
+          cp ../*.changes . 2>/dev/null || true
+
+      - name: Upload DEB artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages
+          path: |
+            ./*.deb
+            ./*.dsc
+            ./*.tar.*
+            ./*.buildinfo
+            ./*.changes
+
+  release:
+    needs: [build-rpm, build-deb]
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Extract version number
+        id: get_version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automated release for icl ${{ github.ref_name }}.
+            Includes RPM and DEB packages.
+          artifacts: |
+            artifacts/rpm-packages/*.rpm
+            artifacts/deb-packages/*.deb
+            artifacts/deb-packages/*.dsc
+            artifacts/deb-packages/*.tar.*
+            artifacts/deb-packages/*.buildinfo
+            artifacts/deb-packages/*.changes
+          allowUpdates: true

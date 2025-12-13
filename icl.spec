@@ -1,0 +1,66 @@
+Name:           icl
+Version:        0.1.0
+Release:        1%{?dist}
+Summary:        Interactive Common Lisp REPL
+
+License:        MIT
+URL:            https://github.com/atgreen/icl
+Source0:        icl-%{version}.tar.gz
+
+# Disable debug packages and stripping since this is a Lisp binary with dumped image
+%global debug_package %{nil}
+%global _build_id_links none
+%global __strip /bin/true
+%global __brp_strip %{nil}
+%global __brp_strip_comment_note %{nil}
+%global __brp_strip_static_archive %{nil}
+
+BuildRequires:  sbcl
+BuildRequires:  libfixposix-devel
+BuildRequires:  gcc
+BuildRequires:  make
+BuildRequires:  ocicl
+
+%description
+icl is an enhanced Common Lisp REPL. It provides a
+modern command-line experience with line editing, inline documentation, and
+helper commands to explore and evaluate Common Lisp code quickly.
+
+%prep
+%autosetup
+
+%build
+# Build the executable image
+ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") :inherit-configuration)' \
+  sbcl --eval "(asdf:make :icl)" --quit
+
+%install
+# Collect licenses from vendored dependencies
+ocicl collect-licenses >VENDORED-LICENSES.txt
+
+# Install the binary
+install -D -m 0755 icl %{buildroot}%{_bindir}/icl
+
+# Install slynk from ocicl sly package
+mkdir -p %{buildroot}%{_datadir}/icl/slynk
+cp -r ocicl/sly-*/slynk/* %{buildroot}%{_datadir}/icl/slynk/
+
+# Install documentation
+install -D -m 0644 README.md %{buildroot}%{_docdir}/%{name}/README.md
+install -D -m 0644 LICENSE %{buildroot}%{_docdir}/%{name}/LICENSE
+# Install collected vendored licenses
+install -D -m 0644 VENDORED-LICENSES.txt %{buildroot}%{_datadir}/licenses/%{name}/VENDORED-LICENSES.txt
+
+%files
+%license LICENSE
+%doc README.md
+%{_datadir}/licenses/%{name}/VENDORED-LICENSES.txt
+%{_datadir}/icl/slynk
+%{_bindir}/icl
+
+%changelog
+* Sat Dec 13 2025 Anthony Green <green@moxielogic.com> - 0.1.0-2
+- Collect vendored licenses during build and install them under /usr/share/licenses
+
+* Sat Dec 13 2025 Anthony Green <green@moxielogic.com> - 0.1.0-1
+- Initial RPM package for icl

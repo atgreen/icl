@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	ASDF_SOURCE_REGISTRY='(:source-registry (:directory "./") (:tree "./ocicl/") :inherit-configuration)' \
+		sbcl --eval "(asdf:make :icl)" --quit
+	ocicl collect-licenses >VENDORED-LICENSES.txt
+
+override_dh_auto_install:
+	mkdir -p debian/icl/usr/bin
+	mkdir -p debian/icl/usr/share/doc/icl
+	mkdir -p debian/icl/usr/share/icl/slynk
+	install -m 0755 icl debian/icl/usr/bin/
+	cp -r ocicl/sly-*/slynk/* debian/icl/usr/share/icl/slynk/
+	install -m 0644 README.md debian/icl/usr/share/doc/icl/
+	install -m 0644 LICENSE debian/icl/usr/share/doc/icl/
+	install -m 0644 VENDORED-LICENSES.txt debian/icl/usr/share/doc/icl/
+
+override_dh_strip:
+	# Do not strip SBCL-based binaries as it corrupts the embedded core
+
+override_dh_auto_clean:
+	rm -f icl
+	rm -f VENDORED-LICENSES.txt
+	dh_auto_clean
