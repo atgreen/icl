@@ -16,16 +16,18 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern, terminal-based in
 
 ## Installation
 
-### From Package Manager
+### Pre-built Packages
+
+Download the latest RPM or DEB package from the [GitHub Releases](https://github.com/atgreen/icl/releases) page.
 
 RPM-based systems (Fedora, RHEL):
 ```sh
-dnf install icl
+sudo dnf install ./icl-*.rpm
 ```
 
 Debian-based systems:
 ```sh
-apt install icl
+sudo dpkg -i icl_*.deb
 ```
 
 ### Building from Source
