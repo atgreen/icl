@@ -14,8 +14,10 @@ override_dh_auto_install:
 	mkdir -p debian/icl/usr/lib/icl
 	mkdir -p debian/icl/usr/share/doc/icl
 	mkdir -p debian/icl/usr/share/icl/slynk
+	mkdir -p debian/icl/etc/ld.so.conf.d
 	install -m 0755 icl debian/icl/usr/bin/
-	find ocicl -name "libosicat.so" -exec install -m 0755 {} debian/icl/usr/lib/icl/ \;
+	find ~/.cache/common-lisp -name "libosicat.so" -exec install -m 0755 {} debian/icl/usr/lib/icl/ \; 2>/dev/null || true
+	echo "/usr/lib/icl" > debian/icl/etc/ld.so.conf.d/icl.conf
 	cp -r ocicl/sly-*/slynk/* debian/icl/usr/share/icl/slynk/
 	install -m 0644 README.md debian/icl/usr/share/doc/icl/
 	install -m 0644 LICENSE debian/icl/usr/share/doc/icl/

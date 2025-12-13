@@ -4,23 +4,6 @@
 ;;;
 ;;; Copyright (C) 2025  Anthony Green <green@moxielogic.com>
 
-;;; Configure CFFI to find shared libraries in /usr/lib{64}/icl/
-;;; This runs before osicat is loaded and registers a restore hook
-;;; for when the saved image is started.
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (when (find-package :cffi)
-    (let ((dirs-sym (find-symbol "*FOREIGN-LIBRARY-DIRECTORIES*" :cffi)))
-      (pushnew #P"/usr/lib64/icl/" (symbol-value dirs-sym) :test #'equal)
-      (pushnew #P"/usr/lib/icl/" (symbol-value dirs-sym) :test #'equal))))
-
-(uiop:register-image-restore-hook
- (lambda ()
-   (when (find-package :cffi)
-     (let ((dirs-sym (find-symbol "*FOREIGN-LIBRARY-DIRECTORIES*" :cffi)))
-       (pushnew #P"/usr/lib64/icl/" (symbol-value dirs-sym) :test #'equal)
-       (pushnew #P"/usr/lib/icl/" (symbol-value dirs-sym) :test #'equal))))
- nil)  ; nil = run early (before other hooks)
-
 (defpackage #:icl
   (:documentation "Interactive Common Lisp - an enhanced REPL for Common Lisp.")
   (:use #:cl)

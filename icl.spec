@@ -44,9 +44,13 @@ ocicl collect-licenses >VENDORED-LICENSES.txt
 # Install the binary
 install -D -m 0755 icl %{buildroot}%{_bindir}/icl
 
-# Install shared libraries (libosicat.so)
+# Install shared libraries (libosicat.so) - find in ASDF cache
 mkdir -p %{buildroot}%{_libdir}/icl
-find ocicl -name "libosicat.so" -exec install -m 0755 {} %{buildroot}%{_libdir}/icl/ \;
+find ~/.cache/common-lisp -name "libosicat.so" -exec install -m 0755 {} %{buildroot}%{_libdir}/icl/ \; 2>/dev/null || true
+
+# Install ldconfig configuration
+mkdir -p %{buildroot}%{_sysconfdir}/ld.so.conf.d
+echo "%{_libdir}/icl" > %{buildroot}%{_sysconfdir}/ld.so.conf.d/icl.conf
 
 # Install slynk from ocicl sly package
 mkdir -p %{buildroot}%{_datadir}/icl/slynk
@@ -55,9 +59,16 @@ cp -r ocicl/sly-*/slynk/* %{buildroot}%{_datadir}/icl/slynk/
 # Install collected vendored licenses
 install -D -m 0644 VENDORED-LICENSES.txt %{buildroot}%{_datadir}/licenses/%{name}/VENDORED-LICENSES.txt
 
+%post
+/sbin/ldconfig
+
+%postun
+/sbin/ldconfig
+
 %files
 %license LICENSE
 %doc README.md
+%{_sysconfdir}/ld.so.conf.d/icl.conf
 %{_datadir}/licenses/%{name}/VENDORED-LICENSES.txt
 %{_datadir}/icl/slynk
 %{_libdir}/icl
