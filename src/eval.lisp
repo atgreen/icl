@@ -60,51 +60,44 @@
   (let ((*package* *icl-package*))
     (read-from-string input)))
 
-(defun eval-form (form)
-  "Evaluate FORM in the ICL context.
-   Returns multiple values as a list."
-  (let ((*package* *icl-package*))
-    (multiple-value-list (eval form))))
-
-(defun eval-input (input)
-  "Parse and evaluate INPUT string.
-   Returns (VALUES values-list form) on success.
-   Signals conditions on errors."
-  (let ((form (read-form input)))
-    (run-before-eval-hooks form)
-    (let ((values (eval-form form)))
-      (update-history form values)
-      (run-after-eval-hooks form values)
-      (values values form))))
-
 (defun eval-and-print (input)
   "Parse, evaluate, and print results from INPUT string.
    Handles all errors gracefully. Uses Slynk backend for evaluation."
   (handler-case
-      (multiple-value-bind (result output)
-          (backend-eval input)
-        ;; Output any printed output from the inferior Lisp
-        (when (and output (plusp (length output)))
-          (write-string output)
-          (unless (char= (char output (1- (length output))) #\Newline)
-            (terpri)))
-        ;; Handle the result
-        (cond
-          ((null result)
-           ;; No result - might be output already printed
-           nil)
-          ((stringp result)
-           ;; listener-eval returns string representation
-           (unless (string= result "")
-             (format t "~&~A~A~%"
-                     (colorize *result-prefix* *color-prefix*)
-                     result)))
-          ((listp result)
-           ;; Structured result
-           (print-values result))
-          (t
-           ;; Unexpected result type - print as-is
-           (format t "~&~A~S~%" (colorize *result-prefix* *color-prefix*) result))))
+      (let* ((form (read-form input)))
+        (run-before-eval-hooks form)
+        (multiple-value-bind (result output)
+            (backend-eval input)
+          ;; Output any printed output from the inferior Lisp
+          (when (and output (plusp (length output)))
+            (write-string output)
+            (unless (char= (char output (1- (length output))) #\Newline)
+              (terpri)))
+          ;; Update history/hooks with best-effort values
+          (let ((values (cond
+                          ((listp result) result)
+                          ((null result) nil)
+                          (t (list result)))))
+            (when values
+              (update-history form values))
+            (run-after-eval-hooks form values))
+          ;; Handle the result for display
+          (cond
+            ((null result)
+             ;; No result - might be output already printed
+             nil)
+            ((stringp result)
+             ;; listener-eval returns string representation
+             (unless (string= result "")
+               (format t "~&~A~A~%"
+                       (colorize *result-prefix* *color-prefix*)
+                       result)))
+            ((listp result)
+             ;; Structured result
+             (print-values result))
+            (t
+             ;; Unexpected result type - print as-is
+             (format t "~&~A~S~%" (colorize *result-prefix* *color-prefix*) result)))))
     (reader-error (e)
       (format *error-output* "~&Read error: ~A~%" e))
     (package-error (e)

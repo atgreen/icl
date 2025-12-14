@@ -17,9 +17,6 @@
 (defvar *inferior-process* nil
   "The inferior Lisp process.")
 
-(defvar *inferior-output-thread* nil
-  "Thread reading output from inferior process.")
-
 (defvar *lisp-implementations*
   '((:sbcl :program "sbcl" :args ("--noinform") :eval-arg "--eval")
     (:ccl :program "ccl" :args nil :eval-arg "--eval")
@@ -42,12 +39,7 @@
 (defun lisp-available-p (impl)
   "Check if Lisp implementation IMPL is available in PATH."
   (let ((program (find-lisp-program impl)))
-    (when program
-      (or (probe-file (format nil "/usr/bin/~A" program))
-          (ignore-errors
-            (uiop:run-program (list "which" program)
-                              :output :string
-                              :ignore-error-status t))))))
+    (and program (program-exists-p program))))
 
 (defun find-available-lisp ()
   "Find the first available Lisp implementation according to *lisp-implementation-order*.
@@ -184,6 +176,15 @@
     (when entry
       (getf (rest entry) :program))))
 
+(defun program-exists-p (program)
+  "Return T if PROGRAM can be found in PATH."
+  (or (probe-file program)
+      (ignore-errors
+        (let ((result (uiop:run-program (list "which" program)
+                                        :output :string
+                                        :ignore-error-status t)))
+          (and result (not (string= result "")))))))
+
 (defun get-lisp-args (impl)
   "Get command-line arguments for Lisp implementation IMPL."
   (let ((entry (assoc impl *lisp-implementations*)))
@@ -235,10 +236,7 @@
     (unless program
       (error "Unknown Lisp implementation: ~A" lisp))
     ;; Check if program exists
-    (unless (or (probe-file (format nil "/usr/bin/~A" program))
-                (ignore-errors
-                  (uiop:run-program (list "which" program)
-                                    :output :string)))
+    (unless (program-exists-p program)
       (error "Cannot find ~A in PATH" program))
     ;; Build the Slynk initialization code
     (let* ((init-code (generate-slynk-init actual-port))

@@ -142,6 +142,10 @@ Optional filter: functions, macros, variables, classes, all, external, internal"
          (do-external-symbols (sym package)
            (when (matches-filter-p sym)
              (push sym results))))
+        (:all
+         (do-symbols (sym package)
+           (when (matches-filter-p sym)
+             (push sym results))))
         (otherwise
          (do-external-symbols (sym package)
            (when (matches-filter-p sym)
