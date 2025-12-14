@@ -120,11 +120,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $proc = Start-Process -FilePath ".\${{ matrix.binary }}" -NoNewWindow -PassThru -RedirectStandardInput stdin.txt -RedirectStandardOutput stdout.txt
-          "(+ 1 2)" | Out-File -FilePath stdin.txt -Encoding ASCII
-          Start-Sleep -Seconds 5
+          "(+ 1 2)`n,quit`n" | Out-File -FilePath stdin.txt -Encoding ASCII -NoNewline
+          $proc = Start-Process -FilePath ".\${{ matrix.binary }}" -NoNewWindow -PassThru -RedirectStandardInput stdin.txt -RedirectStandardOutput stdout.txt -RedirectStandardError stderr.txt
+          $timeout = 10
+          $proc | Wait-Process -Timeout $timeout -ErrorAction SilentlyContinue
           if (!$proc.HasExited) { $proc.Kill() }
-          Get-Content stdout.txt
+          if (Test-Path stdout.txt) { Get-Content stdout.txt }
           Write-Host "Basic eval test completed"
 
       - name: Test ,info command (Unix)
