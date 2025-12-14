@@ -669,3 +669,26 @@ Shows thread ID, name, and status for each thread."
                                 *color-dim*)))))
       (format t "~&~60,,,'-A~%" "")
       (format t "~&~A threads total~%" (length rows)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Debugger Commands
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(define-command (bt backtrace) ()
+  "Show the backtrace from the last error.
+When an error occurs during evaluation, ICL captures the backtrace.
+Use this command to view it after seeing an error message."
+  (cond
+    (*last-error-backtrace*
+     (format t "~&~A~%" (colorize "Last error:" *color-red*))
+     (format t "~&  ~A~%~%" (colorize *last-error-condition* *color-yellow*))
+     (format t "~A~%" (colorize "Backtrace:" *color-cyan*))
+     (format t "~&~60,,,'-A~%" "")
+     (format t "~A~%" *last-error-backtrace*))
+    (*last-error-condition*
+     (format t "~&~A~%" (colorize "Last error:" *color-red*))
+     (format t "~&  ~A~%~%" (colorize *last-error-condition* *color-yellow*))
+     (format *error-output* "~&No backtrace available (non-SBCL backend?)~%"))
+    (t
+     (format t "~&No error backtrace recorded.~%")
+     (format t "~&Backtraces are captured when evaluation errors occur.~%"))))

@@ -62,29 +62,48 @@
   (slynk-client:slime-eval `(cl:eval (cl:read-from-string ,string))
                            *slynk-connection*))
 
+(defvar *last-error-backtrace* nil
+  "Backtrace from the last error, if available.")
+
+(defvar *last-error-condition* nil
+  "Condition string from the last error.")
+
 (defun slynk-eval-form (string &key (package "CL-USER"))
   "Evaluate STRING and return structured results.
    Returns (values result output-string).
-   Errors are caught on the remote side to avoid Slynk debugger issues."
+   Errors are caught on the remote side to avoid Slynk debugger issues.
+   Backtraces are captured and stored in *last-error-backtrace*."
   (declare (ignore package))
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
   ;; Wrap evaluation in error handling on the remote side
   ;; This prevents Slynk from entering debug mode and trying to notify Emacs
-  ;; Build the wrapper code as a string to avoid package prefix issues
+  ;; Also capture backtrace when error occurs
   (let ((wrapper-code (format nil
                               "(handler-case ~
                                  (list :ok (multiple-value-list (eval (read-from-string ~S)))) ~
-                                 (error (err) (list :error (princ-to-string err))))"
+                                 (error (err) ~
+                                   (list :error ~
+                                         (princ-to-string err) ~
+                                         (ignore-errors ~
+                                           #+sbcl (with-output-to-string (s) ~
+                                                    (sb-debug:print-backtrace :stream s :count 30)) ~
+                                           #-sbcl nil))))"
                               string)))
     (handler-case
         (let ((result (slynk-client:slime-eval
                        `(cl:eval (cl:read-from-string ,wrapper-code))
                        *slynk-connection*)))
-          ;; result is either (:ok (values...)) or (:error "message")
+          ;; result is either (:ok (values...)) or (:error "message" backtrace)
           (case (first result)
-            (:ok (values (second result) nil))
-            (:error (error "~A" (second result)))
+            (:ok
+             (setf *last-error-backtrace* nil
+                   *last-error-condition* nil)
+             (values (second result) nil))
+            (:error
+             (setf *last-error-condition* (second result)
+                   *last-error-backtrace* (third result))
+             (error "~A" (second result)))
             (otherwise (values result nil))))
       (slynk-client:slime-network-error (e)
         ;; Connection lost - mark as disconnected

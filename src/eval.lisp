@@ -117,6 +117,9 @@
               (cell-error-name e)))
     (error (e)
       (format *error-output* "~&Error: ~A~%" e)
+      ;; Hint about backtrace if available
+      (when *last-error-backtrace*
+        (format *error-output* "~&~A~%" (colorize "  Use ,bt for backtrace" *color-dim*)))
       ;; Optionally invoke error hook
       (when *error-hook*
         (funcall *error-hook* e)))))

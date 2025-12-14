@@ -8,15 +8,20 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern, terminal-based in
 
 ## Features
 
-- **Multi-line input** - Automatically detects incomplete expressions
+- **Syntax highlighting** - Colorized input with distinct colors for keywords, strings, comments, numbers, and symbols
+- **Parenthesis matching** - Real-time highlighting of matching parentheses as you type
+- **Multi-line input** - Automatically detects incomplete expressions with smart indentation
 - **Persistent history** - Command history saved across sessions
 - **Tab completion** - Complete symbols, package-qualified names, and keywords
 - **Command system** - Built-in commands prefixed with comma (e.g., `,help`)
 - **Multiple Lisp support** - Works with SBCL, CCL, ECL, CLISP, ABCL, and Clasp
+- **Error backtraces** - Automatic backtrace capture with `,bt` command to view stack traces
+- **Thread inspection** - List and inspect threads in the inferior Lisp
 - **Documentation lookup** - Quick access to function docs and apropos search
 - **Object inspection** - Inspect objects and view slot values
 - **Tracing** - Enable/disable function tracing
 - **Source location** - Find where functions are defined
+- **Terminal-aware colors** - Automatically detects light/dark terminal background
 
 ## Installation
 
@@ -123,6 +128,8 @@ Commands are prefixed with a comma. Type `,help` for a full list.
 
 | Command | Description |
 |---------|-------------|
+| `,bt` | Show backtrace from last error |
+| `,threads` | List all threads in inferior Lisp |
 | `,trace <function>` | Enable tracing |
 | `,untrace <function>` | Disable tracing |
 | `,untrace-all` | Disable all tracing |
@@ -192,6 +199,7 @@ Example `~/.iclrc`:
 | Variable | Description |
 |----------|-------------|
 | `ICL_SLYNK_PATH` | Override path to Slynk directory |
+| `ICL_BACKGROUND` | Override terminal background detection (`dark` or `light`) |
 | `NO_COLOR` | When set to any non-empty value, disables colored output (see [no-color.org](https://no-color.org/)) |
 
 ## Architecture
