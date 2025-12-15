@@ -14,25 +14,80 @@ exec ros -Q -- $0 "$@"
 ;;; Run with: icl
 ;;;
 ;;; This script loads and runs ICL, an enhanced REPL for Common Lisp.
+;;;
+;;; REQUIREMENTS:
+;;; - ocicl must be installed (https://github.com/ocicl/ocicl)
+;;; - Run 'ocicl install' in the ICL directory before first use
+
+(defun find-icl-directory ()
+  "Find the ICL installation directory."
+  (let* ((script-path (or *load-pathname* *compile-file-pathname*))
+         (roswell-dir (when script-path
+                        (make-pathname :directory (butlast (pathname-directory script-path))
+                                       :defaults script-path))))
+    roswell-dir))
+
+(defun setup-ocicl-deps (icl-dir)
+  "Setup ASDF to find ocicl dependencies."
+  (let ((ocicl-dir (merge-pathnames "ocicl/" icl-dir))
+        (third-party-dir (merge-pathnames "3rd-party/" icl-dir)))
+    ;; Add ocicl directory to ASDF search path
+    (when (probe-file ocicl-dir)
+      (let ((setup-file (merge-pathnames "setup.lisp" ocicl-dir)))
+        (when (probe-file setup-file)
+          (load setup-file))))
+    ;; Add 3rd-party directory for bundled dependencies
+    (when (probe-file third-party-dir)
+      (push third-party-dir asdf:*central-registry*))
+    ;; Add ICL directory itself
+    (push icl-dir asdf:*central-registry*)))
+
+(defun check-ocicl-installed (icl-dir)
+  "Check if ocicl dependencies have been fetched."
+  (let ((ocicl-dir (merge-pathnames "ocicl/" icl-dir)))
+    (and (probe-file ocicl-dir)
+         (probe-file (merge-pathnames "setup.lisp" ocicl-dir)))))
 
 (progn
-  ;; Ensure ASDF is available
   (require :asdf)
 
-  ;; Load ICL system
-  (handler-case
-      (asdf:load-system :icl)
-    (error (e)
-      (format *error-output* "~&Error loading ICL: ~A~%" e)
-      (format *error-output* "~&Make sure ICL is installed. Try: ros install atgreen/icl~%")
-      (uiop:quit 1))))
+  (let ((icl-dir (find-icl-directory)))
+    (unless icl-dir
+      (format *error-output* "~&Error: Could not find ICL installation directory.~%")
+      (uiop:quit 1))
+
+    ;; Check if ocicl deps are installed
+    (unless (check-ocicl-installed icl-dir)
+      (format *error-output* "~&Error: OCicl dependencies not found.~%")
+      (format *error-output* "~&Please run the following commands:~%")
+      (format *error-output* "~&  cd ~A~%" (namestring icl-dir))
+      (format *error-output* "~&  ocicl install~%")
+      (format *error-output* "~%")
+      (format *error-output* "~&If you don't have ocicl, install it from:~%")
+      (format *error-output* "~&  https://github.com/ocicl/ocicl~%")
+      (uiop:quit 1))
+
+    ;; Setup paths for dependencies
+    (setup-ocicl-deps icl-dir)
+
+    ;; Load ICL
+    (handler-case
+        (asdf:load-system :icl)
+      (error (e)
+        (format *error-output* "~&Error loading ICL: ~A~%" e)
+        (uiop:quit 1)))))
 
 (defun main (&rest argv)
   "Main entry point for Roswell script."
   (declare (ignorable argv))
   ;; ICL handles its own command-line parsing via clingon
-  ;; We need to set the command line arguments for clingon to see
-  (let ((sb-ext:*posix-argv* (cons "icl" argv)))
+  (let ((args (cons "icl" argv)))
+    ;; Set command line for clingon to see
+    #+sbcl (setf sb-ext:*posix-argv* args)
+    #+ccl (setf ccl:*command-line-argument-list* args)
+    #+ecl (setf (ext:command-args) args)
+    #+clisp (setf ext:*args* argv)
+    #+abcl (setf extensions:*command-line-argument-list* args)
     (icl:main)))
 
 ;;; vim: set ft=lisp lisp:

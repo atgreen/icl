@@ -42,10 +42,13 @@ sudo dpkg -i icl_*.deb
 
 ### Roswell
 
-If you have [Roswell](https://roswell.github.io/) installed:
+If you have [Roswell](https://roswell.github.io/) and [ocicl](https://github.com/ocicl/ocicl) installed:
 ```sh
 ros install atgreen/icl
+cd ~/.roswell/local-projects/atgreen/icl
+ocicl install
 ```
+Then run with `icl`.
 
 ### Building from Source
 
