@@ -43,7 +43,7 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_PAGE_WELCOME
 
 ; License page
-!insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
+!insertmacro MUI_PAGE_LICENSE "..\..\..\LICENSE"
 
 ; Directory page
 !insertmacro MUI_PAGE_DIRECTORY
@@ -74,12 +74,12 @@ Section "ICL Core" SEC_CORE
   SetOutPath "$INSTDIR"
 
   ; Install main executable
-  File "..\..\icl.exe"
+  File "..\..\..\icl.exe"
 
   ; Install license and readme
-  File "..\..\LICENSE"
-  File "..\..\THIRD-PARTY-LICENSES.txt"
-  File "..\..\README.md"
+  File "..\..\..\LICENSE"
+  File "..\..\..\THIRD-PARTY-LICENSES.txt"
+  File "..\..\..\README.md"
 
   ; Store installation folder
   WriteRegStr HKLM "Software\${PRODUCT_NAME}" "InstallDir" "$INSTDIR"

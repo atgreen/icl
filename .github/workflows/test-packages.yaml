@@ -86,11 +86,11 @@ jobs:
       - name: Update spec file version
         run: |
           VERSION=$(grep ':version' icl.asd | head -1 | sed 's/.*:version[[:space:]]*"\([^"]*\)".*/\1/')
-          sed -i "s/^Version:.*/Version:        ${VERSION}/" icl.spec
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" releng/icl.spec
 
       - name: Build RPM and SRPM
         run: |
-          cp icl.spec ~/rpmbuild/SPECS/
+          cp releng/icl.spec ~/rpmbuild/SPECS/
           cd ~/rpmbuild/SPECS
           rpmbuild -ba icl.spec
 
@@ -207,9 +207,9 @@ jobs:
         run: |
           $VERSION = "${{ steps.version.outputs.version }}"
           # NSIS script expects THIRD-PARTY-LICENSES.txt in repo root
-          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$VERSION installer\nsis\icl.nsi
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$VERSION releng\installer\nsis\icl.nsi
           echo "NSIS installer created:"
-          Get-ChildItem installer\nsis\*.exe
+          Get-ChildItem releng\installer\nsis\*.exe
 
       - name: Install WiX Toolset
         shell: powershell
@@ -222,11 +222,11 @@ jobs:
         run: |
           $VERSION = "${{ steps.version.outputs.version }}"
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          Copy-Item "icl.exe" "installer\wix\"
-          Copy-Item "LICENSE" "installer\wix\"
-          Copy-Item "README.md" "installer\wix\"
-          Copy-Item "THIRD-PARTY-LICENSES.txt" "installer\wix\"
-          cd installer\wix
+          Copy-Item "icl.exe" "releng\installer\wix\"
+          Copy-Item "LICENSE" "releng\installer\wix\"
+          Copy-Item "README.md" "releng\installer\wix\"
+          Copy-Item "THIRD-PARTY-LICENSES.txt" "releng\installer\wix\"
+          cd releng\installer\wix
           wix build icl.wxs -o "icl-$VERSION.msi" -d VERSION=$VERSION -d SourceDir=. -ext WixToolset.UI.wixext
           echo "MSI installer created:"
           Get-ChildItem *.msi
@@ -235,8 +235,8 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           sha256sum icl-${VERSION}-windows-amd64.zip > checksums-windows.txt
-          sha256sum installer/nsis/icl-${VERSION}-setup.exe >> checksums-windows.txt
-          sha256sum installer/wix/icl-${VERSION}.msi >> checksums-windows.txt
+          sha256sum releng/installer/nsis/icl-${VERSION}-setup.exe >> checksums-windows.txt
+          sha256sum releng/installer/wix/icl-${VERSION}.msi >> checksums-windows.txt
           cat checksums-windows.txt
 
       - name: Build Chocolatey package
@@ -248,13 +248,13 @@ jobs:
           $CHECKSUM = ($checksumLine -split '\s+')[0]
 
           # Update nuspec version
-          (Get-Content chocolatey\icl.nuspec) -replace '<version>.*</version>', "<version>$VERSION</version>" | Set-Content chocolatey\icl.nuspec
+          (Get-Content releng\chocolatey\icl.nuspec) -replace '<version>.*</version>', "<version>$VERSION</version>" | Set-Content releng\chocolatey\icl.nuspec
 
           # Update install script with version and checksum
-          (Get-Content chocolatey\tools\chocolateyInstall.ps1) -replace '__VERSION__', $VERSION | Set-Content chocolatey\tools\chocolateyInstall.ps1
-          (Get-Content chocolatey\tools\chocolateyInstall.ps1) -replace '__CHECKSUM__', $CHECKSUM | Set-Content chocolatey\tools\chocolateyInstall.ps1
+          (Get-Content releng\chocolatey\tools\chocolateyInstall.ps1) -replace '__VERSION__', $VERSION | Set-Content releng\chocolatey\tools\chocolateyInstall.ps1
+          (Get-Content releng\chocolatey\tools\chocolateyInstall.ps1) -replace '__CHECKSUM__', $CHECKSUM | Set-Content releng\chocolatey\tools\chocolateyInstall.ps1
 
-          cd chocolatey
+          cd releng\chocolatey
           choco pack
           echo "Chocolatey package created:"
           Get-ChildItem *.nupkg
@@ -265,11 +265,11 @@ jobs:
           echo "ZIP:"
           ls -lh *.zip 2>/dev/null || echo "  (none)"
           echo "NSIS EXE:"
-          ls -lh installer/nsis/*.exe 2>/dev/null || echo "  (none)"
+          ls -lh releng/installer/nsis/*.exe 2>/dev/null || echo "  (none)"
           echo "MSI:"
-          ls -lh installer/wix/*.msi 2>/dev/null || echo "  (none)"
+          ls -lh releng/installer/wix/*.msi 2>/dev/null || echo "  (none)"
           echo "Chocolatey:"
-          ls -lh chocolatey/*.nupkg 2>/dev/null || echo "  (none)"
+          ls -lh releng/chocolatey/*.nupkg 2>/dev/null || echo "  (none)"
           echo ""
           echo "=== Checksums ==="
           cat checksums-windows.txt

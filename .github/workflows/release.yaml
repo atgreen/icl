@@ -88,8 +88,8 @@ jobs:
       - name: Update spec file version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          sed -i "s/^Version:.*/Version:        ${VERSION}/" icl.spec
-          cp icl.spec ~/rpmbuild/SPECS/
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" releng/icl.spec
+          cp releng/icl.spec ~/rpmbuild/SPECS/
 
       - name: Build RPM and SRPM
         run: |
@@ -136,7 +136,7 @@ jobs:
       - name: Update changelog version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          sed -i "s/^icl (.*)/icl (${VERSION}-1) unstable; urgency=medium/" debian/changelog
+          sed -i "s/^icl (.*)/icl (${VERSION}-1) unstable; urgency=medium/" releng/debian/changelog
 
       - name: Build DEB packages (binary and source)
         run: |
@@ -216,8 +216,8 @@ jobs:
         shell: powershell
         run: |
           $VERSION = "${{ steps.version.outputs.version }}"
-          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$VERSION installer\nsis\icl.nsi
-          Move-Item "installer\nsis\icl-$VERSION-setup.exe" "."
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$VERSION releng\installer\nsis\icl.nsi
+          Move-Item "releng\installer\nsis\icl-$VERSION-setup.exe" "."
 
       - name: Install WiX Toolset
         shell: powershell
@@ -231,12 +231,12 @@ jobs:
           $VERSION = "${{ steps.version.outputs.version }}"
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           # Copy files to wix directory for building
-          Copy-Item "icl.exe" "installer\wix\"
-          Copy-Item "LICENSE" "installer\wix\"
-          Copy-Item "README.md" "installer\wix\"
-          Copy-Item "THIRD-PARTY-LICENSES.txt" "installer\wix\"
-          cd installer\wix
-          wix build icl.wxs -o "..\..\icl-$VERSION.msi" -d VERSION=$VERSION -d SourceDir=. -ext WixToolset.UI.wixext
+          Copy-Item "icl.exe" "releng\installer\wix\"
+          Copy-Item "LICENSE" "releng\installer\wix\"
+          Copy-Item "README.md" "releng\installer\wix\"
+          Copy-Item "THIRD-PARTY-LICENSES.txt" "releng\installer\wix\"
+          cd releng\installer\wix
+          wix build icl.wxs -o "..\..\..\icl-$VERSION.msi" -d VERSION=$VERSION -d SourceDir=. -ext WixToolset.UI.wixext
 
       - name: Calculate checksums
         run: |
@@ -288,23 +288,23 @@ jobs:
           CHECKSUM="${{ steps.info.outputs.checksum }}"
 
           # Update nuspec version
-          sed -i "s/<version>.*<\/version>/<version>${VERSION}<\/version>/" chocolatey/icl.nuspec
+          sed -i "s/<version>.*<\/version>/<version>${VERSION}<\/version>/" releng/chocolatey/icl.nuspec
 
           # Update install script with version and checksum
-          sed -i "s/__VERSION__/${VERSION}/g" chocolatey/tools/chocolateyInstall.ps1
-          sed -i "s/__CHECKSUM__/${CHECKSUM}/g" chocolatey/tools/chocolateyInstall.ps1
+          sed -i "s/__VERSION__/${VERSION}/g" releng/chocolatey/tools/chocolateyInstall.ps1
+          sed -i "s/__CHECKSUM__/${CHECKSUM}/g" releng/chocolatey/tools/chocolateyInstall.ps1
 
       - name: Build Chocolatey package
         shell: powershell
         run: |
-          cd chocolatey
+          cd releng\chocolatey
           choco pack
 
       - name: Upload Chocolatey package
         uses: actions/upload-artifact@v4
         with:
           name: chocolatey-package
-          path: chocolatey/*.nupkg
+          path: releng/chocolatey/*.nupkg
 
   # ========================================
   # Build macOS executables
