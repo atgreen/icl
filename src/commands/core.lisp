@@ -1002,8 +1002,8 @@ Example: ,changes alexandria"
       (format *error-output* "~&Error: ~A~%Is ocicl installed? See https://github.com/ocicl/ocicl~%" e))))
 
 (define-command (load-system ql) (system-name)
-  "Load a system using OCICL, Quicklisp, or ASDF (whichever is available).
-Tries in order: OCICL (with download), Quicklisp, plain ASDF.
+  "Load a system using ocicl, Quicklisp, or ASDF (whichever is available).
+Tries in order: ocicl (with download), Quicklisp, plain ASDF.
 Example: ,load-system alexandria
 Example: ,ql cl-ppcre"
   (handler-case
@@ -1018,18 +1018,18 @@ Example: ,ql cl-ppcre"
   (unless *slynk-connected-p*
     (error "Not connected to Slynk server"))
   (let* ((name (string-trim '(#\Space #\Tab #\") system-name))
-         ;; Code that tries OCICL, then Quicklisp, then ASDF
+         ;; Code that tries ocicl, then Quicklisp, then ASDF
          (loader-code (format nil "
 (flet ((try-load ()
          (let ((system '~A))
            (cond
-             ;; Try OCICL first
+             ;; Try ocicl first
              ((find-package '#:OCICL-RUNTIME)
               (progv (list (find-symbol \"*DOWNLOAD*\" '#:OCICL-RUNTIME)
                            (find-symbol \"*VERBOSE*\" '#:OCICL-RUNTIME))
                   (list t t)
                 (asdf:load-system system))
-              (format nil \"Loaded ~~A via OCICL\" system))
+              (format nil \"Loaded ~~A via ocicl\" system))
              ;; Try Quicklisp
              ((find-package '#:QUICKLISP)
               (funcall (find-symbol \"QUICKLOAD\" '#:QUICKLISP) system :silent nil)
@@ -1039,7 +1039,7 @@ Example: ,ql cl-ppcre"
               (asdf:load-system system)
               (format nil \"Loaded ~~A via ASDF\" system))
              (t
-              (error \"No system loader available (OCICL, Quicklisp, or ASDF)\"))))))
+              (error \"No system loader available (ocicl, Quicklisp, or ASDF)\"))))))
   (try-load))" name)))
     (first (backend-eval loader-code))))
 

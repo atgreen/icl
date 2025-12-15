@@ -132,7 +132,9 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 
 | Command | Description |
 |---------|-------------|
-| `,load-system <name>` | Load system via OCICL/Quicklisp/ASDF |
+| `,load-system <name>` | Load system via ocicl/Quicklisp/ASDF (alias: `,ql`) |
+| `,libyear` | Show dependency freshness metric (requires ocicl) |
+| `,changes [system]` | Show LLM-generated changelogs (requires ocicl) |
 | `,time <form>` | Time expression evaluation |
 | `,load <file>` | Load a Lisp file |
 | `,compile-file <file>` | Compile a file |

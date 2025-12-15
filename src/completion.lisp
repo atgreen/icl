@@ -278,6 +278,12 @@
       ((or (string-prefix-p ",load-system " trimmed)
            (string-prefix-p ",ql " trimmed))
        :system)
+      ;; OCICL commands: ,changes completes to ocicl systems
+      ((string-prefix-p ",changes " trimmed)
+       :ocicl-system)
+      ;; ,libyear takes no arguments
+      ((string-prefix-p ",libyear " trimmed)
+       :none)
       (t nil))))
 
 (defun string-prefix-p (prefix string)
@@ -489,6 +495,7 @@
     (:command (complete-command prefix))
     (:package (complete-package-via-slynk prefix))
     (:system (complete-system-via-slynk prefix))
+    (:ocicl-system (complete-ocicl-system prefix))
     (:symbol (complete-symbol-via-slynk prefix))
     (:keyword (complete-keyword-via-slynk prefix))
     (:qualified (complete-qualified-via-slynk prefix))
@@ -549,6 +556,23 @@
        '(cl:mapcar (cl:function cl:string-downcase)
                    (asdf:registered-systems))
        *slynk-connection*)
+    (error () nil)))
+
+(defun complete-ocicl-system (prefix)
+  "Complete OCICL system name PREFIX using ocicl-runtime."
+  (unless *slynk-connected-p*
+    (return-from complete-ocicl-system nil))
+  (handler-case
+      (let* ((up-prefix (string-upcase prefix))
+             (systems (slynk-client:slime-eval
+                       '(cl:when (cl:find-package '#:ocicl-runtime)
+                          (cl:funcall (cl:find-symbol "SYSTEM-LIST" '#:ocicl-runtime)))
+                       *slynk-connection*))
+             (results nil))
+        (dolist (sys systems)
+          (when (prefix-match-p up-prefix (string-upcase sys))
+            (push sys results)))
+        (sort (remove-duplicates results :test #'string-equal) #'string<))
     (error () nil)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
