@@ -89,7 +89,8 @@
    Search order:
    1. ICL_SLYNK_PATH environment variable
    2. ./slynk/ relative to executable (development)
-   3. /usr/share/icl/sly/slynk/ (installed)"
+   3. ./ocicl/sly-*/slynk/ relative to executable (ocicl development)
+   4. /usr/share/icl/sly/slynk/ (installed, Unix only)"
   (let ((env-path (uiop:getenv "ICL_SLYNK_PATH")))
     ;; 1. Environment variable override
     (when (and env-path (probe-file env-path))
@@ -104,8 +105,14 @@
                       *default-pathname-defaults*))
          (local-slynk (merge-pathnames "slynk/slynk-loader.lisp" exe-dir)))
     (when (probe-file local-slynk)
-      (return-from find-bundled-slynk local-slynk)))
-  ;; 3. System install location
+      (return-from find-bundled-slynk local-slynk))
+    ;; 3. Check ocicl directory for sly-*/slynk (wildcard match)
+    (let ((ocicl-pattern (merge-pathnames "ocicl/sly-*/slynk/slynk-loader.lisp" exe-dir)))
+      (let ((matches (directory ocicl-pattern)))
+        (when matches
+          (return-from find-bundled-slynk (first matches))))))
+  ;; 4. System install location (Unix only)
+  #-windows
   (let ((system-slynk (pathname "/usr/share/icl/sly/slynk/slynk-loader.lisp")))
     (when (probe-file system-slynk)
       (return-from find-bundled-slynk system-slynk)))
