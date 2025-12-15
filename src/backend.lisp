@@ -219,7 +219,9 @@
   (let ((x (find-symbol \"*TRANSLATING-SWANK-TO-SLYNK*\" :slynk-rpc)))
     (when x (setf (symbol-value x) nil)))
   (funcall (read-from-string \"slynk:create-server\")
-           :port ~D :dont-close t))"
+           :port ~D :dont-close t)
+  ;; Keep process alive (needed for CLISP with -x which exits after eval)
+  (loop (sleep 60)))"
                     (when asdf-file (uiop:unix-namestring asdf-file))
                     (uiop:unix-namestring slynk-dir)
                     port)
@@ -416,6 +418,9 @@
 
 (defun ensure-backend ()
   "Ensure a Lisp backend is available via Slynk."
+  (when *verbose*
+    (format t "~&; ensure-backend: *slynk-connected-p*=~A inferior-alive=~A~%"
+            *slynk-connected-p* (inferior-lisp-alive-p)))
   (when (not *slynk-connected-p*)
     (unless (inferior-lisp-alive-p)
       (start-inferior-lisp))

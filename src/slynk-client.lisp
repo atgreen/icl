@@ -70,24 +70,21 @@
 
 (defun slynk-eval-form (string &key (package "CL-USER"))
   "Evaluate STRING and return result values.
-   Output streams to the terminal via Slynk :write-string events.
+   Output is captured and printed before results.
    Errors are caught on the remote side to avoid Slynk debugger issues.
    Backtraces are captured and stored in *last-error-backtrace*."
   (declare (ignore package))
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
-  ;; Use slynk-backend:make-output-stream with a callback that sends :write-string
-  ;; events via slynk::send-to-emacs for true streaming output
+  ;; Use with-output-to-string for portable output capture across all backends
+  ;; This captures output rather than streaming it, but works reliably on all Lisps
   (let ((wrapper-code (format nil "(handler-case
-  (let* ((stream-out (slynk-backend:make-output-stream
-                      (lambda (s) (slynk::send-to-emacs (list :write-string s)) (values))))
-         (vals (let ((*standard-output* stream-out)
-                     (*error-output* stream-out)
-                     (*trace-output* stream-out))
-                 (unwind-protect
-                      (multiple-value-list (eval (read-from-string ~S)))
-                   (force-output stream-out)))))
-    (list :ok (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
+  (let* ((output (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
+         (vals (with-output-to-string (*standard-output* output)
+                 (let ((*error-output* *standard-output*)
+                       (*trace-output* *standard-output*))
+                   (multiple-value-list (eval (read-from-string ~S)))))))
+    (list :ok output (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
   (error (err)
     (list :error
           ;; Clean error message: strip Stream: lines from reader errors
@@ -103,9 +100,7 @@
                                     (search \"Stream:\" line))
                         do (write-line line s))))))
           (ignore-errors
-            #+sbcl (with-output-to-string (s)
-                     (sb-debug:print-backtrace :stream s :count 30))
-            #-sbcl nil))))" string)))
+            (slynk:backtrace 0 30)))))" string)))
     (handler-case
         (let ((result (slynk-client:slime-eval
                        `(cl:eval (cl:read-from-string ,wrapper-code))
@@ -114,7 +109,13 @@
             (:ok
              (setf *last-error-backtrace* nil
                    *last-error-condition* nil)
-             (second result))
+             ;; Print captured output first
+             (let ((output (second result))
+                   (vals (third result)))
+               (when (and output (> (length output) 0))
+                 (write-string output)
+                 (force-output))
+               vals))
             (:error
              (setf *last-error-condition* (second result)
                    *last-error-backtrace* (third result))
