@@ -87,8 +87,14 @@
 (defun find-bundled-asdf ()
   "Find bundled ASDF shipped with ICL.
    Search order:
-   1. ./3rd-party/asdf/asdf.lisp relative to executable (development)
-   2. /usr/share/icl/asdf/asdf.lisp (installed, Unix only)"
+   1. ICL_ASDF_PATH environment variable
+   2. ./3rd-party/asdf/asdf.lisp relative to executable (development)
+   3. /usr/share/icl/asdf/asdf.lisp (installed, Unix only)"
+  ;; 1. Environment variable override
+  (let ((env-path (uiop:getenv "ICL_ASDF_PATH")))
+    (when (and env-path (probe-file env-path))
+      (return-from find-bundled-asdf (pathname env-path))))
+  ;; 2. Relative to executable (for development/build directory)
   (let* ((exe-dir (or (and (boundp 'sb-ext:*runtime-pathname*)
                            (symbol-value 'sb-ext:*runtime-pathname*)
                            (uiop:pathname-directory-pathname
@@ -97,7 +103,7 @@
          (local-asdf (merge-pathnames "3rd-party/asdf/asdf.lisp" exe-dir)))
     (when (probe-file local-asdf)
       (return-from find-bundled-asdf local-asdf)))
-  ;; System install location (Unix only)
+  ;; 3. System install location (Unix only)
   #-windows
   (let ((system-asdf (pathname "/usr/share/icl/asdf/asdf.lisp")))
     (when (probe-file system-asdf)

@@ -279,6 +279,7 @@ Use `configure-lisp` to customize how ICL invokes a Lisp implementation:
 | Variable | Description |
 |----------|-------------|
 | `ICL_SLYNK_PATH` | Override path to Slynk directory |
+| `ICL_ASDF_PATH` | Override path to bundled ASDF (for backends without ASDF) |
 | `ICL_BACKGROUND` | Override terminal background detection (`dark` or `light`) |
 | `NO_COLOR` | When set to any non-empty value, disables colored output (see [no-color.org](https://no-color.org/)) |
 
