@@ -101,32 +101,44 @@ jobs:
       - name: Test basic evaluation (Linux)
         if: runner.os == 'Linux'
         run: |
-          echo '(+ 1 2)' | timeout 10s ./${{ matrix.binary }} 2>&1 || echo "Basic eval test completed"
+          output=$(echo '(+ 1 2)' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "3" || (echo "FAIL: Expected result 3 not found" && exit 1)
 
       - name: Test basic evaluation (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install coreutils
-          echo '(+ 1 2)' | gtimeout 10s ./${{ matrix.binary }} 2>&1 || echo "Basic eval test completed"
+          output=$(echo '(+ 1 2)' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "3" || (echo "FAIL: Expected result 3 not found" && exit 1)
 
       - name: Test basic evaluation (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          echo '(+ 1 2)' | timeout 60s ./${{ matrix.binary }} --verbose 2>&1 || echo "Basic eval test completed"
+          output=$(echo '(+ 1 2)' | timeout 60s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "3" || (echo "FAIL: Expected result 3 not found" && exit 1)
 
       - name: Test ,info command (Linux)
         if: runner.os == 'Linux'
         run: |
-          printf ',info\n,quit\n' | timeout 10s ./${{ matrix.binary }} 2>&1 || echo "Info command test completed"
+          output=$(printf ',info\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "SBCL" || (echo "FAIL: Expected SBCL info not found" && exit 1)
 
       - name: Test ,info command (macOS)
         if: runner.os == 'macOS'
         run: |
-          printf ',info\n,quit\n' | gtimeout 10s ./${{ matrix.binary }} 2>&1 || echo "Info command test completed"
+          output=$(printf ',info\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "SBCL" || (echo "FAIL: Expected SBCL info not found" && exit 1)
 
       - name: Test ,info command (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          printf ',info\n,quit\n' | timeout 60s ./${{ matrix.binary }} --verbose 2>&1 || echo "Info command test completed"
+          output=$(printf ',info\n,quit\n' | timeout 60s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "SBCL" || (echo "FAIL: Expected SBCL info not found" && exit 1)
