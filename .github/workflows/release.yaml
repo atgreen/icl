@@ -185,10 +185,10 @@ jobs:
         with:
           name: licenses
 
-      - name: Install SBCL
+      - name: Install SBCL and build tools
         shell: powershell
         run: |
-          choco install -y sbcl make
+          choco install -y sbcl make nsis
 
       - name: Build
         run: make
