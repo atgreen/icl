@@ -117,7 +117,7 @@
 
 (defun extract-completion-prefix (line col)
   "Extract the word to complete from LINE ending at COL.
-   Returns (values prefix start-col type) where type is :symbol, :package, :qualified, :keyword, or :path."
+   Returns (values prefix start-col type) where type is :symbol, :package, :qualified, :keyword, :path, or :command."
   (when (zerop col)
     (return-from extract-completion-prefix (values "" 0 :symbol)))
   (let ((start col))
@@ -126,7 +126,7 @@
                      (completion-word-char-p (char line (1- start))))
           do (decf start))
     (let ((prefix (subseq line start col)))
-      (values prefix start (classify-prefix prefix)))))
+      (values prefix start (classify-prefix-with-context prefix line start)))))
 
 (defun classify-prefix (prefix)
   "Classify PREFIX to determine completion type."
@@ -151,6 +151,46 @@
     ((position #\: prefix) :qualified)
     ;; Regular symbol
     (t :symbol)))
+
+(defun command-context-type (line)
+  "Determine completion type based on command context in LINE.
+   Returns NIL if no special context, or :package, :path, etc."
+  (let ((trimmed (string-trim '(#\Space #\Tab) line)))
+    (cond
+      ;; Package commands: ,cd, ,in-package
+      ((or (string-prefix-p ",cd " trimmed)
+           (string-prefix-p ",in-package " trimmed))
+       :package)
+      ;; File commands: ,load, ,ld, ,compile-file, ,cf
+      ((or (string-prefix-p ",load " trimmed)
+           (string-prefix-p ",ld " trimmed)
+           (string-prefix-p ",compile-file " trimmed)
+           (string-prefix-p ",cf " trimmed))
+       :path)
+      ;; System loading: ,load-system, ,ql
+      ((or (string-prefix-p ",load-system " trimmed)
+           (string-prefix-p ",ql " trimmed))
+       :system)
+      (t nil))))
+
+(defun string-prefix-p (prefix string)
+  "Return T if STRING starts with PREFIX (case-insensitive)."
+  (and (>= (length string) (length prefix))
+       (string-equal prefix (subseq string 0 (length prefix)))))
+
+(defun classify-prefix-with-context (prefix line start)
+  "Classify PREFIX considering the LINE context.
+   START is where PREFIX begins in LINE."
+  (declare (ignore start))
+  ;; Check command context first
+  (let ((context-type (command-context-type line)))
+    (cond
+      ;; Command context overrides for non-command prefixes
+      ((and context-type (not (and (plusp (length prefix))
+                                   (char= (char prefix 0) #\,))))
+       context-type)
+      ;; Otherwise use standard classification
+      (t (classify-prefix prefix)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Symbol Completion
@@ -335,6 +375,8 @@
   "Compute completion candidates for PREFIX of TYPE using Slynk backend."
   (case type
     (:command (complete-command prefix))
+    (:package (complete-package-via-slynk prefix))
+    (:system (complete-system-via-slynk prefix))
     (:symbol (complete-symbol-via-slynk prefix))
     (:keyword (complete-keyword-via-slynk prefix))
     (:qualified (complete-qualified-via-slynk prefix))
@@ -361,6 +403,41 @@
           (when (prefix-match-p up-prefix (string-upcase alias-name))
             (push (concatenate 'string "," alias-name) results)))))
     (sort (remove-duplicates results :test #'string=) #'string<)))
+
+(defun complete-package-via-slynk (prefix)
+  "Complete package name PREFIX using Slynk backend."
+  (handler-case
+      (let* ((up-prefix (string-upcase prefix))
+             (packages (slynk-list-packages))
+             (results nil))
+        (dolist (pkg packages)
+          (when (prefix-match-p up-prefix (string-upcase pkg))
+            (push pkg results)))
+        (sort results #'string<))
+    (error () nil)))
+
+(defun complete-system-via-slynk (prefix)
+  "Complete ASDF system name PREFIX using Slynk backend."
+  (handler-case
+      (let* ((up-prefix (string-upcase prefix))
+             (systems (slynk-list-systems))
+             (results nil))
+        (dolist (sys systems)
+          (when (prefix-match-p up-prefix (string-upcase sys))
+            (push sys results)))
+        (sort results #'string<))
+    (error () nil)))
+
+(defun slynk-list-systems ()
+  "Get list of known ASDF systems via Slynk."
+  (unless *slynk-connected-p*
+    (return-from slynk-list-systems nil))
+  (handler-case
+      (slynk-client:slime-eval
+       '(cl:mapcar (cl:function cl:string-downcase)
+                   (asdf:registered-systems))
+       *slynk-connection*)
+    (error () nil)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Slynk-backed Completion
