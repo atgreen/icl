@@ -313,6 +313,7 @@ jobs:
 
       - name: Push to Chocolatey.org
         if: ${{ vars.PUSH_TO_CHOCOLATEY == 'true' }}
+        continue-on-error: true
         shell: powershell
         env:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
@@ -320,6 +321,9 @@ jobs:
           cd releng\chocolatey
           $nupkg = Get-ChildItem -Filter "*.nupkg" | Select-Object -First 1
           choco push $nupkg.Name --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::Chocolatey push failed (may be pending moderation). Package is still available as artifact."
+          }
 
   # ========================================
   # Build macOS executables
