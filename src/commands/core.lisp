@@ -1233,19 +1233,14 @@ Example: ,paredit        ; toggle
         (cleanup-gemini-mcp-config)))))
 
 (defun run-ai-cli-streaming (program args)
-  "Run AI CLI with streaming output and incremental markdown rendering."
+  "Run AI CLI with streaming output."
   (let* ((process (uiop:launch-program args
                                        :output :stream
                                        :error-output :stream))
          (out-stream (uiop:process-info-output process))
          (err-stream (uiop:process-info-error-output process))
-         (output-buffer (make-array 0 :element-type 'character
-                                      :adjustable t :fill-pointer 0))
          (first-output nil)
-         (last-render-time (get-internal-real-time))
-         (render-interval (* 0.15 internal-time-units-per-second))  ; 150ms
-         (last-rendered-lines 0)
-         (stderr-since-render nil)  ; Track if stderr appeared since last render
+         (need-newline nil)  ; Track if we need newline before next stdout
          (spinner-frames *spinner-frames*)
          (spinner-idx 0))
     (unwind-protect
@@ -1256,18 +1251,7 @@ Example: ,paredit        ; toggle
             (when (and (not out-ready)
                        (not err-ready)
                        (not (uiop:process-alive-p process)))
-              ;; Final render with complete content
-              (when (> (length output-buffer) 0)
-                ;; Clear previous rendered content (but not stderr)
-                (when (> last-rendered-lines 0)
-                  (format t "~C[~DA~C[J" #\Escape last-rendered-lines #\Escape))
-                ;; Add newline after stderr if any
-                (when stderr-since-render
-                  (terpri))
-                ;; Render final markdown
-                (format t "~A~%" (tuition:render-markdown
-                                 (coerce output-buffer 'string)
-                                 :width 80)))
+              (when first-output (terpri))
               (return))
             ;; Show spinner while waiting for first output
             (cond
@@ -1280,50 +1264,31 @@ Example: ,paredit        ; toggle
                (force-output)
                (setf spinner-idx (mod (1+ spinner-idx) (length spinner-frames)))
                (sleep 0.08))
-              ;; Read stderr (MCP messages, etc) - display with prefix
+              ;; Read stderr (MCP messages, etc)
               (err-ready
                (unless first-output
                  (format t "~C[2K~C[0G" #\Escape #\Escape)
-                 (setf first-output t))
-               ;; Clear any previously rendered markdown before showing stderr
-               (when (> last-rendered-lines 0)
-                 (format t "~C[~DA~C[J" #\Escape last-rendered-lines #\Escape)
-                 (setf last-rendered-lines 0))
+                 (setf first-output t)
+                 (terpri))
                (let ((line (read-line err-stream nil nil)))
+                 ;; Gemini CLI writes MCP stderr directly, bypassing our stream
+                 ;; Just consume the line - visual separation comes from MCP server
                  (when line
-                   (format t "~A~A (~A): ~A~A~%"
-                           *ansi-dim* "MCP STDERR" program line *ansi-reset*)
-                   (setf stderr-since-render t)
-                   (force-output))))
-              ;; Accumulate stdout
+                   (setf need-newline t))))
+              ;; Stream stdout directly
               (out-ready
                (unless first-output
                  (format t "~C[2K~C[0G" #\Escape #\Escape)
                  (setf first-output t)
                  (terpri))
+               ;; Add newline after stderr if needed
+               (when need-newline
+                 (terpri)
+                 (setf need-newline nil))
                (let ((char (read-char out-stream nil nil)))
                  (when char
-                   (vector-push-extend char output-buffer)
-                   ;; Check if it's time to re-render
-                   (let ((now (get-internal-real-time)))
-                     (when (> (- now last-render-time) render-interval)
-                       ;; Clear previous render (but not stderr)
-                       (when (> last-rendered-lines 0)
-                         (format t "~C[~DA~C[J" #\Escape last-rendered-lines #\Escape))
-                       ;; Add newline after stderr messages if any
-                       (when stderr-since-render
-                         (terpri)
-                         (setf stderr-since-render nil))
-                       ;; Render current content
-                       (let ((rendered (tuition:render-markdown
-                                        (coerce output-buffer 'string)
-                                        :width 80)))
-                         (format t "~A" rendered)
-                         (force-output)
-                         ;; Count lines for next clear
-                         (setf last-rendered-lines
-                               (1+ (count #\Newline rendered)))
-                         (setf last-render-time now)))))))
+                   (write-char char)
+                   (force-output))))
               ;; Small sleep to avoid busy-waiting
               (t
                (sleep 0.01)))))

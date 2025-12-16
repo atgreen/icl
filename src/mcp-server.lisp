@@ -338,6 +338,10 @@
   (let* ((name (json-getf params "name"))
          (arguments (json-getf params "arguments")))
     (mcp-log "Tool call: ~A args=~S" name arguments)
+    ;; Log to stderr - Gemini CLI will forward with "MCP STDERR" prefix
+    ;; Leading newline separates from AI output that may not end with newline
+    (format *error-output* "~%Tool: ~A~%" name)
+    (force-output *error-output*)
     (let* ((output (execute-tool name arguments))
            (result (make-hash-table :test 'equal))
            (content-item (make-hash-table :test 'equal))
