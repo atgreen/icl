@@ -289,7 +289,8 @@
   (setf *search-mode* t
         *search-pattern* ""
         *search-match-index* 0
-        *search-matches* nil)
+        *search-matches* nil
+        *search-display-lines* 0)
   ;; Save current buffer
   (unless *history-saved-buffer*
     (setf *history-saved-buffer* (buffer-contents buf))))
@@ -305,6 +306,7 @@
         *search-pattern* ""
         *search-match-index* 0
         *search-matches* nil
+        *search-display-lines* 0
         *history-saved-buffer* nil))
 
 (defun update-search (buf)
@@ -328,18 +330,59 @@
            (entry (nth hist-idx *editor-history*)))
       (buffer-set-contents buf entry))))
 
+(defvar *search-display-lines* 0
+  "Number of lines used by current search display (for redrawing in place).")
+
 (defun render-search-prompt ()
-  "Render the reverse search prompt."
+  "Render just the search prompt (for initial entry into search mode)."
+  ;; Move up to clear previous display if any
+  (when (plusp *search-display-lines*)
+    (cursor-up *search-display-lines*))
   (cursor-to-column 1)
+  (clear-line)
+  (format t "~A`~A'~A"
+          (colorize "(reverse-i-search)" *color-dim*)
+          *search-pattern*
+          (colorize "[no match]" *color-red*))
+  (clear-below)
+  (setf *search-display-lines* 0)
+  (force-output))
+
+(defun render-search-with-buffer (buf)
+  "Render the search prompt and full buffer content, updating in place."
+  ;; Move up to start of our display area
+  (when (plusp *search-display-lines*)
+    (cursor-up *search-display-lines*))
+  (cursor-to-column 1)
+
+  ;; Line 0: Search prompt
   (clear-line)
   (let ((status (if *search-matches*
                     (format nil "~D/~D" (1+ *search-match-index*) (length *search-matches*))
                     "no match")))
-    (format t "~A`~A'~A: "
+    (format t "~A`~A'~A"
             (colorize "(reverse-i-search)" *color-dim*)
             *search-pattern*
             (colorize (format nil "[~A]" status)
                       (if *search-matches* *color-green* *color-red*))))
+
+  ;; Buffer content with syntax highlighting
+  (let* ((full-content (buffer-contents buf))
+         (highlighted (highlight-string full-content nil))
+         (highlighted-lines (split-sequence:split-sequence #\Newline highlighted))
+         (line-count (length highlighted-lines)))
+    ;; Draw each buffer line
+    (dotimes (i line-count)
+      (format t "~%")
+      (clear-line)
+      (let ((prompt (buffer-prompt-for-line buf i))
+            (hl-line (nth i highlighted-lines)))
+        (format t "~A~A" prompt hl-line)))
+    ;; Clear any leftover lines from previous longer content
+    (clear-below)
+    ;; Track lines: search prompt doesn't count since we start there,
+    ;; just count buffer lines we moved down
+    (setf *search-display-lines* line-count))
   (force-output))
 
 (defun handle-search-key (buf key)
@@ -657,10 +700,10 @@
                    (let ((search-result (handle-search-key buf key)))
                      (cond
                        ((eql search-result :continue)
-                        (render-search-prompt)
+                        (render-search-with-buffer buf)
                         (setf process-normal-key nil))
                        ((eql search-result :next)
-                        (render-search-prompt)
+                        (render-search-with-buffer buf)
                         (setf process-normal-key nil))
                        ((eql search-result :accept)
                         (exit-search-mode buf t)
