@@ -583,7 +583,7 @@
   "Complete symbol PREFIX using Slynk backend."
   (handler-case
       (let ((result (slynk-complete-simple prefix
-                                           :package (package-name *icl-package*))))
+                                           :package *icl-package-name*)))
         ;; slynk-complete-simple already extracts the completions list
         (if (listp result)
             result
@@ -607,7 +607,7 @@
   "Complete package-qualified symbol PREFIX using Slynk backend."
   (handler-case
       (let ((result (slynk-complete-simple prefix
-                                           :package (package-name *icl-package*))))
+                                           :package *icl-package-name*)))
         ;; slynk-complete-simple already extracts the completions list
         (if (listp result)
             result

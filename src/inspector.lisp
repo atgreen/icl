@@ -278,8 +278,9 @@
 (defun clear-inspector ()
   "Clear the inspector display."
   (when (> *inspector-lines-drawn* 0)
-    ;; Move up to start of inspector and clear from there to end of screen
-    (format t "~C[~DA~C[J" #\Escape *inspector-lines-drawn* #\Escape)
+    ;; Move up to start of inspector, go to column 1, clear line and everything below
+    (format t "~C[~DA~C[G~C[2K~C[J"
+            #\Escape *inspector-lines-drawn* #\Escape #\Escape #\Escape)
     (setf *inspector-lines-drawn* 0)
     (force-output)))
 

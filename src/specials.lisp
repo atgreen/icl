@@ -32,7 +32,11 @@
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
 (defvar *icl-package* (find-package :cl-user)
-  "Current package context for evaluation.")
+  "Current package context for evaluation (local package object, may be NIL for remote-only packages).")
+
+(defvar *icl-package-name* "COMMON-LISP-USER"
+  "Name of the current package for prompt display.
+   This tracks the package in the inferior Lisp, which may not exist locally.")
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Prompts

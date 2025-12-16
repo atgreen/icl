@@ -30,7 +30,7 @@
   "Generate the primary prompt string with dimmed package name."
   (if *prompt-hook*
       (funcall *prompt-hook* *icl-package*)
-      (format nil "~A> " (colorize (package-name *icl-package*) *color-prompt*))))
+      (format nil "~A> " (colorize *icl-package-name* *color-prompt*))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Input Reading

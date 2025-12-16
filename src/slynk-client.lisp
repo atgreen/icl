@@ -81,6 +81,10 @@
   ;; that capture *standard-output* at initialization time continue to work.
   (let ((wrapper-code (format nil "(handler-case
   (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
+    ;; Update standard REPL history variables so ,i works
+    (setf *** **
+          ** *
+          * (first vals))
     (force-output)
     (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
   (error (err)
@@ -217,11 +221,13 @@
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
   ;; Wrap in error handler to avoid debugger for non-existent packages
+  ;; Use cl-user::err to avoid package issues (ICL package doesn't exist in inferior)
+  ;; Note: can't use gensym because uninterned symbols don't survive print/read roundtrip
   (slynk-client:slime-eval
    `(cl:handler-case
         (cl:funcall (cl:read-from-string "slynk:set-package") ,package-name)
-      (cl:error (e)
-        (cl:error "~A" e)))
+      (cl:error (cl-user::err)
+        (cl:error "~A" cl-user::err)))
    *slynk-connection*))
 
 (defun slynk-list-threads ()

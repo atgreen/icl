@@ -15,6 +15,7 @@
 
    ;; Configuration
    #:*icl-package*
+   #:*icl-package-name*
    #:*prompt-string*
    #:*continuation-prompt*
    #:*result-prefix*

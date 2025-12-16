@@ -87,6 +87,9 @@
     (handler-case
         (progn
           (backend-set-package pkg-name)
+          ;; Always update the package name for prompt display
+          (setf *icl-package-name* pkg-name)
+          ;; Update *icl-package* if the package exists locally (for local lookups)
           (let ((pkg (find-package pkg-name)))
             (when pkg
               (setf *icl-package* pkg)))
@@ -96,7 +99,7 @@
 
 (define-command pwd ()
   "Show the current package."
-  (format t "~&~A~%" (package-name *icl-package*)))
+  (format t "~&~A~%" *icl-package-name*))
 
 (define-command (ls list-symbols) (&optional filter)
   "List symbols in current package.
@@ -176,7 +179,7 @@ Optional filter: functions, macros, variables, classes, all, external, internal"
   (when *current-lisp*
     (format t "  Inferior Lisp:  ~A~%" *current-lisp*))
   (format t "  Slynk host:     ~A:~D~%" *slynk-host* *slynk-port*)
-  (format t "  Package:        ~A~%" (package-name *icl-package*))
+  (format t "  Package:        ~A~%" *icl-package-name*)
   (format t "  History file:   ~A~%" (history-file))
   (format t "  Input count:    ~A~%" *input-count*)
   (format t "  Terminal:       ~A~%" (if (terminal-capable-p) "capable" "dumb")))
