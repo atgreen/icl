@@ -565,8 +565,23 @@ Be thorough - users expect you to leverage this live environment access."
 (defvar *mcp-http-port* 4006
   "Port for the HTTP MCP server.")
 
-(defvar *sse-message-endpoint* "/mcp/message"
-  "Endpoint for SSE clients to POST messages to.")
+(defvar *mcp-session-token* nil
+  "Random token for MCP URL path security.")
+
+(defun generate-session-token ()
+  "Generate a random 32-character hex token for URL security."
+  (with-output-to-string (s)
+    (dotimes (i 16)
+      (format s "~2,'0x" (random 256)))))
+
+(defun mcp-base-path ()
+  "Return the base path for MCP endpoints, including the session token."
+  (format nil "/mcp/~A" *mcp-session-token*))
+
+(defun mcp-uri-matches-p (uri expected-suffix)
+  "Check if URI matches the expected MCP path with token."
+  (let ((expected (concatenate 'string (mcp-base-path) expected-suffix)))
+    (string= uri expected)))
 
 (defun mcp-http-handler ()
   "Handle HTTP requests for MCP protocol.
@@ -604,8 +619,8 @@ Be thorough - users expect you to leverage this live environment access."
              (setf (hunchentoot:header-out :cache-control) "no-cache")
              (setf (hunchentoot:header-out :connection) "keep-alive")
              ;; Send endpoint event telling client where to POST
-             (let ((endpoint-url (format nil "http://127.0.0.1:~D~A"
-                                         *mcp-http-port* *sse-message-endpoint*)))
+             (let ((endpoint-url (format nil "http://127.0.0.1:~D~A/message"
+                                         *mcp-http-port* (mcp-base-path))))
                (mcp-log "SSE: sending endpoint event: ~A" endpoint-url)
                (format nil "event: endpoint~%data: ~A~%~%" endpoint-url)))
            ;; Regular GET - return server info
@@ -642,6 +657,13 @@ Be thorough - users expect you to leverage this live environment access."
         (setf (hunchentoot:content-type*) "application/json")
         (make-json-error nil -32700 (format nil "Parse error: ~A" e))))))
 
+(defun mcp-uri-matcher (base-path handler)
+  "Create a URI matcher function for Hunchentoot that checks the token path."
+  (lambda (request)
+    (let ((uri (hunchentoot:script-name request)))
+      (when (string= uri base-path)
+        handler))))
+
 (defun start-mcp-http-server (&key (port *mcp-http-port*))
   "Start the HTTP MCP server on PORT.
    This allows AI CLIs to connect via HTTP to the live REPL session."
@@ -649,15 +671,15 @@ Be thorough - users expect you to leverage this live environment access."
     (mcp-log "HTTP MCP server already running")
     (return-from start-mcp-http-server *mcp-http-port*))
   (setf *mcp-http-port* port)
-  ;; Create route for /mcp endpoint (main MCP endpoint)
-  (hunchentoot:define-easy-handler (mcp-endpoint :uri "/mcp") ()
-    (mcp-http-handler))
-  ;; SSE message endpoint for legacy SSE transport
-  (hunchentoot:define-easy-handler (mcp-sse-endpoint :uri "/mcp/message") ()
-    (mcp-sse-message-handler))
-  ;; Also handle root for convenience
-  (hunchentoot:define-easy-handler (mcp-root :uri "/") ()
-    (mcp-http-handler))
+  ;; Generate a new session token for this server instance
+  (setf *mcp-session-token* (generate-session-token))
+  (mcp-log "Generated session token: ~A" *mcp-session-token*)
+  ;; Set up dispatch table with token-validated routes
+  (let ((base (mcp-base-path)))
+    (setf hunchentoot:*dispatch-table*
+          (list (mcp-uri-matcher base 'mcp-http-handler)
+                (mcp-uri-matcher (concatenate 'string base "/message")
+                                 'mcp-sse-message-handler))))
   ;; Start the server
   (handler-case
       (progn
@@ -696,4 +718,4 @@ Be thorough - users expect you to leverage this live environment access."
 (defun mcp-http-server-url ()
   "Return the URL of the HTTP MCP server if running."
   (when (mcp-http-server-running-p)
-    (format nil "http://127.0.0.1:~D/mcp" *mcp-http-port*)))
+    (format nil "http://127.0.0.1:~D~A" *mcp-http-port* (mcp-base-path))))
