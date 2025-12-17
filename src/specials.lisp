@@ -86,23 +86,57 @@
 (defvar *history-file* nil
   "Path to persistent command history file. Computed at runtime.")
 
-(defun history-file ()
-  "Return the history file path, computing it if needed."
-  (or *history-file*
-      (setf *history-file*
-            (merge-pathnames ".icl_history" (user-homedir-pathname)))))
-
 (defvar *history-size* 1000
   "Maximum number of history entries to keep.")
 
 (defvar *config-file* nil
   "User configuration file path. Computed at runtime.")
 
+;;; Platform-specific configuration directories
+;;; POSIX: XDG Base Directory Specification (https://specifications.freedesktop.org/basedir/latest/)
+;;; Windows: %APPDATA% and %LOCALAPPDATA%
+
+(defun config-directory ()
+  "Return the configuration directory for ICL.
+   Windows: %APPDATA%/icl/
+   POSIX: $XDG_CONFIG_HOME/icl/ (default: ~/.config/icl/)"
+  #+windows
+  (let ((appdata (uiop:getenv "APPDATA")))
+    (if (and appdata (> (length appdata) 0))
+        (merge-pathnames "icl/" (pathname (concatenate 'string appdata "/")))
+        (merge-pathnames "icl/" (user-homedir-pathname))))
+  #-windows
+  (let ((xdg (uiop:getenv "XDG_CONFIG_HOME")))
+    (if (and xdg (> (length xdg) 0))
+        (merge-pathnames "icl/" (pathname (concatenate 'string xdg "/")))
+        (merge-pathnames ".config/icl/" (user-homedir-pathname)))))
+
+(defun state-directory ()
+  "Return the state/data directory for ICL (for history, etc).
+   Windows: %LOCALAPPDATA%/icl/
+   POSIX: $XDG_STATE_HOME/icl/ (default: ~/.local/state/icl/)"
+  #+windows
+  (let ((localappdata (uiop:getenv "LOCALAPPDATA")))
+    (if (and localappdata (> (length localappdata) 0))
+        (merge-pathnames "icl/" (pathname (concatenate 'string localappdata "/")))
+        (merge-pathnames "icl/" (user-homedir-pathname))))
+  #-windows
+  (let ((xdg (uiop:getenv "XDG_STATE_HOME")))
+    (if (and xdg (> (length xdg) 0))
+        (merge-pathnames "icl/" (pathname (concatenate 'string xdg "/")))
+        (merge-pathnames ".local/state/icl/" (user-homedir-pathname)))))
+
 (defun config-file ()
   "Return the config file path, computing it if needed."
   (or *config-file*
       (setf *config-file*
-            (merge-pathnames ".iclrc" (user-homedir-pathname)))))
+            (merge-pathnames "config.lisp" (config-directory)))))
+
+(defun history-file ()
+  "Return the history file path, computing it if needed."
+  (or *history-file*
+      (setf *history-file*
+            (merge-pathnames "history" (state-directory)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Hooks

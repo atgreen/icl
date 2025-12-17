@@ -1074,6 +1074,15 @@ Example: ,show-config"
   (format t "  Config file: ~A~%" (config-file))
   (format t "  History file: ~A~%" (history-file))
   (format t "  History size: ~D~%" *history-size*)
+  (format t "~%File locations:~%")
+  #+windows
+  (progn
+    (format t "  Config: %APPDATA%/icl/config.lisp~%")
+    (format t "  History: %LOCALAPPDATA%/icl/history~%"))
+  #-windows
+  (progn
+    (format t "  Config: $XDG_CONFIG_HOME/icl/config.lisp (default: ~~/.config/icl/)~%")
+    (format t "  History: $XDG_STATE_HOME/icl/history (default: ~~/.local/state/icl/)~%"))
   (format t "~%Available customization variables:~%")
   (format t "  *default-lisp*     - Lisp implementation (default: :SBCL)~%")
   (format t "  *prompt-string*    - Prompt format (default: \"~~A> \")~%")
@@ -1088,7 +1097,7 @@ Example: ,show-config"
   (format t "  *error-hook*       - Custom error handler~%")
   (format t "~%Functions:~%")
   (format t "  (configure-lisp impl &key program args eval-arg)~%")
-  (format t "~%Example ~~/.iclrc:~%")
+  (format t "~%Example config file:~%")
   (format t "  (setf icl:*default-lisp* :ccl)~%")
   (format t "  (setf icl:*prompt-string* ~S)~%" "λ ~A> ")
   (format t "  (setf icl:*colors-enabled* t)~%")
