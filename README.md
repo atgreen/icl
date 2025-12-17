@@ -381,7 +381,7 @@ ICL operates as a frontend that communicates with a backend Lisp process via the
 └────────────────────────────────┘  └─────────────────────────────────────┘
 ```
 
-Both connections use randomly-assigned ports on localhost for security. When ICL starts an inferior Lisp, it finds an available port and configures Slynk to listen there. Similarly, the MCP server (started on-demand by `,explain`) binds to a random available port.
+Both connections use randomly-assigned ports on localhost. When ICL starts an inferior Lisp, it finds an available port and configures Slynk to listen there. Similarly, the MCP server (started on-demand by `,explain`) binds to a random available port.
 
 ## License
 
