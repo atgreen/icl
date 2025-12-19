@@ -68,6 +68,12 @@
        (plusp (length str))
        (find #\Newline str)))
 
+(defun ensure-string (x)
+  "Convert X to a string. If already a string, return it. Otherwise use PRINC-TO-STRING."
+  (cond ((stringp x) x)
+        ((null x) "")
+        (t (princ-to-string x))))
+
 (defun parse-inspector-content (content)
   "Parse Slynk inspector content into a list of entries.
    Each entry is (label value-string action-index) where action-index
@@ -81,8 +87,8 @@
         ;; Newline string - end of current entry
         ((newline-string-p item)
          (when (or current-label current-value)
-           (push (list (string-trim '(#\Space #\Tab #\: ) (or current-label ""))
-                       (string-trim '(#\Space #\Tab) (or current-value ""))
+           (push (list (string-trim '(#\Space #\Tab #\: ) (ensure-string current-label))
+                       (string-trim '(#\Space #\Tab) (ensure-string current-value))
                        current-action)
                  entries))
          (setf current-label nil
@@ -91,23 +97,23 @@
         ;; Regular string - part of label or value
         ((stringp item)
          (if current-value
-             (setf current-value (concatenate 'string current-value item))
+             (setf current-value (concatenate 'string (ensure-string current-value) item))
              (if current-label
-                 (setf current-label (concatenate 'string current-label item))
+                 (setf current-label (concatenate 'string (ensure-string current-label) item))
                  (setf current-label item))))
         ;; (:value "string" action-id) - a drillable value
         ((and (listp item) (eql (first item) :value))
-         (setf current-value (second item))
+         (setf current-value (ensure-string (second item)))
          (when (third item)
            (setf current-action (third item))))
         ;; (:action "label" action-id) - an action button
         ((and (listp item) (eql (first item) :action))
-         (setf current-label (second item))
+         (setf current-label (ensure-string (second item)))
          (setf current-action (third item)))))
     ;; Don't forget last entry if no trailing newline
     (when (or current-label current-value)
-      (push (list (string-trim '(#\Space #\Tab #\:) (or current-label ""))
-                  (string-trim '(#\Space #\Tab) (or current-value ""))
+      (push (list (string-trim '(#\Space #\Tab #\:) (ensure-string current-label))
+                  (string-trim '(#\Space #\Tab) (ensure-string current-value))
                   current-action)
             entries))
     (nreverse entries)))

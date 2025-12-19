@@ -182,7 +182,17 @@
           ((string= type "inspect")
            (let ((form (gethash "form" json)))
              (when form
-               (send-inspection client form)))))))))
+               (send-inspection client form))))
+
+          ;; Inspector drill-down action
+          ((string= type "inspector-action")
+           (let ((index (gethash "index" json)))
+             (when index
+               (send-inspector-action client index))))
+
+          ;; Inspector go back
+          ((string= type "inspector-pop")
+           (send-inspector-pop client)))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Send Helpers
@@ -249,9 +259,46 @@
                            (parse-inspector-content content))))
             (ws-send client "inspection"
                      :title (getf data :title)
+                     :action "new"
                      :entries (or parsed nil)))))
     (error (e)
       (format *error-output* "~&; Error inspecting ~A: ~A~%" form e))))
+
+(defun send-inspector-action (client index)
+  "Drill down into inspector item at INDEX and send result to CLIENT."
+  (handler-case
+      (let ((data (slynk-inspector-action index)))
+        (when data
+          (let* ((raw-content (getf data :content))
+                 (content (if (and (listp raw-content) (listp (first raw-content)))
+                              (first raw-content)
+                              raw-content))
+                 (parsed (when (listp content)
+                           (parse-inspector-content content))))
+            (ws-send client "inspection"
+                     :title (getf data :title)
+                     :action "push"
+                     :entries (or parsed nil)))))
+    (error (e)
+      (format *error-output* "~&; Error in inspector action ~A: ~A~%" index e))))
+
+(defun send-inspector-pop (client)
+  "Go back in inspector and send result to CLIENT."
+  (handler-case
+      (let ((data (slynk-inspector-pop)))
+        (when data
+          (let* ((raw-content (getf data :content))
+                 (content (if (and (listp raw-content) (listp (first raw-content)))
+                              (first raw-content)
+                              raw-content))
+                 (parsed (when (listp content)
+                           (parse-inspector-content content))))
+            (ws-send client "inspection"
+                     :title (getf data :title)
+                     :action "pop"
+                     :entries (or parsed nil)))))
+    (error (e)
+      (format *error-output* "~&; Error in inspector pop: ~A~%" e))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; REPL I/O Streams
@@ -461,15 +508,28 @@
       el.innerHTML = html;
     }
 
+    let inspectorDepth = 0;
+
     function renderInspection(msg) {
       const el = document.getElementById('detail-content');
+      const header = document.getElementById('inspector-header');
       if (!el) return;
+
+      // Track depth for Back button
+      if (msg.action === 'push') inspectorDepth++;
+      else if (msg.action === 'pop') inspectorDepth = Math.max(0, inspectorDepth - 1);
+      else inspectorDepth = 1;
+
+      // Show/hide Back button
+      if (header) header.style.display = inspectorDepth > 1 ? 'block' : 'none';
+
       let html = `<strong>${msg.title || 'Object'}</strong>\\n\\n`;
       (msg.entries || []).forEach(([label, value, action]) => {
+        const escapedValue = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
         if (action !== null) {
-          html += `<span class='inspector-label'>${label}: </span><span class='inspector-link' onclick='inspectAction(${action})'>${value}</span>\\n`;
+          html += `<span class='inspector-label'>${label}: </span><span class='inspector-link' onclick='inspectAction(${action})'>${escapedValue}</span>\\n`;
         } else {
-          html += `<span class='inspector-label'>${label}: </span><span class='inspector-value'>${value}</span>\\n`;
+          html += `<span class='inspector-label'>${label}: </span><span class='inspector-value'>${escapedValue}</span>\\n`;
         }
       });
       el.innerHTML = html;
@@ -486,7 +546,52 @@
     }
 
     function inspectAction(action) {
-      // TODO: implement drill-down
+      ws.send(JSON.stringify({type: 'inspector-action', index: action}));
+    }
+
+    function inspectBack() {
+      ws.send(JSON.stringify({type: 'inspector-pop'}));
+    }
+
+    // Lisp symbol characters: alphanumeric, -, *, +, /, <, >, =, ?, !, $, %, &, :
+    const isSymbolChar = (c) => /[a-zA-Z0-9\\-*+/<>=?!$%&:_]/.test(c);
+
+    // Extract Lisp symbol at position in terminal buffer
+    function getSymbolAtPosition(col, row) {
+      const info = getSymbolBounds(col, row);
+      return info ? info.symbol : null;
+    }
+
+    // Get symbol bounds (start, end, symbol) at position
+    function getSymbolBounds(col, row) {
+      if (!terminal) return null;
+      const buffer = terminal.buffer.active;
+      const line = buffer.getLine(row);
+      if (!line) return null;
+      const lineText = line.translateToString();
+
+      if (col >= lineText.length || !isSymbolChar(lineText[col])) return null;
+
+      // Find symbol boundaries
+      let start = col, end = col;
+      while (start > 0 && isSymbolChar(lineText[start - 1])) start--;
+      while (end < lineText.length && isSymbolChar(lineText[end])) end++;
+
+      const symbol = lineText.substring(start, end).trim();
+      return symbol.length > 0 ? { start, end, symbol } : null;
+    }
+
+    function inspectSymbolAtCursor(e) {
+      if (!terminal) return;
+      const rect = terminal.element.getBoundingClientRect();
+      const renderer = terminal._core._renderService.dimensions;
+      const col = Math.floor((e.clientX - rect.left) / renderer.css.cell.width);
+      const row = Math.floor((e.clientY - rect.top) / renderer.css.cell.height) + terminal.buffer.active.viewportY;
+
+      const symbol = getSymbolAtPosition(col, row);
+      if (symbol) {
+        ws.send(JSON.stringify({type: 'inspect', form: symbol}));
+      }
     }
 
     // Panel classes for Dockview
@@ -523,8 +628,11 @@
         this._element = document.createElement('div');
         this._element.className = 'panel';
         this._element.innerHTML = `
+          <div class='panel-header' id='inspector-header' style='display:none;'>
+            <button onclick='inspectBack()' style='padding:2px 8px;background:#3d3d3d;border:1px solid #4d4d4d;color:#d4d4d4;border-radius:3px;cursor:pointer;'>← Back</button>
+          </div>
           <div class='panel-content detail-content' id='detail-content'>
-            Select a symbol to view details.
+            Ctrl+click a symbol in the terminal to inspect it.
           </div>`;
       }
       get element() { return this._element; }
@@ -554,6 +662,62 @@
           // Send all input directly to Lisp - the editor handles everything
           terminal.onData(data => {
             ws.send(JSON.stringify({type: 'input', data: data}));
+          });
+
+          // Click to inspect symbol - capture phase to intercept before xterm
+          // Store detected symbol from mousemove for click to use
+          let hoveredSymbol = null;
+
+          terminal.element.addEventListener('mousedown', (e) => {
+            // If we have a symbol under cursor from hover, inspect it on click
+            if (hoveredSymbol) {
+              e.preventDefault();
+              e.stopPropagation();
+              ws.send(JSON.stringify({type: 'inspect', form: hoveredSymbol}));
+              setTimeout(() => terminal.focus(), 10);
+            }
+          }, { capture: true });
+
+          // Hover highlight box for symbols
+          let highlightBox = null;
+          const termEl = this._element;
+          this._element.addEventListener('mousemove', (e) => {
+            if (!terminal) return;
+            const rect = terminal.element.getBoundingClientRect();
+            const renderer = terminal._core._renderService.dimensions;
+            if (!renderer.css.cell.width) return;
+
+            const col = Math.floor((e.clientX - rect.left) / renderer.css.cell.width);
+            const row = Math.floor((e.clientY - rect.top) / renderer.css.cell.height);
+            const bufferRow = row + terminal.buffer.active.viewportY;
+            const symbolInfo = getSymbolBounds(col, bufferRow);
+
+            if (symbolInfo) {
+              hoveredSymbol = symbolInfo.symbol;  // Store for click handler
+              if (!highlightBox) {
+                highlightBox = document.createElement('div');
+                highlightBox.style.cssText = 'position:absolute;border:1px solid #4fc1ff;border-radius:2px;pointer-events:none;z-index:10;';
+                termEl.appendChild(highlightBox);
+              }
+              const cellW = renderer.css.cell.width;
+              const cellH = renderer.css.cell.height;
+              highlightBox.style.left = (symbolInfo.start * cellW) + 'px';
+              highlightBox.style.top = (row * cellH) + 'px';
+              highlightBox.style.width = ((symbolInfo.end - symbolInfo.start) * cellW) + 'px';
+              highlightBox.style.height = cellH + 'px';
+              highlightBox.style.display = 'block';
+              terminal.element.style.cursor = 'pointer';
+            } else {
+              hoveredSymbol = null;  // Clear when not over symbol
+              if (highlightBox) highlightBox.style.display = 'none';
+              terminal.element.style.cursor = '';
+            }
+          });
+
+          this._element.addEventListener('mouseleave', () => {
+            hoveredSymbol = null;
+            if (highlightBox) highlightBox.style.display = 'none';
+            if (terminal) terminal.element.style.cursor = '';
           });
 
           // Refit on resize and after short delay for initial sizing
