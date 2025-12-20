@@ -137,6 +137,23 @@
 ;;; Rendering
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
+(defun calculate-visual-rows (visible-len term-width)
+  "Calculate the number of visual rows a line of VISIBLE-LEN chars occupies in a terminal of TERM-WIDTH.
+   Returns at least 1 row even for empty lines."
+  (if (<= visible-len 0)
+      1
+      (ceiling visible-len term-width)))
+
+(defun calculate-cursor-visual-position (prompt-len col term-width)
+  "Calculate the visual row offset and column for cursor at logical COL.
+   PROMPT-LEN is the visible length of the prompt.
+   Returns (values visual-row-offset visual-col) where visual-row-offset is 0-indexed
+   from the start of this logical line."
+  (let* ((total-offset (+ prompt-len col))
+         (visual-row (floor total-offset term-width))
+         (visual-col (mod total-offset term-width)))
+    (values visual-row visual-col)))
+
 (defun render-buffer (buf)
   "Render the buffer to the terminal, using *screen-row* to know current position."
   (let ((line-count (buffer-line-count buf))
@@ -145,7 +162,9 @@
         ;; Get full buffer content for multi-line highlighting
         (full-content (buffer-contents buf))
         ;; Get absolute cursor position for paren matching
-        (cursor-pos (buffer-cursor-position buf)))
+        (cursor-pos (buffer-cursor-position buf))
+        ;; Get terminal width for wrapping calculations
+        (term-width (or (get-terminal-size) 80)))
     ;; Move up to line 0 from current screen position
     (when (plusp *screen-row*)
       (cursor-up *screen-row*))
@@ -155,24 +174,64 @@
            (highlighted-lines (split-sequence:split-sequence #\Newline highlighted)))
       ;; Draw each line
       (dotimes (i line-count)
-        (let ((prompt (buffer-prompt-for-line buf i))
-              (hl-line (if (< i (length highlighted-lines))
-                           (nth i highlighted-lines)
-                           "")))
+        (let* ((prompt (buffer-prompt-for-line buf i))
+               (hl-line (if (< i (length highlighted-lines))
+                            (nth i highlighted-lines)
+                            "")))
           (clear-line)
           (format t "~A~A" prompt hl-line)
           (when (< i (1- line-count))
             (format t "~%")))))
     ;; Clear any lines below (from previous longer input)
     (clear-below)
-    ;; Position cursor at buffer position
-    (let ((lines-to-go-up (- (1- line-count) cursor-row)))
-      (when (plusp lines-to-go-up)
-        (cursor-up lines-to-go-up)))
-    (let ((prompt-len (visible-string-length (buffer-prompt-for-line buf cursor-row))))
-      (cursor-to-column (+ prompt-len cursor-col 1)))
-    ;; Update screen row tracking
-    (setf *screen-row* cursor-row)
+    ;; Position cursor accounting for line wrapping
+    (let* ((prompt-len (visible-string-length (buffer-prompt-for-line buf cursor-row)))
+           (line-visible-len (visible-string-length (buffer-line buf cursor-row)))
+           (line-total-len (+ prompt-len line-visible-len))
+           (line-visual-rows (calculate-visual-rows line-total-len term-width)))
+      ;; Calculate visual rows after cursor's logical line
+      (multiple-value-bind (cursor-row-offset cursor-visual-col)
+          (calculate-cursor-visual-position prompt-len cursor-col term-width)
+        ;; Calculate how many visual rows to go up from current position (end of buffer)
+        ;; Current position is at end of last logical line
+        (let* ((last-line-prompt-len (visible-string-length (buffer-prompt-for-line buf (1- line-count))))
+               (last-line-len (visible-string-length (buffer-line buf (1- line-count))))
+               (last-line-total (+ last-line-prompt-len last-line-len))
+               (last-line-visual-rows (calculate-visual-rows last-line-total term-width))
+               ;; We're at the last visual row of the last logical line
+               ;; Need to go up to the correct visual row for cursor
+               (visual-rows-from-end 0))
+          ;; Count visual rows from end of buffer to cursor position
+          ;; First, rows remaining in last logical line
+          (incf visual-rows-from-end (1- last-line-visual-rows))
+          ;; Then, visual rows for all logical lines between cursor's line and last line
+          (loop for i from (1+ cursor-row) below (1- line-count)
+                do (let* ((p-len (visible-string-length (buffer-prompt-for-line buf i)))
+                          (l-len (visible-string-length (buffer-line buf i)))
+                          (l-total (+ p-len l-len)))
+                     (incf visual-rows-from-end (calculate-visual-rows l-total term-width))))
+          ;; Finally, visual rows after cursor within cursor's logical line
+          (incf visual-rows-from-end (- line-visual-rows cursor-row-offset 1))
+          ;; Move cursor up
+          (when (plusp visual-rows-from-end)
+            (cursor-up visual-rows-from-end))
+          ;; Position cursor at correct column (1-indexed)
+          (cursor-to-column (1+ cursor-visual-col)))))
+    ;; Update screen row tracking - this now tracks visual rows, not logical rows
+    ;; For simplicity, track the cursor's logical row (used for going back to line 0)
+    (let* ((prompt-len (visible-string-length (buffer-prompt-for-line buf cursor-row))))
+      (multiple-value-bind (cursor-row-offset cursor-visual-col)
+          (calculate-cursor-visual-position prompt-len cursor-col term-width)
+        (declare (ignore cursor-visual-col))
+        ;; Calculate total visual rows from line 0 to cursor position
+        (let ((visual-rows 0))
+          (dotimes (i cursor-row)
+            (let* ((p-len (visible-string-length (buffer-prompt-for-line buf i)))
+                   (l-len (visible-string-length (buffer-line buf i)))
+                   (l-total (+ p-len l-len)))
+              (incf visual-rows (calculate-visual-rows l-total term-width))))
+          (incf visual-rows cursor-row-offset)
+          (setf *screen-row* visual-rows))))
     (force-output)))
 
 (defun render-buffer-final (buf)
@@ -180,7 +239,8 @@
   (let ((line-count (buffer-line-count buf))
         (cursor-row (edit-buffer-row buf))
         (cursor-col (edit-buffer-col buf))
-        (full-content (buffer-contents buf)))
+        (full-content (buffer-contents buf))
+        (term-width (or (get-terminal-size) 80)))
     ;; Move up to line 0 from current screen position
     (when (plusp *screen-row*)
       (cursor-up *screen-row*))
@@ -200,36 +260,70 @@
             (format t "~%")))))
     ;; Clear any lines below
     (clear-below)
-    ;; Position cursor at end
-    (let ((lines-to-go-up (- (1- line-count) cursor-row)))
-      (when (plusp lines-to-go-up)
-        (cursor-up lines-to-go-up)))
-    (let ((prompt-len (visible-string-length (buffer-prompt-for-line buf cursor-row))))
-      (cursor-to-column (+ prompt-len cursor-col 1)))
-    (setf *screen-row* cursor-row)
+    ;; Position cursor at end, accounting for wrapping
+    (let* ((prompt-len (visible-string-length (buffer-prompt-for-line buf cursor-row)))
+           (line-visible-len (visible-string-length (buffer-line buf cursor-row)))
+           (line-total-len (+ prompt-len line-visible-len))
+           (line-visual-rows (calculate-visual-rows line-total-len term-width)))
+      (multiple-value-bind (cursor-row-offset cursor-visual-col)
+          (calculate-cursor-visual-position prompt-len cursor-col term-width)
+        ;; Calculate visual rows from end to cursor
+        (let* ((last-line-prompt-len (visible-string-length (buffer-prompt-for-line buf (1- line-count))))
+               (last-line-len (visible-string-length (buffer-line buf (1- line-count))))
+               (last-line-total (+ last-line-prompt-len last-line-len))
+               (last-line-visual-rows (calculate-visual-rows last-line-total term-width))
+               (visual-rows-from-end 0))
+          (incf visual-rows-from-end (1- last-line-visual-rows))
+          (loop for i from (1+ cursor-row) below (1- line-count)
+                do (let* ((p-len (visible-string-length (buffer-prompt-for-line buf i)))
+                          (l-len (visible-string-length (buffer-line buf i)))
+                          (l-total (+ p-len l-len)))
+                     (incf visual-rows-from-end (calculate-visual-rows l-total term-width))))
+          (incf visual-rows-from-end (- line-visual-rows cursor-row-offset 1))
+          (when (plusp visual-rows-from-end)
+            (cursor-up visual-rows-from-end))
+          (cursor-to-column (1+ cursor-visual-col)))))
+    ;; Update screen row tracking with visual rows
+    (let* ((prompt-len (visible-string-length (buffer-prompt-for-line buf cursor-row))))
+      (multiple-value-bind (cursor-row-offset cursor-visual-col)
+          (calculate-cursor-visual-position prompt-len cursor-col term-width)
+        (declare (ignore cursor-visual-col))
+        (let ((visual-rows 0))
+          (dotimes (i cursor-row)
+            (let* ((p-len (visible-string-length (buffer-prompt-for-line buf i)))
+                   (l-len (visible-string-length (buffer-line buf i)))
+                   (l-total (+ p-len l-len)))
+              (incf visual-rows (calculate-visual-rows l-total term-width))))
+          (incf visual-rows cursor-row-offset)
+          (setf *screen-row* visual-rows))))
     (force-output)))
 
 (defun render-current-line (buf)
-  "Render just the current line (optimization for single-line edits)."
+  "Render just the current line (optimization for single-line edits).
+   For wrapped lines, this does a full redraw to handle visual row changes."
   (let* ((row (edit-buffer-row buf))
          (col (edit-buffer-col buf))
          (prompt (buffer-prompt-for-line buf row))
          (line (buffer-line buf row))
          (prompt-len (visible-string-length prompt))
-         ;; For accurate highlighting, we need full buffer context
-         (full-content (buffer-contents buf))
-         ;; Get cursor position for paren matching
-         (cursor-pos (buffer-cursor-position buf))
-         (highlighted (highlight-string full-content cursor-pos))
-         (highlighted-lines (split-sequence:split-sequence #\Newline highlighted))
-         (hl-line (if (< row (length highlighted-lines))
-                      (nth row highlighted-lines)
-                      line)))
-    (cursor-to-column 1)
-    (clear-line)
-    (format t "~A~A" prompt hl-line)
-    (cursor-to-column (+ prompt-len col 1))
-    (force-output)))
+         (term-width (or (get-terminal-size) 80))
+         (line-total-len (+ prompt-len (length line))))
+    ;; If line wraps, we need a full redraw to handle visual rows correctly
+    (if (> line-total-len term-width)
+        (render-buffer buf)
+        ;; Simple case: line fits in one visual row
+        (let* ((full-content (buffer-contents buf))
+               (cursor-pos (buffer-cursor-position buf))
+               (highlighted (highlight-string full-content cursor-pos))
+               (highlighted-lines (split-sequence:split-sequence #\Newline highlighted))
+               (hl-line (if (< row (length highlighted-lines))
+                            (nth row highlighted-lines)
+                            line)))
+          (cursor-to-column 1)
+          (clear-line)
+          (format t "~A~A" prompt hl-line)
+          (cursor-to-column (+ prompt-len col 1))
+          (force-output)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; History
