@@ -79,6 +79,7 @@ Section "ICL Core" SEC_CORE
   ; Install license and readme
   File "..\..\..\LICENSE"
   File "..\..\..\THIRD-PARTY-LICENSES.txt"
+  File "..\..\..\assets\WEB-LICENSES"
   File "..\..\..\README.md"
 
   ; Install bundled ASDF (for Lisps that don't bundle it)
@@ -154,6 +155,7 @@ Section "Uninstall"
   Delete "$INSTDIR\icl.exe"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD-PARTY-LICENSES.txt"
+  Delete "$INSTDIR\WEB-LICENSES"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\uninstall.exe"
 

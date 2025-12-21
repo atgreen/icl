@@ -11,21 +11,18 @@ override_dh_auto_install:
 	mkdir -p debian/icl/usr/bin
 	mkdir -p debian/icl/usr/lib/icl
 	mkdir -p debian/icl/usr/share/doc/icl
-	mkdir -p debian/icl/usr/share/icl/sly
 	mkdir -p debian/icl/usr/share/icl/asdf
 	mkdir -p debian/icl/etc/ld.so.conf.d
 	install -m 0755 icl debian/icl/usr/bin/
 	find ~/.cache/common-lisp -name "libosicat.so" -exec install -m 0755 {} debian/icl/usr/lib/icl/ \; 2>/dev/null || true
 	echo "/usr/lib/icl" > debian/icl/etc/ld.so.conf.d/icl.conf
-	cp -r ocicl/sly-*/* debian/icl/usr/share/icl/sly/
+	# Bundled ASDF for Lisps that don't include it (e.g., CLISP)
 	install -m 0644 3rd-party/asdf/asdf.lisp debian/icl/usr/share/icl/asdf/
-	mkdir -p debian/icl/usr/share/icl/assets
-	install -m 0644 assets/*.js debian/icl/usr/share/icl/assets/
-	install -m 0644 assets/*.css debian/icl/usr/share/icl/assets/
-	install -m 0644 assets/WEB-LICENSES debian/icl/usr/share/icl/assets/
+	# Note: Slynk and browser assets are now embedded in the binary
 	install -m 0644 README.md debian/icl/usr/share/doc/icl/
 	install -m 0644 LICENSE debian/icl/usr/share/doc/icl/
 	install -m 0644 THIRD-PARTY-LICENSES.txt debian/icl/usr/share/doc/icl/
+	install -m 0644 assets/WEB-LICENSES debian/icl/usr/share/doc/icl/
 
 override_dh_strip:
 	# Do not strip SBCL-based binaries as it corrupts the embedded core

@@ -226,7 +226,7 @@
         (merge-pathnames ".config/icl/" (user-homedir-pathname)))))
 
 (defun state-directory ()
-  "Return the state/data directory for ICL (for history, etc).
+  "Return the state directory for ICL (for history, logs, etc).
    Windows: %LOCALAPPDATA%/icl/
    POSIX: $XDG_STATE_HOME/icl/ (default: ~/.local/state/icl/)"
   #+windows
@@ -239,6 +239,21 @@
     (if (and xdg (> (length xdg) 0))
         (merge-pathnames "icl/" (pathname (concatenate 'string xdg "/")))
         (merge-pathnames ".local/state/icl/" (user-homedir-pathname)))))
+
+(defun data-directory ()
+  "Return the data directory for ICL (for extracted resources, etc).
+   Windows: %LOCALAPPDATA%/icl/
+   POSIX: $XDG_DATA_HOME/icl/ (default: ~/.local/share/icl/)"
+  #+windows
+  (let ((localappdata (uiop:getenv "LOCALAPPDATA")))
+    (if (and localappdata (> (length localappdata) 0))
+        (merge-pathnames "icl/" (pathname (concatenate 'string localappdata "/")))
+        (merge-pathnames "icl/" (user-homedir-pathname))))
+  #-windows
+  (let ((xdg (uiop:getenv "XDG_DATA_HOME")))
+    (if (and xdg (> (length xdg) 0))
+        (merge-pathnames "icl/" (pathname (concatenate 'string xdg "/")))
+        (merge-pathnames ".local/share/icl/" (user-homedir-pathname)))))
 
 (defun config-file ()
   "Return the config file path, computing it if needed."

@@ -29,6 +29,9 @@
                ;; WebSocket support for browser
                :hunchensocket
                :chanl
+               ;; ZIP extraction for embedded slynk
+               :zip
+               :flexi-streams
                ;; POSIX-only dependencies
                (:feature (:not :windows) :osicat))
   :serial t
@@ -47,6 +50,7 @@
                  (:file "editor")
                  (:file "input")
                  (:file "slynk-client")
+                 (:file "embedded-slynk")
                  (:file "backend")
                  (:file "output")
                  (:file "highlight")
@@ -56,6 +60,7 @@
                   ((:file "registry")
                    (:file "core")))
                  (:file "mcp-server")
+                 (:file "embedded-assets")
                  (:file "browser")
                  (:file "repl")
                  (:file "main"))))

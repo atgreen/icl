@@ -1491,12 +1491,11 @@
   (:documentation "Acceptor for the browser that handles both HTTP and WebSocket."))
 
 (defun find-assets-directory ()
-  "Find the assets directory.
+  "Find the assets directory (fallback for development when assets aren't embedded).
    Search order:
    1. ICL_ASSETS_PATH environment variable
    2. ./assets/ relative to executable
-   3. /usr/share/icl/assets/ (installed, Unix only)
-   4. ./assets/ relative to ASDF system source (development)"
+   3. ./assets/ relative to ASDF system source (development)"
   ;; 1. Environment variable override
   (let ((env-path (uiop:getenv "ICL_ASSETS_PATH")))
     (when (and env-path (probe-file env-path))
@@ -1510,12 +1509,7 @@
          (local-assets (merge-pathnames "assets/" exe-dir)))
     (when (probe-file local-assets)
       (return-from find-assets-directory local-assets)))
-  ;; 3. System install location (Unix only)
-  #-windows
-  (let ((system-assets (pathname "/usr/share/icl/assets/")))
-    (when (probe-file system-assets)
-      (return-from find-assets-directory system-assets)))
-  ;; 4. Fall back to ASDF system source (development)
+  ;; 3. Fall back to ASDF system source (development)
   (merge-pathnames "assets/" (asdf:system-source-directory :icl)))
 
 (defvar *assets-directory* nil
@@ -1527,15 +1521,24 @@
       (setf *assets-directory* (find-assets-directory))))
 
 (defun serve-asset (filename)
-  "Serve an asset file, returning content and setting content-type."
-  (let ((filepath (merge-pathnames filename (get-assets-directory))))
-    (when (probe-file filepath)
-      (setf (hunchentoot:content-type*)
-            (cond
-              ((alexandria:ends-with-subseq ".css" filename) "text/css")
-              ((alexandria:ends-with-subseq ".js" filename) "application/javascript")
-              (t "application/octet-stream")))
-      (alexandria:read-file-into-string filepath))))
+  "Serve an asset file, returning content and setting content-type.
+   First checks embedded assets, then falls back to filesystem."
+  (flet ((set-content-type ()
+           (setf (hunchentoot:content-type*)
+                 (cond
+                   ((alexandria:ends-with-subseq ".css" filename) "text/css")
+                   ((alexandria:ends-with-subseq ".js" filename) "application/javascript")
+                   (t "application/octet-stream")))))
+    ;; First try embedded assets
+    (let ((embedded (get-embedded-asset filename)))
+      (when embedded
+        (set-content-type)
+        (return-from serve-asset embedded)))
+    ;; Fall back to filesystem (for development)
+    (let ((filepath (merge-pathnames filename (get-assets-directory))))
+      (when (probe-file filepath)
+        (set-content-type)
+        (alexandria:read-file-into-string filepath)))))
 
 (defmethod hunchentoot:acceptor-dispatch-request ((acceptor browser-acceptor) request)
   "Handle HTTP requests."

@@ -47,19 +47,14 @@ find ~/.cache/common-lisp -name "libosicat.so" -exec install -m 0755 {} %{buildr
 mkdir -p %{buildroot}%{_sysconfdir}/ld.so.conf.d
 echo "%{_libdir}/icl" > %{buildroot}%{_sysconfdir}/ld.so.conf.d/icl.conf
 
-# Install sly from ocicl sly package
-mkdir -p %{buildroot}%{_datadir}/icl/sly
-cp -r ocicl/sly-*/* %{buildroot}%{_datadir}/icl/sly/
-
 # Install bundled ASDF (for Lisps that don't bundle it, like CLISP)
 mkdir -p %{buildroot}%{_datadir}/icl/asdf
 cp 3rd-party/asdf/asdf.lisp %{buildroot}%{_datadir}/icl/asdf/
 
-# Install browser assets (JS, CSS for offline use)
-mkdir -p %{buildroot}%{_datadir}/icl/assets
-install -m 0644 assets/*.js %{buildroot}%{_datadir}/icl/assets/
-install -m 0644 assets/*.css %{buildroot}%{_datadir}/icl/assets/
-install -m 0644 assets/WEB-LICENSES %{buildroot}%{_datadir}/icl/assets/
+# Note: Slynk and browser assets are now embedded in the binary
+
+# Install web asset licenses (JS/CSS libraries)
+install -D -m 0644 assets/WEB-LICENSES %{buildroot}%{_datadir}/licenses/%{name}/WEB-LICENSES
 
 # Install collected vendored licenses
 install -D -m 0644 THIRD-PARTY-LICENSES.txt %{buildroot}%{_datadir}/licenses/%{name}/THIRD-PARTY-LICENSES.txt
@@ -72,12 +67,11 @@ install -D -m 0644 THIRD-PARTY-LICENSES.txt %{buildroot}%{_datadir}/licenses/%{n
 
 %files
 %license LICENSE
+%license %{_datadir}/licenses/%{name}/WEB-LICENSES
+%license %{_datadir}/licenses/%{name}/THIRD-PARTY-LICENSES.txt
 %doc README.md
 %{_sysconfdir}/ld.so.conf.d/icl.conf
-%{_datadir}/licenses/%{name}/THIRD-PARTY-LICENSES.txt
-%{_datadir}/icl/sly
 %{_datadir}/icl/asdf
-%{_datadir}/icl/assets
 %{_libdir}/icl
 %{_bindir}/icl
 
