@@ -116,27 +116,16 @@ jobs:
       - name: Test basic evaluation (Windows)
         if: runner.os == 'Windows'
         shell: powershell
+        timeout-minutes: 2
         run: |
-          $exePath = (Resolve-Path ".\${{ matrix.binary }}").Path
-          $job = Start-Job -ScriptBlock {
-            param($exe)
-            $env:HOME = $env:USERPROFILE
-            "(+ 1 2)`n,quit" | & $exe 2>&1
-          } -ArgumentList $exePath
-          $result = Wait-Job $job -Timeout 60
-          if ($result) {
-            $output = Receive-Job $job
-            Write-Host $output
-            if ($output -match "3") {
-              Write-Host "PASS: Found expected result 3"
-            } else {
-              Write-Host "FAIL: Expected result 3 not found"
-              exit 1
-            }
+          $env:HOME = $env:USERPROFILE
+          $input = "(+ 1 2)`n,quit`n"
+          $output = $input | .\${{ matrix.binary }} 2>&1
+          Write-Host $output
+          if ($output -match "3") {
+            Write-Host "PASS: Found expected result 3"
           } else {
-            Stop-Job $job
-            Remove-Job $job -Force
-            Write-Host "TIMEOUT: Test exceeded 60 seconds"
+            Write-Host "FAIL: Expected result 3 not found"
             exit 1
           }
 
@@ -157,27 +146,16 @@ jobs:
       - name: Test ,info command (Windows)
         if: runner.os == 'Windows'
         shell: powershell
+        timeout-minutes: 2
         run: |
-          $exePath = (Resolve-Path ".\${{ matrix.binary }}").Path
-          $job = Start-Job -ScriptBlock {
-            param($exe)
-            $env:HOME = $env:USERPROFILE
-            ",info`n,quit" | & $exe 2>&1
-          } -ArgumentList $exePath
-          $result = Wait-Job $job -Timeout 60
-          if ($result) {
-            $output = Receive-Job $job
-            Write-Host $output
-            if ($output -match "SBCL") {
-              Write-Host "PASS: Found expected SBCL info"
-            } else {
-              Write-Host "FAIL: Expected SBCL info not found"
-              exit 1
-            }
+          $env:HOME = $env:USERPROFILE
+          $input = ",info`n,quit`n"
+          $output = $input | .\${{ matrix.binary }} 2>&1
+          Write-Host $output
+          if ($output -match "SBCL") {
+            Write-Host "PASS: Found expected SBCL info"
           } else {
-            Stop-Job $job
-            Remove-Job $job -Force
-            Write-Host "TIMEOUT: Test exceeded 60 seconds"
+            Write-Host "FAIL: Expected SBCL info not found"
             exit 1
           }
 
