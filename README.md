@@ -185,11 +185,30 @@ The `,flame` command (aliases: `,flamegraph`, `,fg`) profiles the expression and
 | Command | Description |
 |---------|-------------|
 | `,browser` | Start browser-based IDE interface |
-| `,viz <expr>` | Visualize data in browser (class hierarchies, hash-tables) |
+| `,viz <expr>` | Visualize data in browser (class hierarchies, hash-tables, FSet sets) |
 
 The `,viz` command automatically detects the type and displays an appropriate visualization:
 - **Class names**: `'standard-object` → interactive class hierarchy graph with slots
 - **Hash-tables**: `*my-ht*` → key-value table
+- **FSet sets**: `*my-set*` → circle with members listed inside
+
+#### Venn Diagrams for FSet Sets
+
+Visualize one or more [FSet](https://github.com/slburson/fset) sets as Venn diagrams:
+
+```lisp
+,viz *fruits*                    ; Single set as circle with members
+,viz *fruits* *red-things*       ; Two-set Venn diagram showing overlap
+,viz *set-a* *set-b* *set-c*     ; Three-set Venn diagram
+```
+
+- **Single set**: Circle displaying members inside
+- **Two sets**: Classic Venn diagram with left-only, intersection, and right-only regions
+- **Three sets**: Triangle arrangement showing all 7 regions with counts
+
+Venn diagrams automatically refresh after each REPL evaluation to reflect data changes.
+
+#### Class Hierarchy Graph
 
 The class hierarchy graph supports interactive exploration:
 - **Click a node** to see available subclasses and add them one at a time
