@@ -467,7 +467,17 @@
                (bt:make-thread
                 (lambda ()
                   (send-hashtable-refresh client source-expr panel-id))
-                :name "refresh-hashtable-handler")))))))))
+                :name "refresh-hashtable-handler"))))
+
+          ;; Refresh Venn diagram data
+          ((string= type "refresh-venn")
+           (let ((source-expr (gethash "sourceExpr" json))
+                 (panel-id (gethash "panelId" json)))
+             (when source-expr
+               (bt:make-thread
+                (lambda ()
+                  (send-venn-refresh client source-expr panel-id))
+                :name "refresh-venn-handler")))))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Send Helpers
@@ -686,6 +696,37 @@
     (error (e)
       (browser-log "send-hashtable-refresh: ERROR ~A" e))))
 
+(defun send-venn-refresh (client source-expr panel-id)
+  "Re-evaluate SOURCE-EXPR (space-separated set expressions) and send updated Venn data."
+  (browser-log "send-venn-refresh: expr=~S panel-id=~S" source-expr panel-id)
+  (handler-case
+      ;; Parse the source expression to extract individual set expressions
+      (let* ((expressions (uiop:split-string source-expr :separator " "))
+             (expressions (remove-if (lambda (s) (zerop (length s))) expressions))
+             (query (format nil "(let ((sets (list ~{~A~^ ~})))
+                                   (if (every #'fset:set? sets)
+                                       (list :members
+                                             (mapcar (lambda (s)
+                                                       (loop for m in (fset:convert 'list s)
+                                                             for i from 0 below 50
+                                                             collect (princ-to-string m)))
+                                                     sets))
+                                       (list :error \"Not all values are FSet sets\")))"
+                            expressions))
+             (result (browser-query query)))
+        (when result
+          (let ((obj (make-hash-table :test 'equal)))
+            (setf (gethash "type" obj) "venn-refresh")
+            (setf (gethash "panelId" obj) panel-id)
+            (if (getf result :error)
+                (setf (gethash "error" obj) (getf result :error))
+                (setf (gethash "setMembers" obj)
+                      (mapcar (lambda (members) (coerce members 'vector))
+                              (getf result :members))))
+            (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
+    (error (e)
+      (browser-log "send-venn-refresh: ERROR ~A" e))))
+
 (defun open-class-graph-panel (class-name package-name)
   "Send message to browser to open a class graph panel."
   (when *repl-resource*
@@ -707,6 +748,21 @@
         (setf (gethash "entries" obj) entries)
         (when source-expr
           (setf (gethash "sourceExpr" obj) source-expr))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
+
+(defun open-venn-panel (set-names set-members source-expr)
+  "Send message to browser to open a Venn diagram panel.
+   SET-NAMES is a list of expression strings (e.g., '(\"*foo*\" \"*bar*\")).
+   SET-MEMBERS is a list of lists, each containing member strings for that set.
+   SOURCE-EXPR is the original expression for refresh purposes."
+  (when *repl-resource*
+    (dolist (client (hunchensocket:clients *repl-resource*))
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "open-venn")
+        (setf (gethash "setNames" obj) (coerce set-names 'vector))
+        (setf (gethash "setMembers" obj)
+              (mapcar (lambda (members) (coerce members 'vector)) set-members))
+        (setf (gethash "sourceExpr" obj) source-expr)
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
 (defun needs-case-escape-p (str)
@@ -1269,6 +1325,12 @@
         case 'hashtable-refresh':
           handleHashtableRefresh(msg);
           break;
+        case 'open-venn':
+          openVennPanel(msg.setNames, msg.setMembers, msg.sourceExpr);
+          break;
+        case 'venn-refresh':
+          handleVennRefresh(msg);
+          break;
       }
     };
 
@@ -1382,6 +1444,16 @@
           }));
         }
       });
+      // Refresh Venn diagram panels
+      vennStates.forEach((panel, panelId) => {
+        if (panel._sourceExpr) {
+          ws.send(JSON.stringify({
+            type: 'refresh-venn',
+            sourceExpr: panel._sourceExpr,
+            panelId: panelId
+          }));
+        }
+      });
     }
 
     // Handle hash-table refresh data
@@ -1393,6 +1465,40 @@
           console.log('Hash-table refresh error:', msg.error);
         } else {
           panel.updateData(msg.count, msg.entries);
+        }
+      }
+    }
+
+    // Open Venn diagram panel
+    let vennCounter = 0;
+    const vennStates = new Map();  // panelId -> VennPanel instance
+
+    function openVennPanel(setNames, setMembers, sourceExpr) {
+      console.log('openVennPanel called:', setNames, setMembers?.map(m => m?.length), sourceExpr);
+      const panelId = 'venn-' + (++vennCounter);
+      const title = setNames.length === 1 ? setNames[0] : 'Venn: ' + setNames.join(' ∩ ');
+      if (dockviewApi) {
+        dockviewApi.addPanel({
+          id: panelId,
+          component: 'venn',
+          title: title,
+          params: { panelId, setNames, setMembers, sourceExpr },
+          position: { referencePanel: 'terminal', direction: 'right' }
+        });
+      } else {
+        console.error('dockviewApi not available');
+      }
+    }
+
+    // Handle Venn refresh data
+    function handleVennRefresh(msg) {
+      const panelId = msg.panelId;
+      const panel = vennStates.get(panelId);
+      if (panel) {
+        if (msg.error) {
+          console.log('Venn refresh error:', msg.error);
+        } else {
+          panel.updateData(msg.setMembers);
         }
       }
     }
@@ -1829,6 +1935,216 @@
 
         html += '</tbody></table></div>';
         this._element.innerHTML = html;
+      }
+    }
+
+    class VennPanel {
+      constructor() {
+        this._element = document.createElement('div');
+        this._element.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bg-primary);overflow:auto;';
+        this._panelId = null;
+        this._sourceExpr = null;
+        this._setNames = [];
+        this._setMembers = [];
+      }
+      get element() { return this._element; }
+
+      init(params) {
+        this._panelId = params.params?.panelId;
+        this._sourceExpr = params.params?.sourceExpr;
+        this._setNames = params.params?.setNames || [];
+        this._setMembers = params.params?.setMembers || [];
+
+        // Register for refresh updates
+        if (this._panelId) {
+          vennStates.set(this._panelId, this);
+        }
+
+        this._render();
+
+        // Re-render on resize (debounced)
+        let resizeTimeout = null;
+        const resizeObserver = new ResizeObserver(() => {
+          if (resizeTimeout) clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(() => this._render(), 100);
+        });
+        resizeObserver.observe(this._element);
+      }
+
+      updateData(setMembers) {
+        this._setMembers = setMembers || [];
+        this._render();
+      }
+
+      _render() {
+        const width = this._element.clientWidth || 400;
+        const height = this._element.clientHeight || 300;
+        const cx = width / 2;
+        const cy = height / 2;
+
+        if (this._setMembers.length === 1) {
+          this._renderSingleSet(width, height, cx, cy);
+        } else if (this._setMembers.length === 2) {
+          this._renderTwoSets(width, height, cx, cy);
+        } else if (this._setMembers.length === 3) {
+          this._renderThreeSets(width, height, cx, cy);
+        } else {
+          this._element.innerHTML = '<div style=\"padding:20px;color:var(--fg-secondary);\">Venn diagrams support 1-3 sets</div>';
+        }
+      }
+
+      _renderSingleSet(width, height, cx, cy) {
+        const r = Math.min(width, height) * 0.35;
+        const members = this._setMembers[0] || [];
+        const name = this._setNames[0] || 'Set';
+
+        let svg = '<svg width=\"' + width + '\" height=\"' + height + '\" style=\"display:block;\">';
+        svg += '<circle cx=\"' + cx + '\" cy=\"' + cy + '\" r=\"' + r + '\" fill=\"var(--accent)\" fill-opacity=\"0.3\" stroke=\"var(--accent)\" stroke-width=\"2\"/>';
+        svg += '<text x=\"' + cx + '\" y=\"' + (cy - r - 10) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"14\" font-weight=\"bold\">' + this._escapeHtml(name) + '</text>';
+        svg += '<text x=\"' + cx + '\" y=\"' + (cy - r + 20) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"12\">(' + members.length + ' members)</text>';
+
+        // List members inside circle
+        const maxShow = 15;
+        const lineHeight = 16;
+        const startY = cy - Math.min(members.length, maxShow) * lineHeight / 2;
+        members.slice(0, maxShow).forEach((m, i) => {
+          svg += '<text x=\"' + cx + '\" y=\"' + (startY + i * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"11\" font-family=\"monospace\">' + this._escapeHtml(m) + '</text>';
+        });
+        if (members.length > maxShow) {
+          svg += '<text x=\"' + cx + '\" y=\"' + (startY + maxShow * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"11\" font-style=\"italic\">... and ' + (members.length - maxShow) + ' more</text>';
+        }
+
+        svg += '</svg>';
+        this._element.innerHTML = svg;
+      }
+
+      _renderTwoSets(width, height, cx, cy) {
+        const r = Math.min(width, height) * 0.3;
+        const offset = r * 0.6;  // Circle centers offset from center
+        const setA = new Set(this._setMembers[0] || []);
+        const setB = new Set(this._setMembers[1] || []);
+        const nameA = this._setNames[0] || 'Set A';
+        const nameB = this._setNames[1] || 'Set B';
+
+        // Compute regions
+        const onlyA = [...setA].filter(x => !setB.has(x));
+        const onlyB = [...setB].filter(x => !setA.has(x));
+        const intersection = [...setA].filter(x => setB.has(x));
+
+        const cxA = cx - offset;
+        const cxB = cx + offset;
+
+        let svg = '<svg width=\"' + width + '\" height=\"' + height + '\" style=\"display:block;\">';
+
+        // Circle A
+        svg += '<circle cx=\"' + cxA + '\" cy=\"' + cy + '\" r=\"' + r + '\" fill=\"#89b4fa\" fill-opacity=\"0.35\" stroke=\"#89b4fa\" stroke-width=\"2\"/>';
+        // Circle B
+        svg += '<circle cx=\"' + cxB + '\" cy=\"' + cy + '\" r=\"' + r + '\" fill=\"#f38ba8\" fill-opacity=\"0.35\" stroke=\"#f38ba8\" stroke-width=\"2\"/>';
+
+        // Labels
+        svg += '<text x=\"' + cxA + '\" y=\"' + (cy - r - 10) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"13\" font-weight=\"bold\">' + this._escapeHtml(nameA) + '</text>';
+        svg += '<text x=\"' + cxB + '\" y=\"' + (cy - r - 10) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"13\" font-weight=\"bold\">' + this._escapeHtml(nameB) + '</text>';
+
+        // Member counts
+        svg += '<text x=\"' + (cxA - r * 0.5) + '\" y=\"' + (cy - r * 0.6) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"11\">' + onlyA.length + ' only</text>';
+        svg += '<text x=\"' + cx + '\" y=\"' + (cy - r * 0.6) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"11\">' + intersection.length + ' shared</text>';
+        svg += '<text x=\"' + (cxB + r * 0.5) + '\" y=\"' + (cy - r * 0.6) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"11\">' + onlyB.length + ' only</text>';
+
+        // Render members in each region
+        const maxPerRegion = 8;
+        const lineHeight = 14;
+
+        // Only A (left region)
+        const leftX = cxA - r * 0.5;
+        const startYA = cy - Math.min(onlyA.length, maxPerRegion) * lineHeight / 2;
+        onlyA.slice(0, maxPerRegion).forEach((m, i) => {
+          svg += '<text x=\"' + leftX + '\" y=\"' + (startYA + i * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"10\" font-family=\"monospace\">' + this._escapeHtml(this._truncate(m, 12)) + '</text>';
+        });
+        if (onlyA.length > maxPerRegion) {
+          svg += '<text x=\"' + leftX + '\" y=\"' + (startYA + maxPerRegion * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"9\">+' + (onlyA.length - maxPerRegion) + '</text>';
+        }
+
+        // Intersection (center)
+        const startYI = cy - Math.min(intersection.length, maxPerRegion) * lineHeight / 2;
+        intersection.slice(0, maxPerRegion).forEach((m, i) => {
+          svg += '<text x=\"' + cx + '\" y=\"' + (startYI + i * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"10\" font-family=\"monospace\" font-weight=\"bold\">' + this._escapeHtml(this._truncate(m, 12)) + '</text>';
+        });
+        if (intersection.length > maxPerRegion) {
+          svg += '<text x=\"' + cx + '\" y=\"' + (startYI + maxPerRegion * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"9\">+' + (intersection.length - maxPerRegion) + '</text>';
+        }
+
+        // Only B (right region)
+        const rightX = cxB + r * 0.5;
+        const startYB = cy - Math.min(onlyB.length, maxPerRegion) * lineHeight / 2;
+        onlyB.slice(0, maxPerRegion).forEach((m, i) => {
+          svg += '<text x=\"' + rightX + '\" y=\"' + (startYB + i * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"10\" font-family=\"monospace\">' + this._escapeHtml(this._truncate(m, 12)) + '</text>';
+        });
+        if (onlyB.length > maxPerRegion) {
+          svg += '<text x=\"' + rightX + '\" y=\"' + (startYB + maxPerRegion * lineHeight) + '\" text-anchor=\"middle\" fill=\"var(--fg-secondary)\" font-size=\"9\">+' + (onlyB.length - maxPerRegion) + '</text>';
+        }
+
+        svg += '</svg>';
+        this._element.innerHTML = svg;
+      }
+
+      _renderThreeSets(width, height, cx, cy) {
+        const r = Math.min(width, height) * 0.25;
+        const offset = r * 0.7;
+        const setA = new Set(this._setMembers[0] || []);
+        const setB = new Set(this._setMembers[1] || []);
+        const setC = new Set(this._setMembers[2] || []);
+        const nameA = this._setNames[0] || 'A';
+        const nameB = this._setNames[1] || 'B';
+        const nameC = this._setNames[2] || 'C';
+
+        // Circle positions (triangle arrangement)
+        const cxA = cx;
+        const cyA = cy - offset * 0.8;
+        const cxB = cx - offset;
+        const cyB = cy + offset * 0.5;
+        const cxC = cx + offset;
+        const cyC = cy + offset * 0.5;
+
+        // Compute regions
+        const onlyA = [...setA].filter(x => !setB.has(x) && !setC.has(x)).length;
+        const onlyB = [...setB].filter(x => !setA.has(x) && !setC.has(x)).length;
+        const onlyC = [...setC].filter(x => !setA.has(x) && !setB.has(x)).length;
+        const abOnly = [...setA].filter(x => setB.has(x) && !setC.has(x)).length;
+        const acOnly = [...setA].filter(x => setC.has(x) && !setB.has(x)).length;
+        const bcOnly = [...setB].filter(x => setC.has(x) && !setA.has(x)).length;
+        const abc = [...setA].filter(x => setB.has(x) && setC.has(x)).length;
+
+        let svg = '<svg width=\"' + width + '\" height=\"' + height + '\" style=\"display:block;\">';
+
+        // Circles
+        svg += '<circle cx=\"' + cxA + '\" cy=\"' + cyA + '\" r=\"' + r + '\" fill=\"#89b4fa\" fill-opacity=\"0.3\" stroke=\"#89b4fa\" stroke-width=\"2\"/>';
+        svg += '<circle cx=\"' + cxB + '\" cy=\"' + cyB + '\" r=\"' + r + '\" fill=\"#f38ba8\" fill-opacity=\"0.3\" stroke=\"#f38ba8\" stroke-width=\"2\"/>';
+        svg += '<circle cx=\"' + cxC + '\" cy=\"' + cyC + '\" r=\"' + r + '\" fill=\"#a6e3a1\" fill-opacity=\"0.3\" stroke=\"#a6e3a1\" stroke-width=\"2\"/>';
+
+        // Labels
+        svg += '<text x=\"' + cxA + '\" y=\"' + (cyA - r - 8) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"12\" font-weight=\"bold\">' + this._escapeHtml(nameA) + '</text>';
+        svg += '<text x=\"' + (cxB - r * 0.7) + '\" y=\"' + (cyB + r * 0.3) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"12\" font-weight=\"bold\">' + this._escapeHtml(nameB) + '</text>';
+        svg += '<text x=\"' + (cxC + r * 0.7) + '\" y=\"' + (cyC + r * 0.3) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"12\" font-weight=\"bold\">' + this._escapeHtml(nameC) + '</text>';
+
+        // Counts in regions (approximate positions)
+        svg += '<text x=\"' + cxA + '\" y=\"' + (cyA - r * 0.3) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"11\">' + onlyA + '</text>';
+        svg += '<text x=\"' + (cxB - r * 0.4) + '\" y=\"' + (cyB + r * 0.2) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"11\">' + onlyB + '</text>';
+        svg += '<text x=\"' + (cxC + r * 0.4) + '\" y=\"' + (cyC + r * 0.2) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"11\">' + onlyC + '</text>';
+        svg += '<text x=\"' + (cx - offset * 0.35) + '\" y=\"' + (cy - offset * 0.15) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"10\">' + abOnly + '</text>';
+        svg += '<text x=\"' + (cx + offset * 0.35) + '\" y=\"' + (cy - offset * 0.15) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"10\">' + acOnly + '</text>';
+        svg += '<text x=\"' + cx + '\" y=\"' + (cy + offset * 0.5) + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"10\">' + bcOnly + '</text>';
+        svg += '<text x=\"' + cx + '\" y=\"' + cy + '\" text-anchor=\"middle\" fill=\"var(--fg-primary)\" font-size=\"12\" font-weight=\"bold\">' + abc + '</text>';
+
+        svg += '</svg>';
+        this._element.innerHTML = svg;
+      }
+
+      _escapeHtml(str) {
+        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      _truncate(str, len) {
+        return str.length > len ? str.slice(0, len - 1) + '…' : str;
       }
     }
 
@@ -2635,6 +2951,7 @@
           case 'dynamic-inspector': return new DynamicInspectorPanel();
           case 'speedscope': return new SpeedscopePanel();
           case 'hashtable': return new HashTablePanel();
+          case 'venn': return new VennPanel();
           case 'graphviz': return new GraphvizPanel();
           case 'terminal': return new TerminalPanel();
         }

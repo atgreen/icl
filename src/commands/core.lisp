@@ -1139,65 +1139,166 @@ Example: ,flamegraph (my-expensive-function)"
 ;;; Data Visualization
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(define-command viz (expr-string)
+(defun split-viz-expressions (input)
+  "Split INPUT into separate expressions for ,viz command.
+   Handles simple tokens and parenthesized expressions."
+  (let ((result nil)
+        (current "")
+        (paren-depth 0)
+        (in-string nil)
+        (escape-next nil))
+    (loop for char across input do
+      (cond
+        (escape-next
+         (setf current (concatenate 'string current (string char)))
+         (setf escape-next nil))
+        ((char= char #\\)
+         (setf current (concatenate 'string current (string char)))
+         (setf escape-next t))
+        ((char= char #\")
+         (setf current (concatenate 'string current (string char)))
+         (setf in-string (not in-string)))
+        (in-string
+         (setf current (concatenate 'string current (string char))))
+        ((char= char #\()
+         (setf current (concatenate 'string current (string char)))
+         (incf paren-depth))
+        ((char= char #\))
+         (setf current (concatenate 'string current (string char)))
+         (decf paren-depth))
+        ((and (member char '(#\Space #\Tab)) (zerop paren-depth))
+         (let ((trimmed (string-trim '(#\Space #\Tab) current)))
+           (when (plusp (length trimmed))
+             (push trimmed result)))
+         (setf current ""))
+        (t
+         (setf current (concatenate 'string current (string char))))))
+    ;; Don't forget the last token
+    (let ((trimmed (string-trim '(#\Space #\Tab) current)))
+      (when (plusp (length trimmed))
+        (push trimmed result)))
+    (nreverse result)))
+
+(define-command viz (&rest expressions)
   "Visualize data in the browser based on its type.
 Evaluates the expression and displays an appropriate visualization:
   - Symbol (class name) → class hierarchy graph with slots
   - Hash-table → key-value table
+  - FSet set → Venn diagram (single or multiple sets)
 Requires browser mode to be active.
 Examples:
   ,viz 'hash-table          ; class hierarchy for HASH-TABLE
   ,viz 'standard-object     ; class hierarchy for STANDARD-OBJECT
-  ,viz *my-hash-table*      ; hash-table contents"
+  ,viz *my-hash-table*      ; hash-table contents
+  ,viz *my-set*             ; single FSet set as circle
+  ,viz *set-a* *set-b*      ; two FSet sets as Venn diagram"
   (cond
     ((not *browser-terminal-active*)
      (format t "~&; Browser not active. Use ,browser to start.~%"))
-    ((zerop (length (string-trim '(#\Space #\Tab) expr-string)))
-     (format t "~&; Usage: ,viz <expression>~%"))
+    ((null expressions)
+     (format t "~&; Usage: ,viz <expression> [<expression2>]~%"))
     (t
-     (let ((trimmed (string-trim '(#\Space #\Tab) expr-string)))
-       (handler-case
-           ;; Query backend to determine type and get visualization data
-           (let* ((query (format nil "(let ((obj ~A))
-                                        (typecase obj
-                                          (symbol
-                                           (if (find-class obj nil)
-                                               (list :class
-                                                     (symbol-name obj)
-                                                     (package-name (symbol-package obj)))
-                                               (list :symbol (princ-to-string obj))))
-                                          (hash-table
-                                           (list :hash-table
-                                                 (hash-table-count obj)
-                                                 (loop for k being the hash-keys of obj using (hash-value v)
-                                                       for i from 0 below 100
-                                                       collect (list (princ-to-string k)
-                                                                     (princ-to-string v)))))
-                                          (t (list :unknown (type-of obj) (princ-to-string obj)))))"
-                                 trimmed))
-                  (result (backend-eval query)))
-             (when (and result (listp result) (first result))
-               (let ((parsed (read-from-string (first result))))
-                 (case (first parsed)
-                   (:class
-                    (let ((sym-name (second parsed))
-                          (pkg-name (third parsed)))
-                      (open-class-graph-panel sym-name pkg-name)
-                      (format t "~&; Visualizing class hierarchy: ~A~%" sym-name)))
-                   (:hash-table
-                    (let ((count (second parsed))
-                          (entries (third parsed)))
-                      (open-hash-table-panel trimmed count entries trimmed)
-                      (format t "~&; Visualizing hash-table (~A entries)~%" count)))
-                   (:symbol
-                    (format t "~&; Symbol ~A is not a class name~%" (second parsed)))
-                   (:unknown
-                    (format t "~&; Don't know how to visualize ~A: ~A~%"
-                            (second parsed) (third parsed)))
-                   (otherwise
-                    (format t "~&; Unexpected result: ~S~%" parsed))))))
-         (error (e)
-           (format *error-output* "~&; Error: ~A~%" e)))))))
+     (let ((num-exprs (length expressions)))
+       (cond
+         ;; Multiple expressions - try as FSet sets for Venn diagram
+         ((> num-exprs 1)
+          (viz-fset-sets expressions))
+         ;; Single expression - detect type
+         ((= num-exprs 1)
+          (let ((trimmed (first expressions)))
+            (handler-case
+                (viz-single-expression trimmed)
+              (error (e)
+                (format *error-output* "~&; Error: ~A~%" e)))))
+         (t
+          (format t "~&; Usage: ,viz <expression>~%")))))))
+
+(defun viz-single-expression (trimmed)
+  "Visualize a single expression - detect type and dispatch."
+  ;; Query backend to determine type and get visualization data
+  (let* ((query (format nil "(let ((obj ~A))
+                               (typecase obj
+                                 (symbol
+                                  (if (find-class obj nil)
+                                      (list :class
+                                            (symbol-name obj)
+                                            (package-name (symbol-package obj)))
+                                      (list :symbol (princ-to-string obj))))
+                                 (hash-table
+                                  (list :hash-table
+                                        (hash-table-count obj)
+                                        (loop for k being the hash-keys of obj using (hash-value v)
+                                              for i from 0 below 100
+                                              collect (list (princ-to-string k)
+                                                            (princ-to-string v)))))
+                                 ;; FSet set detection
+                                 ((satisfies fset:set?)
+                                  (let ((members (fset:convert 'list obj)))
+                                    (list :fset-set
+                                          (length members)
+                                          (loop for m in members
+                                                for i from 0 below 100
+                                                collect (princ-to-string m)))))
+                                 (t (list :unknown (type-of obj) (princ-to-string obj)))))"
+                        trimmed))
+         (result (backend-eval query)))
+    (when (and result (listp result) (first result))
+      (let ((parsed (read-from-string (first result))))
+        (case (first parsed)
+          (:class
+           (let ((sym-name (second parsed))
+                 (pkg-name (third parsed)))
+             (open-class-graph-panel sym-name pkg-name)
+             (format t "~&; Visualizing class hierarchy: ~A~%" sym-name)))
+          (:hash-table
+           (let ((count (second parsed))
+                 (entries (third parsed)))
+             (open-hash-table-panel trimmed count entries trimmed)
+             (format t "~&; Visualizing hash-table (~A entries)~%" count)))
+          (:fset-set
+           (let ((count (second parsed))
+                 (members (third parsed)))
+             (open-venn-panel (list trimmed) (list members) trimmed)
+             (format t "~&; Visualizing FSet set (~A members)~%" count)))
+          (:symbol
+           (format t "~&; Symbol ~A is not a class name~%" (second parsed)))
+          (:unknown
+           (format t "~&; Don't know how to visualize ~A: ~A~%"
+                   (second parsed) (third parsed)))
+          (otherwise
+           (format t "~&; Unexpected result: ~S~%" parsed)))))))
+
+(defun viz-fset-sets (expressions)
+  "Visualize multiple FSet sets as a Venn diagram."
+  (handler-case
+      (let* ((set-count (length expressions))
+             ;; Build query to get all set members and compute intersections
+             (query (format nil "(let ((sets (list ~{~A~^ ~})))
+                                   (if (every #'fset:set? sets)
+                                       (let ((members (mapcar (lambda (s)
+                                                                (loop for m in (fset:convert 'list s)
+                                                                      for i from 0 below 50
+                                                                      collect (princ-to-string m)))
+                                                              sets)))
+                                         (list :fset-venn ~D members))
+                                       (list :not-sets)))"
+                            expressions set-count))
+             (result (backend-eval query)))
+        (when (and result (listp result) (first result))
+          (let ((parsed (read-from-string (first result))))
+            (case (first parsed)
+              (:fset-venn
+               (let ((count (second parsed))
+                     (all-members (third parsed)))
+                 (open-venn-panel expressions all-members
+                                  (format nil "~{~A~^ ~}" expressions))
+                 (format t "~&; Visualizing ~D FSet sets as Venn diagram~%" count)))
+              (:not-sets
+               (format t "~&; All expressions must be FSet sets for Venn diagram~%"))
+              (otherwise
+               (format t "~&; Unexpected result: ~S~%" parsed))))))
+    (error (e)
+      (format *error-output* "~&; Error: ~A~%" e))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Stepping/Debugging Commands
