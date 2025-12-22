@@ -1146,6 +1146,18 @@
       ws.send(JSON.stringify({type: 'get-packages'}));
     };
 
+    ws.onclose = () => {
+      console.log('Connection closed - ICL process terminated');
+      // Close the browser window/tab when ICL dies
+      window.close();
+      // If window.close() doesn't work (e.g., not opened by script), show message
+      document.body.innerHTML = '<div style=\"display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1a2e;color:#eee;font-family:monospace;font-size:1.2em;\">ICL process terminated. You may close this tab.</div>';
+    };
+
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err);
+    };
+
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       switch(msg.type) {
