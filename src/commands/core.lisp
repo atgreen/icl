@@ -1908,12 +1908,12 @@ Example: ,ai-cli          - Show current setting and available CLIs
 ;;; System Browser
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(define-command (browse) (&optional action)
+(define-command browser (&optional action)
   "Open the System Browser for exploring packages, classes, and methods.
 A VS Code-style browser with dockable panels for navigating the Lisp environment.
-Example: ,browse           - Start browser and open in web browser
-         ,browse stop      - Stop the browser server
-         ,browse test      - Run browser self-test (for CI)"
+Example: ,browser          - Start browser and open in web browser
+         ,browser stop     - Stop the browser server
+         ,browser test     - Run browser self-test (for CI)"
   (cond
     ((and action (string-equal action "stop"))
      (if *browser-acceptor*
