@@ -394,12 +394,13 @@
           ;; Click on symbol in REPL - update all panels
           ;; Run in separate thread to avoid blocking WebSocket handler
           ((string= type "symbol-click")
-           (let ((symbol-string (gethash "symbol" json)))
-             (browser-log "WS symbol-click: symbol=~S" symbol-string)
+           (let ((symbol-string (gethash "symbol" json))
+                 (source (gethash "source" json)))
+             (browser-log "WS symbol-click: symbol=~S source=~S" symbol-string source)
              (when symbol-string
                (bt:make-thread
                 (lambda ()
-                  (send-symbol-click-response client symbol-string))
+                  (send-symbol-click-response client symbol-string source))
                 :name "symbol-click-handler"))))
 
           ;; Client reports dark mode preference
@@ -967,10 +968,11 @@
     (browser-log "find-symbol-home-package: result=~S" result)
     result))
 
-(defun send-symbol-click-response (client symbol-string)
+(defun send-symbol-click-response (client symbol-string &optional source)
   "Handle a click on a symbol in the REPL.
-   Updates all three panels: Packages, Symbols, and Inspector."
-  (browser-log "send-symbol-click-response: symbol-string=~S" symbol-string)
+   Updates all three panels: Packages, Symbols, and Inspector.
+   SOURCE indicates where the click originated (e.g., 'class-graph')."
+  (browser-log "send-symbol-click-response: symbol-string=~S source=~S" symbol-string source)
   (handler-case
       (let* ((parsed (find-symbol-home-package symbol-string))
              (pkg-name (if parsed (car parsed) nil))
@@ -1006,6 +1008,9 @@
             ;; Convert plist to hash table for JSON serialization
             (when symbol-info
               (setf (gethash "symbolInfo" obj) (plist-to-hash symbol-info)))
+            ;; Pass through source to prevent tab switching for class-graph clicks
+            (when source
+              (setf (gethash "source" obj) source))
             (browser-log "send-symbol-click-response: sending symbol-clicked message")
             (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))
             (browser-log "send-symbol-click-response: message sent"))))
@@ -1482,12 +1487,15 @@
         renderSymbolInfo(msg.symbolInfo);
       }
       // Activate the Symbol Info panel to bring it to the surface
-      if (dockviewApi) {
+      // (only for REPL clicks, not class graph clicks which should stay in place)
+      if (dockviewApi && msg.source !== 'class-graph') {
         const panel = dockviewApi.getPanel('inspector');
         if (panel) panel.api.setActive();
       }
-      // Restore focus to terminal after all updates
-      setTimeout(() => { if (terminal) terminal.focus(); }, 100);
+      // Restore focus to terminal after all updates (only for REPL clicks)
+      if (msg.source !== 'class-graph') {
+        setTimeout(() => { if (terminal) terminal.focus(); }, 100);
+      }
     }
 
     // Panel rendering functions
@@ -2246,8 +2254,8 @@
         const info = this._nodes.get(name);
         if (!info) return;
 
-        // Send symbol click for info panel
-        ws.send(JSON.stringify({type: 'symbol-click', symbol: info.pkg + '::' + name}));
+        // Send symbol click for info panel (with source to prevent tab switching)
+        ws.send(JSON.stringify({type: 'symbol-click', symbol: info.pkg + '::' + name, source: 'class-graph'}));
 
         // Request children list for selector popup (if not already expanded)
         if (!info.expanded) {
