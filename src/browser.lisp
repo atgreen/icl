@@ -504,7 +504,17 @@
                (bt:make-thread
                 (lambda ()
                   (send-svg-refresh client source-expr panel-id))
-                :name "refresh-svg-handler")))))))))
+                :name "refresh-svg-handler"))))
+
+          ;; Unified viz refresh - evaluates expression and returns appropriate type
+          ((string= type "refresh-viz")
+           (let ((source-expr (gethash "sourceExpr" json))
+                 (panel-id (gethash "panelId" json)))
+             (when source-expr
+               (bt:make-thread
+                (lambda ()
+                  (send-viz-refresh client source-expr panel-id))
+                :name "refresh-viz-handler")))))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Send Helpers
@@ -830,6 +840,63 @@
           (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))
     (error (e)
       (browser-log "send-svg-refresh: ERROR ~A" e))))
+
+(defun send-viz-refresh (client source-expr panel-id)
+  "Re-evaluate SOURCE-EXPR, detect type, and send appropriate viz data."
+  (browser-log "send-viz-refresh: expr=~S panel-id=~S" source-expr panel-id)
+  (handler-case
+      (let* ((query (format nil "(let ((obj ~A))
+                                   (cond
+                                     ;; HTML string
+                                     ((and (stringp obj)
+                                           (let ((trimmed (string-left-trim '(#\\Space #\\Tab #\\Newline) obj)))
+                                             (or (and (>= (length trimmed) 9)
+                                                      (string-equal (subseq trimmed 0 9) \"<!DOCTYPE\"))
+                                                 (and (>= (length trimmed) 5)
+                                                      (string-equal (subseq trimmed 0 5) \"<html\")))))
+                                      (list :html obj))
+                                     ;; SVG string
+                                     ((and (stringp obj)
+                                           (let ((trimmed (string-left-trim '(#\\Space #\\Tab #\\Newline) obj)))
+                                             (or (and (>= (length trimmed) 5)
+                                                      (string-equal (subseq trimmed 0 5) \"<?xml\"))
+                                                 (and (>= (length trimmed) 4)
+                                                      (string-equal (subseq trimmed 0 4) \"<svg\")))))
+                                      (list :svg obj))
+                                     ;; Hash table
+                                     ((hash-table-p obj)
+                                      (list :hash-table
+                                            (hash-table-count obj)
+                                            (loop for k being the hash-keys of obj using (hash-value v)
+                                                  for i from 0 below 100
+                                                  collect (list (princ-to-string k) (princ-to-string v)))))
+                                     ;; Unknown type
+                                     (t (list :unknown (princ-to-string (type-of obj))))))"
+                            source-expr))
+             (result (browser-query query)))
+        (when result
+          (let ((obj (make-hash-table :test 'equal))
+                (parsed (ignore-errors (read-from-string result))))
+            (setf (gethash "type" obj) "viz-refresh")
+            (setf (gethash "panelId" obj) panel-id)
+            (setf (gethash "sourceExpr" obj) source-expr)
+            (cond
+              ((and parsed (eq (first parsed) :html))
+               (setf (gethash "vizType" obj) "html")
+               (setf (gethash "content" obj) (second parsed)))
+              ((and parsed (eq (first parsed) :svg))
+               (setf (gethash "vizType" obj) "svg")
+               (setf (gethash "content" obj) (second parsed)))
+              ((and parsed (eq (first parsed) :hash-table))
+               (setf (gethash "vizType" obj) "hash-table")
+               (setf (gethash "count" obj) (second parsed))
+               (setf (gethash "entries" obj) (third parsed)))
+              (t
+               (setf (gethash "vizType" obj) "unknown")
+               (setf (gethash "error" obj) (format nil "Unknown type: ~A" (second parsed)))))
+            (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
+    (error (e)
+      (browser-log "send-viz-refresh: ERROR ~A" e))))
 
 (defun open-class-graph-panel (class-name package-name)
   "Send message to browser to open a class graph panel."
@@ -1472,6 +1539,9 @@
         case 'viz-type-changed':
           handleVizTypeChanged(msg);
           break;
+        case 'viz-refresh':
+          handleVizRefresh(msg);
+          break;
       }
     };
 
@@ -1569,6 +1639,17 @@
       return expr.replace(/[^a-zA-Z0-9-]/g, '_');
     }
 
+    // Unified visualization state - tracks all viz panels by source expression
+    const vizStates = new Map();  // panelId -> {sourceExpr, element, type}
+
+    function registerVizPanel(panelId, sourceExpr, element, type) {
+      vizStates.set(panelId, { sourceExpr, element, type });
+    }
+
+    function unregisterVizPanel(panelId) {
+      vizStates.delete(panelId);
+    }
+
     // Open SVG panel - tracks by source expression for updates
     const svgStates = new Map();
     function openSvgPanel(title, content, sourceExpr) {
@@ -1663,22 +1744,12 @@
           }));
         }
       });
-      // Refresh HTML panels
-      htmlStates.forEach((panel, panelId) => {
-        if (panel._sourceExpr) {
+      // Unified refresh for all viz panels (HTML, SVG, etc.)
+      vizStates.forEach((state, panelId) => {
+        if (state.sourceExpr) {
           ws.send(JSON.stringify({
-            type: 'refresh-html',
-            sourceExpr: panel._sourceExpr,
-            panelId: panelId
-          }));
-        }
-      });
-      // Refresh SVG panels
-      svgStates.forEach((panel, panelId) => {
-        if (panel._sourceExpr) {
-          ws.send(JSON.stringify({
-            type: 'refresh-svg',
-            sourceExpr: panel._sourceExpr,
+            type: 'refresh-viz',
+            sourceExpr: state.sourceExpr,
             panelId: panelId
           }));
         }
@@ -1757,6 +1828,84 @@
         openHashTablePanel(sourceExpr, msg.count, msg.entries, sourceExpr);
       }
       // Add other type handlers as needed
+    }
+
+    // Unified viz refresh - updates panel content based on current value type
+    function handleVizRefresh(msg) {
+      const panelId = msg.panelId;
+      const sourceExpr = msg.sourceExpr;
+      const vizType = msg.vizType;
+      const state = vizStates.get(panelId);
+
+      if (!state) {
+        console.log('handleVizRefresh: panel not found:', panelId);
+        return;
+      }
+
+      console.log('handleVizRefresh:', panelId, 'rendering as:', vizType);
+
+      // Update the panel's content based on current type
+      // The panel stays the same, only its content changes
+      state.type = vizType;  // Track current type
+
+      if (state.element) {
+        state.element.innerHTML = '';  // Clear existing content
+
+        switch (vizType) {
+          case 'html': {
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'width:100%;height:100%;border:none;background:white;';
+            iframe.sandbox = 'allow-same-origin';
+            iframe.srcdoc = msg.content;
+            state.element.appendChild(iframe);
+            break;
+          }
+          case 'svg': {
+            state.element.innerHTML = msg.content;
+            state.element.style.display = 'flex';
+            state.element.style.alignItems = 'center';
+            state.element.style.justifyContent = 'center';
+            const svg = state.element.querySelector('svg');
+            if (svg) {
+              svg.style.maxWidth = '100%';
+              svg.style.maxHeight = '100%';
+            }
+            break;
+          }
+          case 'hash-table': {
+            renderHashTable(state.element, msg.count, msg.entries);
+            break;
+          }
+          default:
+            state.element.innerHTML = '<div style=\"padding:20px;color:var(--fg-secondary);\">Unknown type: ' + vizType + '</div>';
+        }
+      }
+    }
+
+    // Render hash table into element
+    function renderHashTable(element, count, entries) {
+      let html = '<div style=\"font-family:monospace;font-size:13px;color:var(--fg-primary);padding:10px;overflow:auto;height:100%;\">';
+      html += '<div style=\"margin-bottom:8px;color:var(--fg-secondary);\">Hash Table (' + count + ' entries)</div>';
+      html += '<table style=\"border-collapse:collapse;width:100%;\">';
+      html += '<thead><tr style=\"background:var(--bg-tertiary);\">';
+      html += '<th style=\"text-align:left;padding:4px 8px;border:1px solid var(--border);\">Key</th>';
+      html += '<th style=\"text-align:left;padding:4px 8px;border:1px solid var(--border);\">Value</th>';
+      html += '</tr></thead><tbody>';
+      (entries || []).forEach(([key, value]) => {
+        const escKey = (key || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const escValue = (value || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html += '<tr style=\"background:var(--bg-secondary);\">';
+        html += '<td style=\"padding:4px 8px;border:1px solid var(--border);white-space:pre-wrap;\">' + escKey + '</td>';
+        html += '<td style=\"padding:4px 8px;border:1px solid var(--border);white-space:pre-wrap;\">' + escValue + '</td>';
+        html += '</tr>';
+      });
+      if (count > (entries || []).length) {
+        html += '<tr style=\"background:var(--bg-secondary);color:var(--fg-secondary);\">';
+        html += '<td colspan=\"2\" style=\"padding:4px 8px;border:1px solid var(--border);text-align:center;font-style:italic;\">';
+        html += '... and ' + (count - entries.length) + ' more entries</td></tr>';
+      }
+      html += '</tbody></table></div>';
+      element.innerHTML = html;
     }
 
     // Open Venn diagram panel
@@ -2252,9 +2401,9 @@
           svg.style.width = 'auto';
           svg.style.height = 'auto';
         }
-        // Register for updates
+        // Register with unified vizStates
         if (this._panelId) {
-          svgStates.set(this._panelId, this);
+          registerVizPanel(this._panelId, this._sourceExpr, this._element, 'svg');
           console.log('SvgPanel registered:', this._panelId);
         }
       }
@@ -2282,9 +2431,9 @@
         this._iframe.sandbox = 'allow-same-origin';  // Minimal permissions
         this._iframe.srcdoc = content;
         this._element.appendChild(this._iframe);
-        // Register for updates
+        // Register with unified vizStates
         if (this._panelId) {
-          htmlStates.set(this._panelId, this);
+          registerVizPanel(this._panelId, this._sourceExpr, this._element, 'html');
           console.log('HtmlPanel registered:', this._panelId);
         }
       }
