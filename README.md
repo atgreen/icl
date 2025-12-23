@@ -2,9 +2,21 @@
 
 ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experience with readline-style editing, persistent history, tab completion, and an extensible command system. ICL works in your terminal or in a web browser with an IDE-style interface featuring package browsing, symbol inspection, and an integrated REPL.
 
+## Terminal REPL
+
 <p align="center">
-  <img src="assets/demo.gif" alt="ICL Demo">
+  <img src="assets/terminal-demo.gif" alt="ICL Terminal Demo">
 </p>
+
+*Syntax highlighting, paren matching, tab completion, paredit mode, and interactive inspector*
+
+## Browser IDE
+
+<p align="center">
+  <img src="assets/browser-demo.gif" alt="ICL Browser Demo">
+</p>
+
+*Package browser, symbol inspector, data visualization, and class hierarchy graphs*
 
 ## Features
 
