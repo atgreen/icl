@@ -1,6 +1,6 @@
 # ICL - Interactive Common Lisp
 
-ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experience with readline-style editing, persistent history, tab completion, and an extensible command system. ICL works in your terminal or in a web browser with an IDE-style interface featuring package browsing, symbol inspection, and an integrated REPL.
+ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experience with readline-style editing, persistent history, tab completion, and an extensible command system. ICL works in your terminal, in a web browser with package browsing and data visualization, or integrated with Emacs via SLY/SLIME.
 
 ## Terminal REPL
 
@@ -36,7 +36,8 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experi
 - **Source location** - Find where functions are defined
 - **Terminal-aware colors** - Automatically detects light/dark terminal background
 - **AI integration** - Use `,explain` to get AI-powered explanations of code, errors, and results
-- **Browser interface** - IDE-style web UI with package browser, symbol list, inspector, and xterm.js terminal
+- **Browser interface** - Web UI with package browser, symbol list, inspector, and xterm.js terminal
+- **Emacs integration** - Works with SLY/SLIME for synchronized browser visualization
 
 ## Installation
 
