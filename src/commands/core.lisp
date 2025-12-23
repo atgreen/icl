@@ -1184,12 +1184,16 @@ Example: ,flamegraph (my-expensive-function)"
 Evaluates the expression and displays an appropriate visualization:
   - Symbol (class name) → class hierarchy graph with slots
   - Hash-table → key-value table
+  - FSet map → key-value table
+  - FSet bag → element-count table (multiset)
   - FSet set → Venn diagram (single or multiple sets)
 Requires browser mode to be active.
 Examples:
   ,viz 'hash-table          ; class hierarchy for HASH-TABLE
   ,viz 'standard-object     ; class hierarchy for STANDARD-OBJECT
   ,viz *my-hash-table*      ; hash-table contents
+  ,viz *my-map*             ; FSet map contents
+  ,viz *my-bag*             ; FSet bag with element counts
   ,viz *my-set*             ; single FSet set as circle
   ,viz *set-a* *set-b*      ; two FSet sets as Venn diagram"
   (cond
@@ -1216,30 +1220,63 @@ Examples:
 (defun viz-single-expression (trimmed)
   "Visualize a single expression - detect type and dispatch."
   ;; Query backend to determine type and get visualization data
-  (let* ((query (format nil "(let ((obj ~A))
-                               (typecase obj
-                                 (symbol
-                                  (if (find-class obj nil)
-                                      (list :class
-                                            (symbol-name obj)
-                                            (package-name (symbol-package obj)))
-                                      (list :symbol (princ-to-string obj))))
-                                 (hash-table
-                                  (list :hash-table
-                                        (hash-table-count obj)
-                                        (loop for k being the hash-keys of obj using (hash-value v)
-                                              for i from 0 below 100
-                                              collect (list (princ-to-string k)
-                                                            (princ-to-string v)))))
-                                 ;; FSet set detection
-                                 ((satisfies fset:set?)
-                                  (let ((members (fset:convert 'list obj)))
-                                    (list :fset-set
-                                          (length members)
-                                          (loop for m in members
+  (let* ((query (format nil "(let ((obj ~A)
+                               (fset-pkg (find-package :fset)))
+                             (flet ((fset-sym (name)
+                                      (and fset-pkg (intern name fset-pkg)))
+                                    (fset-fn (name)
+                                      (and fset-pkg
+                                           (let ((s (intern name fset-pkg)))
+                                             (and (fboundp s) (symbol-function s))))))
+                               (let ((set?-fn (fset-fn \"SET?\"))
+                                     (map?-fn (fset-fn \"MAP?\"))
+                                     (bag?-fn (fset-fn \"BAG?\"))
+                                     (convert-fn (fset-fn \"CONVERT\"))
+                                     (multiplicity-fn (fset-fn \"MULTIPLICITY\")))
+                                 (cond
+                                   ((symbolp obj)
+                                    (if (find-class obj nil)
+                                        (list :class
+                                              (symbol-name obj)
+                                              (package-name (symbol-package obj)))
+                                        (list :symbol (princ-to-string obj))))
+                                   ((hash-table-p obj)
+                                    (list :hash-table
+                                          (hash-table-count obj)
+                                          (loop for k being the hash-keys of obj using (hash-value v)
                                                 for i from 0 below 100
-                                                collect (princ-to-string m)))))
-                                 (t (list :unknown (type-of obj) (princ-to-string obj)))))"
+                                                collect (list (princ-to-string k)
+                                                              (princ-to-string v)))))
+                                   ;; FSet map - key/value pairs
+                                   ((and map?-fn (funcall map?-fn obj))
+                                    (let ((alist (funcall convert-fn 'list obj)))
+                                      (list :fset-map
+                                            (length alist)
+                                            (loop for (k . v) in alist
+                                                  for i from 0 below 100
+                                                  collect (list (princ-to-string k)
+                                                                (princ-to-string v))))))
+                                   ;; FSet bag - element/count pairs
+                                   ((and bag?-fn (funcall bag?-fn obj))
+                                    (let* ((elements (remove-duplicates
+                                                       (funcall convert-fn 'list obj)
+                                                       :test #'equal))
+                                           (pairs (loop for e in elements
+                                                        for i from 0 below 100
+                                                        collect (list (princ-to-string e)
+                                                                      (funcall multiplicity-fn obj e)))))
+                                      (list :fset-bag
+                                            (length elements)
+                                            pairs)))
+                                   ;; FSet set - members
+                                   ((and set?-fn (funcall set?-fn obj))
+                                    (let ((members (funcall convert-fn 'list obj)))
+                                      (list :fset-set
+                                            (length members)
+                                            (loop for m in members
+                                                  for i from 0 below 100
+                                                  collect (princ-to-string m)))))
+                                   (t (list :unknown (type-of obj) (princ-to-string obj)))))))"
                         trimmed))
          (result (backend-eval-internal query)))
     (when (and result (listp result) (first result))
@@ -1255,6 +1292,18 @@ Examples:
                  (entries (third parsed)))
              (open-hash-table-panel trimmed count entries trimmed)
              (format t "~&; Visualizing hash-table (~A entries)~%" count)))
+          (:fset-map
+           (let ((count (second parsed))
+                 (entries (third parsed)))
+             (open-hash-table-panel (format nil "FSet Map: ~A" trimmed)
+                                    count entries trimmed)
+             (format t "~&; Visualizing FSet map (~A entries)~%" count)))
+          (:fset-bag
+           (let ((count (second parsed))
+                 (entries (third parsed)))
+             (open-hash-table-panel (format nil "FSet Bag: ~A" trimmed)
+                                    count entries trimmed)
+             (format t "~&; Visualizing FSet bag (~A unique elements)~%" count)))
           (:fset-set
            (let ((count (second parsed))
                  (members (third parsed)))
@@ -1273,10 +1322,19 @@ Examples:
   (handler-case
       (let* ((set-count (length expressions))
              ;; Build query to get all set members and compute intersections
-             (query (format nil "(let ((sets (list ~{~A~^ ~})))
-                                   (if (every #'fset:set? sets)
+             (query (format nil "(let ((sets (list ~{~A~^ ~}))
+                                   (fset-pkg (find-package :fset))
+                                   (fset-set?-sym nil)
+                                   (fset-convert-sym nil))
+                                   (when fset-pkg
+                                     (setf fset-set?-sym (intern \"SET?\" fset-pkg))
+                                     (setf fset-convert-sym (intern \"CONVERT\" fset-pkg)))
+                                   (if (and fset-set?-sym (fboundp fset-set?-sym)
+                                            (every (lambda (s)
+                                                     (funcall (symbol-function fset-set?-sym) s))
+                                                   sets))
                                        (let ((members (mapcar (lambda (s)
-                                                                (loop for m in (fset:convert 'list s)
+                                                                (loop for m in (funcall (symbol-function fset-convert-sym) 'list s)
                                                                       for i from 0 below 50
                                                                       collect (princ-to-string m)))
                                                               sets)))
