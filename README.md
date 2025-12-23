@@ -10,7 +10,7 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experi
 
 *Syntax highlighting, paren matching, tab completion, paredit mode, and interactive inspector*
 
-## Browser IDE
+## Browser REPL
 
 <p align="center">
   <img src="assets/browser-demo.gif" alt="ICL Browser Demo">
