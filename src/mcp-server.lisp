@@ -140,12 +140,12 @@
    SYMBOL-NAME can be package-qualified like PACKAGE:SYMBOL or just SYMBOL."
   (handler-case
       (let* ((type-str (string-upcase (or doc-type "ALL")))
-             ;; Use READ-FROM-STRING to properly handle package-qualified names
+             ;; Use READ-FROM-STRING with *READ-EVAL* disabled for security
              (code (if (string= type-str "ALL")
                        ;; Try all documentation types
                        (format nil
                                "(handler-case
-                                  (let* ((sym (read-from-string ~S))
+                                  (let* ((sym (let ((*read-eval* nil)) (read-from-string ~S)))
                                          (fn-doc (and (symbolp sym) (documentation sym 'function)))
                                          (var-doc (and (symbolp sym) (documentation sym 'variable)))
                                          (type-doc (and (symbolp sym) (documentation sym 'type))))
@@ -162,7 +162,7 @@
                        ;; Specific doc type
                        (format nil
                                "(handler-case
-                                  (let ((sym (read-from-string ~S)))
+                                  (let ((sym (let ((*read-eval* nil)) (read-from-string ~S))))
                                     (if (symbolp sym)
                                         (or (documentation sym '~A) \"No ~A documentation.\")
                                         \"Not a symbol.\"))
@@ -180,7 +180,7 @@
   (handler-case
       (let* ((code (format nil
                            "(handler-case
-                              (let ((sym (read-from-string ~S)))
+                              (let ((sym (let ((*read-eval* nil)) (read-from-string ~S))))
                                 (if (symbolp sym)
                                     (with-output-to-string (*standard-output*)
                                       (describe sym))
@@ -229,7 +229,7 @@
   (handler-case
       (let* ((code (format nil
                            "(handler-case
-                              (let ((sym (read-from-string ~S)))
+                              (let ((sym (let ((*read-eval* nil)) (read-from-string ~S))))
                                 (if (and (symbolp sym) (fboundp sym))
                                     (format nil \"~~S\" (slynk-backend:arglist sym))
                                     (format nil \"Function ~~A not found or not bound.\" ~S)))
@@ -263,15 +263,31 @@
        (not (char= (char path 0) #\/))
        (not (windows-absolute-path-p path))))
 
+(defun path-under-root-p (resolved-path root-path)
+  "Check if RESOLVED-PATH is under ROOT-PATH (symlink-safe).
+   Both paths should already be resolved via truename."
+  (let ((resolved-str (namestring resolved-path))
+        (root-str (namestring root-path)))
+    ;; Ensure root ends with separator for proper prefix matching
+    (unless (char= (char root-str (1- (length root-str))) #\/)
+      (setf root-str (concatenate 'string root-str "/")))
+    (and (>= (length resolved-str) (length root-str))
+         (string= root-str (subseq resolved-str 0 (length root-str))))))
+
 (defun mcp-read-source-file (relative-path)
   "Read a source file from the ocicl directory."
   (if (not (safe-ocicl-path-p relative-path))
       "Error: Invalid path. Must be relative path within ocicl directory."
-      (let ((full-path (merge-pathnames relative-path
-                                        (merge-pathnames "ocicl/" (uiop:getcwd)))))
+      (let* ((root-dir (merge-pathnames "ocicl/" (uiop:getcwd)))
+             (full-path (merge-pathnames relative-path root-dir)))
         (if (probe-file full-path)
             (handler-case
-                (uiop:read-file-string full-path)
+                ;; Verify resolved path is under root (prevents symlink escape)
+                (let ((resolved (truename full-path))
+                      (resolved-root (truename root-dir)))
+                  (if (path-under-root-p resolved resolved-root)
+                      (uiop:read-file-string resolved)
+                      "Error: Path resolves outside allowed directory."))
               (error (e)
                 (format nil "Error reading file: ~A" e)))
             (format nil "File not found: ~A" relative-path)))))
@@ -348,15 +364,21 @@
   "Read a file from the current working directory."
   (if (not (safe-project-path-p relative-path))
       "Error: Invalid path. Must be relative path within project directory."
-      (let ((full-path (merge-pathnames relative-path (uiop:getcwd))))
+      (let* ((root-dir (uiop:getcwd))
+             (full-path (merge-pathnames relative-path root-dir)))
         (if (probe-file full-path)
             (handler-case
-                (let ((content (uiop:read-file-string full-path)))
-                  (if (> (length content) 50000)
-                      (format nil "~A~%~%[... truncated at 50000 chars, file has ~D total chars]"
-                              (subseq content 0 50000)
-                              (length content))
-                      content))
+                ;; Verify resolved path is under root (prevents symlink escape)
+                (let ((resolved (truename full-path))
+                      (resolved-root (truename root-dir)))
+                  (if (path-under-root-p resolved resolved-root)
+                      (let ((content (uiop:read-file-string resolved)))
+                        (if (> (length content) 50000)
+                            (format nil "~A~%~%[... truncated at 50000 chars, file has ~D total chars]"
+                                    (subseq content 0 50000)
+                                    (length content))
+                            content))
+                      "Error: Path resolves outside allowed directory."))
               (error (e)
                 (format nil "Error reading file: ~A" e)))
             (format nil "File not found: ~A" relative-path)))))
@@ -592,10 +614,22 @@ Be thorough - users expect you to leverage this live environment access."
   "Background thread that monitors for idle timeout.")
 
 (defun generate-session-token ()
-  "Generate a random 32-character hex token for URL security."
-  (with-output-to-string (s)
-    (dotimes (i 16)
-      (format s "~2,'0x" (random 256)))))
+  "Generate a random 32-character hex token for URL security.
+   Uses /dev/urandom for cryptographic randomness when available."
+  (let ((bytes (make-array 16 :element-type '(unsigned-byte 8))))
+    ;; Try to read from /dev/urandom for crypto-quality randomness
+    (handler-case
+        (with-open-file (urandom "/dev/urandom" :element-type '(unsigned-byte 8))
+          (read-sequence bytes urandom))
+      (error ()
+        ;; Fallback: seed with time-based entropy and use random
+        (let ((*random-state* (make-random-state t)))
+          (dotimes (i 16)
+            (setf (aref bytes i) (random 256))))))
+    ;; Convert to hex string
+    (with-output-to-string (s)
+      (loop for byte across bytes
+            do (format s "~2,'0x" byte)))))
 
 (defun mcp-touch-activity ()
   "Update last activity timestamp."

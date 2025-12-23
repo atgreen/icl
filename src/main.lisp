@@ -93,11 +93,19 @@
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
 (defun parse-connect-string (connect-str)
-  "Parse HOST:PORT connection string. Returns (values host port)."
+  "Parse HOST:PORT connection string. Returns (values host port).
+   Signals an error with a user-friendly message if port is invalid."
   (let ((colon-pos (position #\: connect-str)))
     (if colon-pos
-        (values (subseq connect-str 0 colon-pos)
-                (parse-integer (subseq connect-str (1+ colon-pos))))
+        (let ((host (subseq connect-str 0 colon-pos))
+              (port-str (subseq connect-str (1+ colon-pos))))
+          (handler-case
+              (let ((port (parse-integer port-str)))
+                (unless (and (plusp port) (<= port 65535))
+                  (error "Port must be between 1 and 65535"))
+                (values host port))
+            (error (e)
+              (error "Invalid port in '~A': ~A" connect-str e))))
         (values connect-str *slynk-port*))))
 
 (defun handle-cli (cmd)
