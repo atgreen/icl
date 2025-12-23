@@ -1712,17 +1712,7 @@
 
     // Refresh all visualization panels
     function refreshAllVisualizations() {
-      // Refresh hash-table panels
-      hashtableStates.forEach((panel, panelId) => {
-        if (panel._sourceExpr) {
-          ws.send(JSON.stringify({
-            type: 'refresh-hashtable',
-            sourceExpr: panel._sourceExpr,
-            panelId: panelId
-          }));
-        }
-      });
-      // Refresh class graph panels
+      // Refresh class graph panels (specialized - not expression-based)
       graphvizStates.forEach((panel, panelId) => {
         if (panel._className && panel._packageName) {
           ws.send(JSON.stringify({
@@ -1733,7 +1723,7 @@
           }));
         }
       });
-      // Refresh Venn diagram panels
+      // Refresh Venn diagram panels (specialized - multi-expression)
       vennStates.forEach((panel, panelId) => {
         if (panel._sourceExpr) {
           ws.send(JSON.stringify({
@@ -1743,7 +1733,8 @@
           }));
         }
       });
-      // Unified refresh for all viz panels (HTML, SVG, etc.)
+      // Unified refresh for all viz panels (HTML, SVG, hash-table, etc.)
+      // This handles type changes automatically
       vizStates.forEach((state, panelId) => {
         if (state.sourceExpr) {
           ws.send(JSON.stringify({
@@ -2334,10 +2325,8 @@
         const count = params.params?.count || 0;
         const entries = params.params?.entries || [];
 
-        // Register for refresh updates (both old and unified systems)
+        // Register with unified vizStates for refresh and type-change detection
         if (this._panelId) {
-          hashtableStates.set(this._panelId, this);
-          // Also register with unified vizStates for type-change detection
           registerVizPanel(this._panelId, this._sourceExpr, this._element, 'hash-table');
         }
 
