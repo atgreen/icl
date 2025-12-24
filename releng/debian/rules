@@ -28,6 +28,9 @@ override_dh_auto_install:
 	install -m 0644 icl.el debian/icl/usr/share/emacs/site-lisp/icl/
 	install -m 0644 icl-autoloads.el debian/icl/usr/share/emacs/site-lisp/icl/
 
+override_dh_auto_test:
+	# Skip tests - fiveam is not vendored in the source tarball
+
 override_dh_strip:
 	# Do not strip SBCL-based binaries as it corrupts the embedded core
 
