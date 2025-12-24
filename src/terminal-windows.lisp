@@ -195,6 +195,22 @@
          (exit-raw-mode)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Process Suspend/Resume (Ctrl-Z) - Not supported on Windows
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defvar *suspend-hook* nil
+  "Function to call before suspending (not used on Windows).")
+
+(defvar *resume-hook* nil
+  "Function to call after resuming (not used on Windows).")
+
+(defun suspend-process ()
+  "Suspend not supported on Windows - just beep."
+  (format t "~C" (code-char 7))  ; Bell
+  (force-output)
+  nil)
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; ANSI Escape Codes (same as POSIX version - Windows 10+ supports these)
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
@@ -370,6 +386,7 @@
       ((char= c (code-char 21)) :clear-line) ; Ctrl-U
       ((char= c (code-char 12)) :clear-screen) ; Ctrl-L
       ((char= c (code-char 3)) :interrupt) ; Ctrl-C
+      ((char= c (code-char 26)) :suspend)  ; Ctrl-Z
       ((char= c (code-char 18)) :reverse-search) ; Ctrl-R
       ((char= c (code-char 7)) :cancel-search)  ; Ctrl-G
       ((char= c #\Tab) :tab)

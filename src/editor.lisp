@@ -760,6 +760,10 @@
     ;; Interrupt
     ((eql key :interrupt)
      :cancel)
+    ;; Suspend (Ctrl-Z)
+    ((eql key :suspend)
+     (suspend-process)
+     :redraw)
     ;; Enter - check if form is complete
     ;; In paredit mode, also require cursor at end (since forms are always balanced)
     ((eql key :enter)

@@ -86,6 +86,40 @@
          (exit-raw-mode)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Process Suspend/Resume (Ctrl-Z)
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defvar *suspend-hook* nil
+  "Function to call before suspending (e.g., to save editor state).")
+
+(defvar *resume-hook* nil
+  "Function to call after resuming (e.g., to redraw screen).")
+
+(defun suspend-process ()
+  "Suspend the process (like Ctrl-Z in a normal shell).
+   Restores terminal, sends SIGTSTP, and re-enters raw mode on resume."
+  ;; Don't suspend in browser mode
+  (when *browser-terminal-active*
+    (return-from suspend-process nil))
+  ;; Call pre-suspend hook
+  (when *suspend-hook*
+    (funcall *suspend-hook*))
+  ;; Exit raw mode to restore terminal
+  (exit-raw-mode)
+  ;; Print newline so shell prompt appears on fresh line
+  (fresh-line)
+  (force-output)
+  ;; Send SIGTSTP to our process group
+  (osicat-posix:kill 0 osicat-posix:sigtstp)
+  ;; When we get here, we've been resumed (SIGCONT was received)
+  ;; Re-enter raw mode
+  (enter-raw-mode)
+  ;; Call post-resume hook
+  (when *resume-hook*
+    (funcall *resume-hook*))
+  t)
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; ANSI Escape Codes
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
@@ -240,6 +274,7 @@
       ((char= c (code-char 21)) :clear-line) ; Ctrl-U
       ((char= c (code-char 12)) :clear-screen) ; Ctrl-L
       ((char= c (code-char 3)) :interrupt) ; Ctrl-C
+      ((char= c (code-char 26)) :suspend)  ; Ctrl-Z
       ((char= c (code-char 18)) :reverse-search) ; Ctrl-R
       ((char= c (code-char 7)) :cancel-search)  ; Ctrl-G
       ((char= c #\Tab) :tab)
