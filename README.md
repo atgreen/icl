@@ -530,7 +530,7 @@ flowchart LR
 
     Terminal ---|stdin/stdout| ICL
     Browser ---|HTTP/WS| Web
-    AI -.-|read-only| MCP
+    AI ---|HTTP| MCP
     Client & Emacs ---|Slynk| Server
 ```
 
