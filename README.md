@@ -515,11 +515,11 @@ flowchart TD
     Emacs["📝 Emacs + SLY/SLIME"] -->|Slynk| Slynk
 
     ICL["ICL"] -->|Slynk Protocol| Slynk
-    ICL -->|HTTP| MCP["MCP Server"]
+    ICL <-->|HTTP| MCP["MCP Server"]
 
     Slynk["Slynk Server"] --- Lisp["Lisp Image<br/>(SBCL, CCL, ECL, ...)"]
 
-    MCP -.->|read-only| AI["AI CLIs<br/>(Claude, Gemini, Codex)"]
+    MCP <-.->|read-only| AI["AI CLIs<br/>(Claude, Gemini, Codex)"]
 ```
 
 All connections use randomly-assigned ports on localhost. When ICL starts an inferior Lisp, it finds an available port and configures Slynk to listen there. The browser interface (started with `,browser` or `icl -b`) serves a Dockview-based IDE with package browser, symbol list, inspector panels, and class hierarchy visualization. The browser automatically closes when ICL terminates. The MCP server (started on-demand by `,explain`) provides read-only AI tool integration.
