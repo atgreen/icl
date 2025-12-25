@@ -42,18 +42,24 @@ exec ros -Q -- $0 "$@"
       ;; Last resort: return script-dir even if icl.asd not found
       (t script-dir))))
 
+(defun setup-third-party-deps (icl-dir)
+  "Setup ASDF to find vendored 3rd-party dependencies.
+These MUST be registered before Quicklisp to take precedence."
+  (let ((third-party-dir (merge-pathnames "3rd-party/" icl-dir)))
+    (when (probe-file third-party-dir)
+      ;; Push each subdirectory (where .asd files actually live)
+      (dolist (subdir (directory (merge-pathnames "*/" third-party-dir)))
+        (when (probe-file subdir)
+          (push subdir asdf:*central-registry*))))))
+
 (defun setup-ocicl-deps (icl-dir)
   "Setup ASDF to find ocicl dependencies."
-  (let ((ocicl-dir (merge-pathnames "ocicl/" icl-dir))
-        (third-party-dir (merge-pathnames "3rd-party/" icl-dir)))
+  (let ((ocicl-dir (merge-pathnames "ocicl/" icl-dir)))
     ;; Add ocicl directory to ASDF search path
     (when (probe-file ocicl-dir)
       (let ((setup-file (merge-pathnames "setup.lisp" ocicl-dir)))
         (when (probe-file setup-file)
           (load setup-file))))
-    ;; Add 3rd-party directory for bundled dependencies
-    (when (probe-file third-party-dir)
-      (push third-party-dir asdf:*central-registry*))
     ;; Add ICL directory itself
     (push icl-dir asdf:*central-registry*)))
 
@@ -73,18 +79,25 @@ exec ros -Q -- $0 "$@"
 
 (progn
   (require :asdf)
-  ;; Load Roswell's quicklisp so ASDF can find installed systems (quietly)
-  (let ((*standard-output* (make-broadcast-stream))
-        (*trace-output* (make-broadcast-stream))
-        (*debug-io* (make-two-way-stream (make-concatenated-stream)
-                                         (make-broadcast-stream))))
-    (handler-bind ((warning #'muffle-warning))
-      (ros:quicklisp)))
 
+  ;; Find ICL directory early so we can register vendored deps before Quicklisp
   (let ((icl-dir (find-icl-directory)))
     (unless icl-dir
       (format *error-output* "~&Error: Could not find ICL installation directory.~%")
       (uiop:quit 1))
+
+    ;; CRITICAL: Register vendored 3rd-party dependencies BEFORE loading Quicklisp.
+    ;; This ensures our modified slynk-client (with *write-string-hook* support)
+    ;; takes precedence over any version from Quicklisp/Ultralisp.
+    (setup-third-party-deps icl-dir)
+
+    ;; Load Roswell's quicklisp so ASDF can find installed systems (quietly)
+    (let ((*standard-output* (make-broadcast-stream))
+          (*trace-output* (make-broadcast-stream))
+          (*debug-io* (make-two-way-stream (make-concatenated-stream)
+                                           (make-broadcast-stream))))
+      (handler-bind ((warning #'muffle-warning))
+        (ros:quicklisp)))
 
     ;; Check if ocicl deps are installed, or if Roswell/Quicklisp has the deps
     (unless (or (check-ocicl-installed icl-dir)
@@ -98,7 +111,7 @@ exec ros -Q -- $0 "$@"
       (format *error-output* "~&  https://github.com/ocicl/ocicl~%")
       (uiop:quit 1))
 
-    ;; Setup paths for dependencies (if ocicl is being used)
+    ;; Setup paths for ocicl dependencies (if ocicl is being used)
     (when (check-ocicl-installed icl-dir)
       (setup-ocicl-deps icl-dir))
 
