@@ -5,6 +5,81 @@
  * Requires ICL_CONFIG.wsToken to be set before loading this script.
  */
 
+// Check for updates
+async function checkForUpdates() {
+  const currentVersion = ICL_CONFIG.version.replace(/^v/, '').split('-')[0]; // Strip 'v' prefix and git suffix
+
+  // Show checking dialog
+  const backdrop = document.createElement('div');
+  backdrop.id = 'update-backdrop';
+  backdrop.className = 'modal-backdrop';
+  backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-dialog update-dialog';
+  modal.innerHTML = `
+    <h3>Checking for Updates...</h3>
+    <p class="update-status">Contacting GitHub...</p>
+    <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Cancel</button>
+  `;
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  try {
+    const response = await fetch('https://api.github.com/repos/atgreen/icl/releases/latest');
+    if (!response.ok) throw new Error('Failed to fetch release info');
+
+    const release = await response.json();
+    const latestVersion = release.tag_name.replace(/^v/, '');
+
+    // Simple version comparison (works for semver)
+    const isNewer = compareVersions(latestVersion, currentVersion) > 0;
+
+    if (isNewer) {
+      modal.innerHTML = `
+        <h3>Update Available</h3>
+        <p class="update-status">A new version of ICL is available!</p>
+        <div class="update-versions">
+          <div><span class="update-label">Current:</span> ${currentVersion}</div>
+          <div><span class="update-label">Latest:</span> ${latestVersion}</div>
+        </div>
+        <p class="update-note">If you installed via a package manager (apt, dnf, choco, brew), update through that instead.</p>
+        <div class="update-actions">
+          <a href="${release.html_url}" target="_blank" class="update-link">View Release</a>
+          <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Close</button>
+        </div>
+      `;
+    } else {
+      modal.innerHTML = `
+        <h3>You're Up to Date</h3>
+        <p class="update-status">ICL ${currentVersion} is the latest version.</p>
+        <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Close</button>
+      `;
+    }
+  } catch (err) {
+    modal.innerHTML = `
+      <h3>Update Check Failed</h3>
+      <p class="update-status">Could not check for updates: ${err.message}</p>
+      <p class="update-note">You can check manually at:</p>
+      <a href="https://github.com/atgreen/icl/releases" target="_blank" class="update-link">github.com/atgreen/icl/releases</a>
+      <button onclick="this.closest('.modal-backdrop').remove()" class="about-close" style="margin-top:16px;">Close</button>
+    `;
+  }
+}
+
+// Compare semver versions, returns: 1 if a > b, -1 if a < b, 0 if equal
+function compareVersions(a, b) {
+  const partsA = a.split('.').map(n => parseInt(n, 10) || 0);
+  const partsB = b.split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const numA = partsA[i] || 0;
+    const numB = partsB[i] || 0;
+    if (numA > numB) return 1;
+    if (numA < numB) return -1;
+  }
+  return 0;
+}
+
 // About dialog
 function showAboutDialog() {
   // Remove existing dialog if any
@@ -2645,6 +2720,7 @@ menuBtn.onclick = (e) => {
   menu.id = 'app-menu';
   menu.className = 'app-menu';
   menu.innerHTML = `
+    <div class="menu-item" onclick="checkForUpdates(); this.parentElement.remove();">Check for Updates</div>
     <div class="menu-item" onclick="showAboutDialog(); this.parentElement.remove();">About ICL</div>
   `;
   menu.style.top = (menuBtn.offsetTop + menuBtn.offsetHeight + 4) + 'px';

@@ -162,3 +162,20 @@ body { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: va
   padding: 16px;
   text-align: center;
 }
+
+/* Update dialog */
+.update-dialog h3 { margin: 0 0 12px 0; color: var(--fg-primary); }
+.update-status { color: var(--fg-secondary); margin: 0 0 12px 0; }
+.update-versions { margin: 12px 0; }
+.update-versions div { margin: 4px 0; }
+.update-label { color: var(--fg-muted); margin-right: 8px; }
+.update-note { color: var(--fg-muted); font-size: 0.9em; margin: 12px 0; }
+.update-actions { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+.update-link {
+  color: var(--accent);
+  text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+.update-link:hover { background: var(--accent); color: var(--bg-primary); }
