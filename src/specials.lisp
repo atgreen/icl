@@ -261,10 +261,14 @@
         (merge-pathnames ".local/share/icl/" (user-homedir-pathname)))))
 
 (defun config-file ()
-  "Return the config file path, computing it if needed."
+  "Return the config file path, computing it if needed.
+   Checks ~/.iclrc first for backwards compatibility, then XDG location."
   (or *config-file*
       (setf *config-file*
-            (merge-pathnames "config.lisp" (config-directory)))))
+            (let ((legacy-config (merge-pathnames ".iclrc" (user-homedir-pathname))))
+              (if (probe-file legacy-config)
+                  legacy-config
+                  (merge-pathnames "config.lisp" (config-directory)))))))
 
 (defun history-file ()
   "Return the history file path, computing it if needed."
