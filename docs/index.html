@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ICL - Interactive Common Lisp</title>
+  <meta name="description" content="An enhanced REPL for Common Lisp with syntax highlighting, browser IDE, data visualization, and AI integration.">
+  <link rel="icon" href="../assets/favicon.ico">
+  <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1>ICL</h1>
+      <p class="tagline">Interactive Common Lisp</p>
+      <p class="subtitle">An enhanced REPL with syntax highlighting, browser IDE, data visualization, and AI integration</p>
+
+      <div class="badges">
+        <a href="https://github.com/atgreen/icl/actions/workflows/ci.yaml"><img src="https://github.com/atgreen/icl/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+        <a href="https://github.com/atgreen/icl/releases/latest"><img src="https://img.shields.io/github/v/release/atgreen/icl" alt="Release"></a>
+        <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+        <a href="https://github.com/atgreen/icl/releases"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey" alt="Platform"></a>
+      </div>
+
+      <div class="install-box">
+        <code>ros install atgreen/icl</code>
+      </div>
+
+      <div class="cta-buttons">
+        <a href="https://github.com/atgreen/icl/releases/latest" class="btn btn-primary">Download</a>
+        <a href="https://github.com/atgreen/icl" class="btn btn-secondary">View on GitHub</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="demos">
+    <div class="container">
+      <h2>Three Ways to REPL</h2>
+      <div class="demo-grid">
+        <div class="demo-card">
+          <h3>Terminal REPL</h3>
+          <img src="../assets/terminal-demo.gif" alt="Terminal Demo" loading="lazy">
+          <p>Syntax highlighting, paren matching, tab completion, paredit mode, and interactive inspector</p>
+        </div>
+        <div class="demo-card">
+          <h3>Browser IDE</h3>
+          <img src="../assets/browser-demo.gif" alt="Browser Demo" loading="lazy">
+          <p>Package browser, symbol inspector, data visualization, and class hierarchy graphs</p>
+        </div>
+        <div class="demo-card">
+          <h3>Flame Graph Profiling</h3>
+          <img src="../assets/flamegraph-demo.png" alt="Flame Graph Demo" loading="lazy">
+          <p>Interactive Speedscope flame graphs for performance analysis (SBCL)</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="container">
+      <h2>Features</h2>
+      <div class="feature-grid">
+        <div class="feature">
+          <div class="feature-icon">&#x1F308;</div>
+          <h3>Syntax Highlighting</h3>
+          <p>Colorized input with distinct colors for keywords, strings, comments, numbers, and symbols</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F517;</div>
+          <h3>Parenthesis Matching</h3>
+          <p>Real-time highlighting of matching parentheses as you type</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x2328;</div>
+          <h3>Paredit Mode</h3>
+          <p>Structural editing with auto-close parens, safe deletion, and sexp navigation</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F4DD;</div>
+          <h3>Multi-line Input</h3>
+          <p>Automatically detects incomplete expressions with smart indentation</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F4BE;</div>
+          <h3>Persistent History</h3>
+          <p>Command history saved across sessions with reverse search</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x21B9;</div>
+          <h3>Tab Completion</h3>
+          <p>Complete symbols, package-qualified names, and keywords</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F4CA;</div>
+          <h3>Data Visualization</h3>
+          <p>Visualize hash tables, classes, JSON, Vega-Lite charts, Mermaid diagrams, and function disassembly</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F525;</div>
+          <h3>Flame Graphs</h3>
+          <p>Interactive Speedscope visualizations for performance profiling</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F916;</div>
+          <h3>AI Integration</h3>
+          <p>Use <code>,explain</code> with Claude, Gemini, or Codex for AI-powered explanations</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F310;</div>
+          <h3>Browser Interface</h3>
+          <p>Web UI with package browser, symbol list, inspector, and xterm.js terminal</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F50D;</div>
+          <h3>Object Inspector</h3>
+          <p>TUI for exploring objects with keyboard navigation</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&#x1F4E6;</div>
+          <h3>Multiple Lisps</h3>
+          <p>Works with SBCL, CCL, ECL, ABCL, Clasp, CLISP, and Roswell</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="installation">
+    <div class="container">
+      <h2>Installation</h2>
+      <div class="install-methods">
+        <div class="install-method">
+          <h3>Roswell</h3>
+          <pre><code>ros install atgreen/icl</code></pre>
+        </div>
+        <div class="install-method">
+          <h3>Pre-built Binaries</h3>
+          <p>Download RPM, DEB, or Windows installers from <a href="https://github.com/atgreen/icl/releases">GitHub Releases</a></p>
+        </div>
+        <div class="install-method">
+          <h3>Build from Source</h3>
+          <pre><code>git clone https://github.com/atgreen/icl.git
+cd icl
+ocicl install
+make</code></pre>
+          <p class="note">Requires SBCL, <a href="https://github.com/ocicl/ocicl">ocicl</a>, and libfixposix-devel</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="quickstart">
+    <div class="container">
+      <h2>Quick Start</h2>
+      <div class="code-examples">
+        <div class="example">
+          <h3>Start ICL</h3>
+          <pre><code><span class="prompt">$</span> icl
+<span class="comment">;; Auto-detects available Lisp implementation</span></code></pre>
+        </div>
+        <div class="example">
+          <h3>Browser Mode</h3>
+          <pre><code><span class="prompt">$</span> icl -b
+<span class="comment">;; Opens IDE alongside terminal REPL</span></code></pre>
+        </div>
+        <div class="example">
+          <h3>Connect to Existing Slynk</h3>
+          <pre><code><span class="prompt">$</span> icl --connect localhost:4005</code></pre>
+        </div>
+        <div class="example">
+          <h3>Visualize Data</h3>
+          <pre><code><span class="prompt">CL-USER&gt;</span> ,viz 'standard-object
+<span class="comment">;; Opens interactive class hierarchy</span>
+
+<span class="prompt">CL-USER&gt;</span> ,viz *my-hash-table*
+<span class="comment">;; Shows key-value table</span>
+
+<span class="prompt">CL-USER&gt;</span> ,viz #'mapcar
+<span class="comment">;; Shows function disassembly</span></code></pre>
+        </div>
+        <div class="example">
+          <h3>Profile with Flame Graph</h3>
+          <pre><code><span class="prompt">CL-USER&gt;</span> ,flame (my-expensive-function)
+<span class="comment">;; Opens interactive Speedscope visualization</span></code></pre>
+        </div>
+        <div class="example">
+          <h3>AI Explanations</h3>
+          <pre><code><span class="prompt">CL-USER&gt;</span> ,explain
+<span class="comment">;; Explains last result or error using AI</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="architecture">
+    <div class="container">
+      <h2>Architecture</h2>
+      <p class="arch-intro">ICL operates as a frontend communicating with backend Lisp via the Slynk protocol, enabling support for multiple implementations and remote connections.</p>
+      <div class="arch-diagram">
+        <pre>
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Terminal   │  │   Browser   │  │    Emacs    │  │   AI CLIs   │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │                │
+       │ stdin/stdout   │ HTTP/WS        │                │ HTTP
+       │                │                │                │
+       └────────────────┴────────┬───────┴────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │           ICL           │
+                    │  ┌─────┐ ┌─────┐ ┌────┐ │
+                    │  │ Web │ │ MCP │ │Slynk│ │
+                    │  │Server│ │Server│ │Client│ │
+                    │  └─────┘ └─────┘ └────┘ │
+                    └────────────┬────────────┘
+                                 │ Slynk Protocol
+                    ┌────────────┴────────────┐
+                    │      Lisp Image         │
+                    │    (SBCL/CCL/ECL/...)   │
+                    │      Slynk Server       │
+                    └─────────────────────────┘
+        </pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/atgreen/icl">GitHub</a>
+        <a href="https://github.com/atgreen/icl/releases">Releases</a>
+        <a href="https://github.com/atgreen/icl/blob/master/README.md">Documentation</a>
+        <a href="https://github.com/atgreen/icl/blob/master/LICENSE">MIT License</a>
+      </div>
+      <p class="copyright">Created by <a href="https://github.com/atgreen">Anthony Green</a></p>
+    </div>
+  </footer>
+</body>
+</html>
