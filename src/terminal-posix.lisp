@@ -257,7 +257,9 @@
     (cond
       ;; Escape sequence
       ((char= c +esc+)
-       (if (char-available-p)
+       ;; In browser mode, always parse escape sequences (xterm.js sends complete sequences)
+       ;; In terminal mode, only parse if more chars are immediately available
+       (if (or *browser-terminal-active* (char-available-p))
            (parse-escape-sequence)
            :escape))
       ;; Control characters

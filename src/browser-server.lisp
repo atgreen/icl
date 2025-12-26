@@ -140,8 +140,30 @@
             (setf (hunchentoot:return-code*) 404)
             "Profile not found")))))
 
+(defun set-security-headers ()
+  "Set security headers for HTTP responses.
+   Content-Security-Policy restricts resource loading to prevent XSS.
+   Other headers provide defense-in-depth."
+  ;; Content Security Policy - defense in depth against XSS
+  ;; - 'self' allows resources from same origin
+  ;; - 'unsafe-inline' needed for inline styles (Dockview, Vega, xterm.js)
+  ;; - 'unsafe-eval' needed for Vega expression evaluation (sandboxed by Vega)
+  ;; - blob: needed for Vega image export
+  ;; - data: needed for embedded images
+  ;; - api.github.com needed for "Check for Updates" feature
+  (setf (hunchentoot:header-out :content-security-policy)
+        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com; frame-ancestors 'none';")
+  ;; Prevent clickjacking
+  (setf (hunchentoot:header-out :x-frame-options) "DENY")
+  ;; Prevent MIME type sniffing
+  (setf (hunchentoot:header-out :x-content-type-options) "nosniff")
+  ;; Referrer policy - don't leak URLs
+  (setf (hunchentoot:header-out :referrer-policy) "no-referrer"))
+
 (defmethod hunchentoot:acceptor-dispatch-request ((acceptor browser-acceptor) request)
   "Handle HTTP requests."
+  ;; Set security headers for all responses
+  (set-security-headers)
   (let ((path (hunchentoot:script-name request))
         (ws-path (format nil "/ws/~A" *browser-token*)))
     (cond

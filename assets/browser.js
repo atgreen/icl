@@ -2,8 +2,24 @@
  * SPDX-License-Identifier: MIT
  * Copyright (C) 2025 Anthony Green <green@moxielogic.com>
  *
- * Requires ICL_CONFIG.wsToken to be set before loading this script.
+ * Configuration is read from body data attributes (CSP-compliant).
  */
+
+// Read configuration from body data attributes (no inline scripts needed)
+const ICL_CONFIG = {
+  wsToken: document.body.dataset.wsToken,
+  version: document.body.dataset.version
+};
+
+// Helper to setup modal close buttons (CSP-compliant - no inline handlers)
+function setupModalCloseButtons(container) {
+  container.querySelectorAll('.modal-close-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const backdrop = btn.closest('.modal-backdrop');
+      if (backdrop) backdrop.remove();
+    });
+  });
+}
 
 // Check for updates
 async function checkForUpdates() {
@@ -20,10 +36,11 @@ async function checkForUpdates() {
   modal.innerHTML = `
     <h3>Checking for Updates...</h3>
     <p class="update-status">Contacting GitHub...</p>
-    <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Cancel</button>
+    <button class="about-close modal-close-btn">Cancel</button>
   `;
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+  setupModalCloseButtons(modal);
 
   try {
     const response = await fetch('https://api.github.com/repos/atgreen/icl/releases/latest');
@@ -46,15 +63,17 @@ async function checkForUpdates() {
         <p class="update-note">If you installed via a package manager (apt, dnf, choco, brew), update through that instead.</p>
         <div class="update-actions">
           <a href="${release.html_url}" target="_blank" class="update-link">View Release</a>
-          <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Close</button>
+          <button class="about-close modal-close-btn">Close</button>
         </div>
       `;
+      setupModalCloseButtons(modal);
     } else {
       modal.innerHTML = `
         <h3>You're Up to Date</h3>
         <p class="update-status">ICL ${currentVersion} is the latest version.</p>
-        <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Close</button>
+        <button class="about-close modal-close-btn">Close</button>
       `;
+      setupModalCloseButtons(modal);
     }
   } catch (err) {
     modal.innerHTML = `
@@ -62,8 +81,9 @@ async function checkForUpdates() {
       <p class="update-status">Could not check for updates: ${err.message}</p>
       <p class="update-note">You can check manually at:</p>
       <a href="https://github.com/atgreen/icl/releases" target="_blank" class="update-link">github.com/atgreen/icl/releases</a>
-      <button onclick="this.closest('.modal-backdrop').remove()" class="about-close" style="margin-top:16px;">Close</button>
+      <button class="about-close modal-close-btn" style="margin-top:16px;">Close</button>
     `;
+    setupModalCloseButtons(modal);
   }
 }
 
@@ -124,11 +144,12 @@ function showAboutDialog() {
       <span class="about-sep">|</span>
       <a href="/assets/OPEN-SOURCE-NOTICES.txt" target="_blank" class="about-link">Open Source Notices</a>
     </div>
-    <button onclick="this.closest('.modal-backdrop').remove()" class="about-close">Close</button>
+    <button class="about-close modal-close-btn">Close</button>
   `;
 
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+  setupModalCloseButtons(modal);
 
   // Request Lisp info from server
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -581,9 +602,13 @@ function renderVegaLite(element, spec) {
     // Set background to transparent so theme shows through
     if (!specObj.background) specObj.background = 'transparent';
     // Use vega-embed to render the chart with theme-aware config
+    // Security: expressionFunctions disabled to prevent custom function injection
+    // Security: ast mode uses safer AST-based expression evaluation
     const embedConfig = {
       theme: currentThemeIsDark ? 'dark' : 'excel',
       actions: { source: false, compiled: false, editor: true },
+      expressionFunctions: false,  // Block custom expression functions
+      ast: true,                   // Use AST-based expression evaluation (safer)
       config: {
         axis: {
           labelColor: currentThemeIsDark ? '#e0e0e0' : '#333333',
@@ -632,7 +657,7 @@ let mermaidIdCounter = 0;
 mermaid.initialize({
   startOnLoad: false,
   theme: currentThemeIsDark ? 'dark' : 'default',
-  securityLevel: 'loose'
+  securityLevel: 'strict'  // Blocks click handlers and sanitizes SVG output
 });
 
 // Open Mermaid panel - tracks by source expression for updates
@@ -671,7 +696,7 @@ async function renderMermaid(element, definition) {
     mermaid.initialize({
       startOnLoad: false,
       theme: currentThemeIsDark ? 'dark' : 'default',
-      securityLevel: 'loose'
+      securityLevel: 'strict'  // Blocks click handlers and sanitizes SVG output
     });
     const uniqueId = 'mermaid-render-' + (++mermaidIdCounter);
     const { svg } = await mermaid.render(uniqueId, definition);
@@ -1088,7 +1113,7 @@ function handleSymbolClicked(msg) {
   }
 }
 
-// Panel rendering functions
+// Panel rendering functions (using data attributes for CSP compliance)
 function renderPackages(filter = '') {
   const el = document.getElementById('package-list');
   if (!el) return;
@@ -1097,8 +1122,7 @@ function renderPackages(filter = '') {
     .filter(p => !f || p.toLowerCase().includes(f))
     .map(p => {
       const selected = p === selectedPackage ? 'selected' : '';
-      const escaped = p.replace(/'/g, "\\'");
-      return '<div class="list-item ' + selected + '" onclick="selectPackage(\'' + escaped + '\')"><span>' + p + '</span></div>';
+      return `<div class="list-item ${selected}" data-package="${p.replace(/"/g, '&quot;')}"><span>${p}</span></div>`;
     }).join('');
 }
 
@@ -1119,9 +1143,55 @@ function renderSymbols(filter = '') {
     .map(s => {
       const [name] = s;
       const selected = (selectedSymbol && name.toUpperCase() === selectedSymbol.toUpperCase()) ? 'selected' : '';
-      return `<div class='list-item ${selected}' onclick='selectSymbol("${name.replace(/'/g, "\\'")}")'>${name}</div>`;
+      return `<div class="list-item ${selected}" data-symbol="${name.replace(/"/g, '&quot;')}">${name}</div>`;
     }).join('');
 }
+
+// Event delegation for package/symbol lists and inspect links (CSP-compliant)
+document.addEventListener('click', (e) => {
+  // Package selection
+  const pkgItem = e.target.closest('[data-package]');
+  if (pkgItem) {
+    selectPackage(pkgItem.dataset.package);
+    return;
+  }
+  // Symbol selection
+  const symItem = e.target.closest('[data-symbol]');
+  if (symItem) {
+    selectSymbol(symItem.dataset.symbol);
+    return;
+  }
+  // Inspect class
+  const inspectClassEl = e.target.closest('[data-inspect-class]');
+  if (inspectClassEl) {
+    inspectClass(inspectClassEl.dataset.inspectClass, inspectClassEl.dataset.pkg);
+    return;
+  }
+  // Inspect function
+  const inspectFnEl = e.target.closest('[data-inspect-function]');
+  if (inspectFnEl) {
+    inspectFunction(inspectFnEl.dataset.inspectFunction, inspectFnEl.dataset.pkg, inspectFnEl.dataset.fnType);
+    return;
+  }
+  // Inspect variable
+  const inspectVarEl = e.target.closest('[data-inspect-variable]');
+  if (inspectVarEl) {
+    inspectVariable(inspectVarEl.dataset.inspectVariable, inspectVarEl.dataset.pkg);
+    return;
+  }
+  // Inspector action (drill down into object)
+  const inspectActionEl = e.target.closest('[data-inspect-action]');
+  if (inspectActionEl) {
+    inspectAction(parseInt(inspectActionEl.dataset.inspectAction, 10), inspectActionEl.dataset.panelId);
+    return;
+  }
+  // Inspector back button
+  const inspectBackEl = e.target.closest('[data-inspect-back]');
+  if (inspectBackEl) {
+    inspectBack(inspectBackEl.dataset.inspectBack);
+    return;
+  }
+});
 
 // Store current symbol info for inspect links
 let currentSymbolInfo = null;
@@ -1157,7 +1227,7 @@ function renderSymbolInfo(info) {
   // Class binding
   if (info.class) {
     html += `<span class='binding-header'>[Class]</span>`;
-    html += `<span class='inspect-link' onclick='inspectClass("${name}", "${pkgStr}")'>[Inspect]</span>\n`;
+    html += `<span class='inspect-link' data-inspect-class="${name}" data-pkg="${pkgStr}">[Inspect]</span>\n`;
     if (info.class.superclasses && info.class.superclasses.length > 0) {
       html += `<strong>Superclasses:</strong> ${info.class.superclasses.join(', ')}\n`;
     }
@@ -1172,7 +1242,7 @@ function renderSymbolInfo(info) {
     const typeLabel = {function: 'Function', macro: 'Macro', generic: 'Generic Function'}[info.function.type] || 'Function';
     const fnType = info.function.type || 'function';
     html += `<span class='binding-header'>[${typeLabel}]</span>`;
-    html += `<span class='inspect-link' onclick='inspectFunction("${name}", "${pkgStr}", "${fnType}")'>[Inspect]</span>\n`;
+    html += `<span class='inspect-link' data-inspect-function="${name}" data-pkg="${pkgStr}" data-fn-type="${fnType}">[Inspect]</span>\n`;
     if (info.function.arglist) html += `<strong>Arguments:</strong> ${info.function.arglist}\n`;
     if (info.function.documentation) html += `<strong>Documentation:</strong>\n${info.function.documentation}\n`;
     html += '\n';
@@ -1182,7 +1252,7 @@ function renderSymbolInfo(info) {
   if (info.variable) {
     const varType = info.variable.constantp ? 'Constant' : 'Variable';
     html += `<span class='binding-header'>[${varType}]</span>`;
-    html += `<span class='inspect-link' onclick='inspectVariable("${name}", "${pkgStr}")'>[Inspect]</span>\n`;
+    html += `<span class='inspect-link' data-inspect-variable="${name}" data-pkg="${pkgStr}">[Inspect]</span>\n`;
     if (info.variable.value) html += `<strong>Value:</strong> ${info.variable.value}\n`;
     if (info.variable.documentation) html += `<strong>Documentation:</strong>\n${info.variable.documentation}\n`;
     html += '\n';
@@ -1227,7 +1297,7 @@ function renderInspection(msg, panelId) {
   (msg.entries || []).forEach(([label, value, action]) => {
     const escapedValue = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     if (action !== null) {
-      html += `<span class='inspector-label'>${label}: </span><span class='inspector-link' onclick='inspectAction(${action}, "${panelId}")'>${escapedValue}</span>\n`;
+      html += `<span class='inspector-label'>${label}: </span><span class='inspector-link' data-inspect-action="${action}" data-panel-id="${panelId}">${escapedValue}</span>\n`;
     } else {
       html += `<span class='inspector-label'>${label}: </span><span class='inspector-value'>${escapedValue}</span>\n`;
     }
@@ -2427,7 +2497,7 @@ class DynamicInspectorPanel {
     const contentId = 'content-' + this._panelId;
     this._element.innerHTML = `
       <div class='panel-header' id='${headerId}' style='display:none;'>
-        <button onclick='inspectBack("${this._panelId}")' style='padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--fg-primary);border-radius:3px;cursor:pointer;'>← Back</button>
+        <button data-inspect-back="${this._panelId}" style='padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--fg-primary);border-radius:3px;cursor:pointer;'>← Back</button>
       </div>
       <div class='panel-content detail-content' id='${contentId}'>
         Loading...
@@ -2720,9 +2790,12 @@ menuBtn.onclick = (e) => {
   menu.id = 'app-menu';
   menu.className = 'app-menu';
   menu.innerHTML = `
-    <div class="menu-item" onclick="checkForUpdates(); this.parentElement.remove();">Check for Updates</div>
-    <div class="menu-item" onclick="showAboutDialog(); this.parentElement.remove();">About ICL</div>
+    <div class="menu-item" data-action="check-updates">Check for Updates</div>
+    <div class="menu-item" data-action="about">About ICL</div>
   `;
+  // Setup menu item click handlers (CSP-compliant)
+  menu.querySelector('[data-action="check-updates"]').addEventListener('click', () => { menu.remove(); checkForUpdates(); });
+  menu.querySelector('[data-action="about"]').addEventListener('click', () => { menu.remove(); showAboutDialog(); });
   menu.style.top = (menuBtn.offsetTop + menuBtn.offsetHeight + 4) + 'px';
   menu.style.right = '8px';
   document.body.appendChild(menu);

@@ -302,6 +302,9 @@
   "Navigate to previous history entry in SESSION."
   (let ((hist (if session (repl-session-history session) *editor-history*))
         (idx (if session (repl-session-history-index session) *history-index*)))
+    ;; Don't initialize if history is empty
+    (when (and (null hist) (null idx))
+      (return-from history-previous nil))
     (when (null idx)
       ;; Save current buffer
       (if session
@@ -323,11 +326,12 @@
   (let ((idx (if session (repl-session-history-index session) *history-index*))
         (saved (if session (repl-session-history-saved-buffer session) *history-saved-buffer*))
         (hist (if session (repl-session-history session) *editor-history*)))
-    (when idx
+    (when (and idx (>= idx 0))  ; Safety check for valid index
       (cond
         ((zerop idx)
          ;; Restore original input
-         (buffer-set-contents buf saved)
+         (when saved  ; Only restore if we have saved content
+           (buffer-set-contents buf saved))
          (if session
              (setf (repl-session-history-index session) nil
                    (repl-session-history-saved-buffer session) nil)
@@ -336,10 +340,11 @@
          t)
         (t
          (decf idx)
-         (if session
-             (setf (repl-session-history-index session) idx)
-             (setf *history-index* idx))
-         (buffer-set-contents buf (nth idx hist))
+         (when (and (>= idx 0) (< idx (length hist)))  ; Bounds check
+           (if session
+               (setf (repl-session-history-index session) idx)
+               (setf *history-index* idx))
+           (buffer-set-contents buf (nth idx hist)))
          t)))))
 
 (defun reset-prefix-search (&optional (session *current-session*))

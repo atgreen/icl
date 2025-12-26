@@ -33,7 +33,7 @@
   <link rel='stylesheet' href='/assets/browser.css'>
   <link rel='stylesheet' href='/assets/hljs-github-dark.min.css' id='hljs-theme'>
 </head>
-<body>
+<body data-ws-token='~A' data-version='~A'>
   <div id='layout-container'></div>
 
   <!-- External library scripts -->
@@ -46,11 +46,6 @@
   <script src='/assets/vega-lite.min.js'></script>
   <script src='/assets/vega-embed.min.js'></script>
   <script src='/assets/mermaid.min.js'></script>
-
-  <!-- Configuration (injected by server) -->
-  <script>
-    const ICL_CONFIG = { wsToken: '~A', version: '~A' };
-  </script>
 
   <!-- Main application script -->
   <script src='/assets/browser.js'></script>

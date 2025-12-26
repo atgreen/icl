@@ -10,6 +10,36 @@
 (in-package #:icl)
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; HTML Sanitization for Visualizations
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defparameter *visualization-html-policy*
+  (sanitize-html:make-policy
+   :allowed-tags '("html" "head" "body" "div" "span" "p" "br" "hr"
+                   "b" "i" "em" "strong" "u" "s" "sub" "sup"
+                   "h1" "h2" "h3" "h4" "h5" "h6"
+                   "table" "thead" "tbody" "tfoot" "tr" "td" "th" "caption" "colgroup" "col"
+                   "ul" "ol" "li" "dl" "dt" "dd"
+                   "pre" "code" "blockquote"
+                   "a" "img"
+                   "style" "title" "meta")
+   :allowed-attributes '("class" "id" "style" "href" "src" "alt" "title"
+                         "width" "height" "colspan" "rowspan" "scope"
+                         "border" "cellpadding" "cellspacing" "align" "valign"
+                         "charset" "name" "content"))
+  "Security policy for HTML visualizations. Allows safe formatting but blocks scripts and event handlers.")
+
+(defun sanitize-visualization-html (html-content)
+  "Sanitize HTML content for safe display in the browser.
+   Removes scripts, event handlers, and other potentially dangerous content."
+  (handler-case
+      (sanitize-html:sanitize html-content *visualization-html-policy*)
+    (error (e)
+      (declare (ignore e))
+      ;; If sanitization fails, return a safe error message
+      "<div style='color:red;'>Error: Could not safely render HTML content</div>")))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Resource
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
@@ -22,7 +52,20 @@
   ()
   (:documentation "A connected REPL client."))
 
+(defun valid-websocket-origin-p (client)
+  "Check if the WebSocket connection has a valid origin (localhost only).
+   This prevents cross-site WebSocket hijacking attacks."
+  (let ((origin (hunchentoot:header-in :origin (hunchensocket:client-request client))))
+    (or (null origin)  ; No origin header (same-origin request)
+        (search "://127.0.0.1" origin)
+        (search "://localhost" origin)
+        (search "://[::1]" origin))))
+
 (defmethod hunchensocket:client-connected ((resource repl-resource) client)
+  ;; Validate WebSocket origin - prevent cross-site WebSocket hijacking
+  (unless (valid-websocket-origin-p client)
+    (hunchensocket:close-connection client :reason "Invalid origin")
+    (return-from hunchensocket:client-connected))
   ;; Only allow one browser connection at a time
   (let ((existing-clients (remove client (hunchensocket:clients resource))))
     (when existing-clients
@@ -531,7 +574,7 @@
               ((and parsed (eq (first parsed) :html))
                (setf (gethash "type" obj) "html-refresh")
                (setf (gethash "panelId" obj) panel-id)
-               (setf (gethash "content" obj) (second parsed)))
+               (setf (gethash "content" obj) (sanitize-visualization-html (second parsed))))
               ((and parsed (eq (first parsed) :hash-table))
                ;; Type changed to hash-table - signal panel replacement
                (setf (gethash "type" obj) "viz-type-changed")
@@ -637,7 +680,7 @@
             (cond
               ((and (listp parsed) (eq (first parsed) :html))
                (setf (gethash "vizType" obj) "html")
-               (setf (gethash "content" obj) (second parsed)))
+               (setf (gethash "content" obj) (sanitize-visualization-html (second parsed))))
               ((and (listp parsed) (eq (first parsed) :svg))
                (setf (gethash "vizType" obj) "svg")
                (setf (gethash "content" obj) (second parsed)))
@@ -711,13 +754,14 @@
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
 (defun open-html-panel (title content source-expr)
-  "Send message to browser to open an HTML visualization panel."
+  "Send message to browser to open an HTML visualization panel.
+   HTML content is sanitized to prevent XSS attacks from untrusted libraries."
   (when *repl-resource*
     (dolist (client (hunchensocket:clients *repl-resource*))
       (let ((obj (make-hash-table :test 'equal)))
         (setf (gethash "type" obj) "open-html")
         (setf (gethash "title" obj) title)
-        (setf (gethash "content" obj) content)
+        (setf (gethash "content" obj) (sanitize-visualization-html content))
         (setf (gethash "sourceExpr" obj) source-expr)
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 

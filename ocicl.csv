@@ -1,6 +1,8 @@
 add-two, ghcr.io/ocicl/whereiseveryone.command-line-args@sha256:d97e124015dd4ea18058410331856b475bffe39e63144fd1e478c7f954117e22, whereiseveryone.command-line-args-20251028-ff21547e/examples/add-two/add-two.asd
 alexandria, ghcr.io/ocicl/alexandria@sha256:e433c2e076ed3bcf8641b97b00192680db2201d305efac9293539dee88c7fbf7, alexandria-20240503-8514d8e/alexandria.asd
 anaphora, ghcr.io/ocicl/anaphora@sha256:55f1c61b7826c5451a60b4b4522e35e770504bbfa2036d8becbf21f6d654925a, anaphora-20240503-bcf0f74/anaphora.asd
+array-utils, ghcr.io/ocicl/array-utils@sha256:58ca0a1010160f3190ad853391ae6b3d669b09636005550ee1658098d4bb77ad, array-utils-20250813-b991363/array-utils.asd
+array-utils-test, ghcr.io/ocicl/array-utils@sha256:58ca0a1010160f3190ad853391ae6b3d669b09636005550ee1658098d4bb77ad, array-utils-20250813-b991363/array-utils-test.asd
 asdf-package-system, ghcr.io/ocicl/asdf-package-system@sha256:dfacc260786f4e9e2aa13a797a7b326b58e08ea5db778421a9985b9c67362df1, asdf-package-system-20240503-61776f2/asdf-package-system.asd
 atomics, ghcr.io/ocicl/atomics@sha256:ae5daa72b09318c1b07aca6203411181d8bed4382596b27f64d718968131f3a4, atomics-20250813-bf0e261/atomics.asd
 atomics-test, ghcr.io/ocicl/atomics@sha256:ae5daa72b09318c1b07aca6203411181d8bed4382596b27f64d718968131f3a4, atomics-20250813-bf0e261/atomics-test.asd
@@ -62,6 +64,7 @@ clingon.intro, ghcr.io/ocicl/clingon@sha256:5d3babf7af5b0e7bfba2bfa9d384f70810ae
 clingon.test, ghcr.io/ocicl/clingon@sha256:5d3babf7af5b0e7bfba2bfa9d384f70810ae6e538f899f0aba7e0b1308eee2eb, clingon-20251121-ef0528f/clingon.test.asd
 clog, ghcr.io/ocicl/clog@sha256:712416d27c5748262c06bfbbc1cc81002f7ef53c97dd63dfcb1487d5bf05bbee, clog-20251120-6ab1e21/clog.asd
 closer-mop, ghcr.io/ocicl/closer-mop@sha256:e99c0448dd5a5eb1e5134ffebb0cfc7f84a4c14e45c77d7566a273f04e3e0017, closer-mop-20251028-443e42e/closer-mop.asd
+clss, ghcr.io/ocicl/clss@sha256:c67676256c95969cbe4849017efe21f925d2eb01f203aed0bd385b45d5d85b7b, CLSS-20250813-d715c4d/clss.asd
 com.inuoe.jzon, ghcr.io/ocicl/com.inuoe.jzon@sha256:b0cfbc3d8fb3c09526d92575b40b13a68ad93be7edeb48fd69dcea053c5611a5, jzon-20251113-f05afbb/com.inuoe.jzon.asd
 com.inuoe.jzon-tests, ghcr.io/ocicl/com.inuoe.jzon@sha256:b0cfbc3d8fb3c09526d92575b40b13a68ad93be7edeb48fd69dcea053c5611a5, jzon-20251113-f05afbb/com.inuoe.jzon-tests.asd
 dbd-mysql, ghcr.io/ocicl/cl-dbi@sha256:831b6c4b26fcd003cd1ed4a2e42a5620128bd577ff077d4c6400a076e41bbff8, cl-dbi-20250928-be4df4f/dbd-mysql.asd
@@ -90,6 +93,7 @@ flexi-streams, ghcr.io/ocicl/flexi-streams@sha256:95005b06a8a95c82780c75ead53810
 flexi-streams-test, ghcr.io/ocicl/flexi-streams@sha256:95005b06a8a95c82780c75ead53810bcb273d07fcf5fe76b527f1856df9923f2, flexi-streams-20240503-4951d57/flexi-streams-test.asd
 float-features, ghcr.io/ocicl/float-features@sha256:64922efd92a08670cf8292ea56dfff29c577d36d8a7f7576cea0c031805c52d2, float-features-20250813-cd5dab0/float-features.asd
 float-features-tests, ghcr.io/ocicl/float-features@sha256:64922efd92a08670cf8292ea56dfff29c577d36d8a7f7576cea0c031805c52d2, float-features-20250813-cd5dab0/float-features-tests.asd
+form-fiddle, ghcr.io/ocicl/form-fiddle@sha256:22a1f26a6f0f01df06c42f69f96e624cdeac2e59c76e6815056a0d0ed2ae92c7, form-fiddle-20250813-706c4fa/form-fiddle.asd
 fset, ghcr.io/ocicl/fset@sha256:06ed3b2b8e490fa5ddf01b23af08a5d0d5febf6633b982eab0f721f4cc3c8c15, fset-20251122-19eadf0/fset.asd
 global-vars, ghcr.io/ocicl/global-vars@sha256:d197e871c9c9abc4bf31b1186f5fd28f0ca848ebe2e9dddf2d82ecee01dbdc65, global-vars-20240503-c749f32/global-vars.asd
 global-vars-test, ghcr.io/ocicl/global-vars@sha256:d197e871c9c9abc4bf31b1186f5fd28f0ca848ebe2e9dddf2d82ecee01dbdc65, global-vars-20240503-c749f32/global-vars-test.asd
@@ -137,6 +141,8 @@ lack-util-writer-stream, ghcr.io/ocicl/lack@sha256:2130f916ada220a008dff0b618ba4
 lisp-namespace, ghcr.io/ocicl/lisp-namespace@sha256:ae08006e0b267958c50160658c729c799c6e1c18d94eef83f2ce5cf6ab8bbd20, lisp-namespace-20240503-699fccb/lisp-namespace.asd
 lisp-namespace.test, ghcr.io/ocicl/lisp-namespace@sha256:ae08006e0b267958c50160658c729c799c6e1c18d94eef83f2ce5cf6ab8bbd20, lisp-namespace-20240503-699fccb/lisp-namespace.test.asd
 local-time, ghcr.io/ocicl/local-time@sha256:15dc0e56d0ff55bd2a3c597e67be1c26bd0677c230a15ad5098c5207a9df5554, local-time-20250808-c28f38e/local-time.asd
+lquery, ghcr.io/ocicl/lquery@sha256:fbe57b74d75d0888edea60b99a3ac0c1fe888d0d96d3b431a37d62881a728aea, lquery-20250813-bff2c32/lquery.asd
+lquery-test, ghcr.io/ocicl/lquery@sha256:fbe57b74d75d0888edea60b99a3ac0c1fe888d0d96d3b431a37d62881a728aea, lquery-20250813-bff2c32/lquery-test.asd
 marshal, ghcr.io/ocicl/marshal@sha256:a1e4be46c96220d69e43a1cdedd2d4cefe2a65780ee32da01440ebadc05aba30, cl-marshal-20240503-f169abd/marshal.asd
 marshal-tests, ghcr.io/ocicl/marshal@sha256:a1e4be46c96220d69e43a1cdedd2d4cefe2a65780ee32da01440ebadc05aba30, cl-marshal-20240503-f169abd/marshal-tests.asd
 md5, ghcr.io/ocicl/md5@sha256:7d8a8d7af07a2bcbca05ad839555730a0e021c697bf13cc02279669c7a9b038b, md5-2.0.5/md5.asd
@@ -156,6 +162,10 @@ parse-float, ghcr.io/ocicl/parse-float@sha256:681d769df661a44396f322e26da35bd8e5
 parse-number, ghcr.io/ocicl/parse-number@sha256:11f3f9f512871e1f96cea6b8260aa3610e34e8fd7272bbcdb210fd3c5dd8025c, parse-number-20240503-cb9e487/parse-number.asd
 pathname-utils, ghcr.io/ocicl/pathname-utils@sha256:082998dd41f934bbacdbc7695cd61d64ea115cd115f6de33d94b8393b4f44cc2, pathname-utils-20250813-d0d4525/pathname-utils.asd
 pathname-utils-test, ghcr.io/ocicl/pathname-utils@sha256:082998dd41f934bbacdbc7695cd61d64ea115cd115f6de33d94b8393b4f44cc2, pathname-utils-20250813-d0d4525/pathname-utils-test.asd
+plump, ghcr.io/ocicl/plump@sha256:1de91e37930bcaf6a3b45e992044dfdc45bcab40b984733f745eeafa2ac6dfbb, plump-20250813-5987e29/plump.asd
+plump-dom, ghcr.io/ocicl/plump@sha256:1de91e37930bcaf6a3b45e992044dfdc45bcab40b984733f745eeafa2ac6dfbb, plump-20250813-5987e29/plump-dom.asd
+plump-lexer, ghcr.io/ocicl/plump@sha256:1de91e37930bcaf6a3b45e992044dfdc45bcab40b984733f745eeafa2ac6dfbb, plump-20250813-5987e29/plump-lexer.asd
+plump-parser, ghcr.io/ocicl/plump@sha256:1de91e37930bcaf6a3b45e992044dfdc45bcab40b984733f745eeafa2ac6dfbb, plump-20250813-5987e29/plump-parser.asd
 precise-time, ghcr.io/ocicl/precise-time@sha256:2c84655bfe7b90d8be3f37e39ea3dbccd087f260430406742f1c6b8fe5e011bd, precise-time-20250813-e0bf77d/precise-time.asd
 proc-parse, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse.asd
 proc-parse-test, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse-test.asd

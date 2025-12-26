@@ -29,6 +29,8 @@
                ;; WebSocket support for browser
                :hunchensocket
                :chanl
+               ;; HTML sanitization for secure visualizations
+               :sanitize-html
                ;; ZIP extraction for embedded slynk
                :zip
                :flexi-streams
