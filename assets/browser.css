@@ -1,0 +1,62 @@
+/* ICL Browser Styles
+ * SPDX-License-Identifier: MIT
+ * Copyright (C) 2025 Anthony Green <green@moxielogic.com>
+ */
+
+/* Default theme variables (will be overridden by server-sent theme) */
+:root {
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #313244;
+  --bg-tertiary: #45475a;
+  --fg-primary: #cdd6f4;
+  --fg-secondary: #bac2de;
+  --fg-muted: #6c7086;
+  --accent: #89b4fa;
+  --accent-hover: #b4befe;
+  --border: #45475a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; overflow: hidden; }
+body { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: var(--bg-primary); color: var(--fg-primary); }
+#layout-container { height: 100vh; width: 100vw; }
+
+.panel { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-primary); }
+.panel-header { padding: 8px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.panel-header input { width: 100%; padding: 4px 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--fg-primary); border-radius: 3px; }
+.panel-header input:focus { outline: 1px solid var(--accent); }
+.panel-header button { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--fg-primary); }
+.panel-header button:hover { background: var(--accent); color: var(--bg-primary); }
+
+.panel-content { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
+.panel-content::-webkit-scrollbar { width: 8px; }
+.panel-content::-webkit-scrollbar-track { background: var(--bg-primary); }
+.panel-content::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+.panel-content::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+
+.list-item { padding: 4px 8px; cursor: pointer; color: var(--fg-primary); }
+.list-item:hover { background: var(--bg-secondary); }
+.list-item.selected { background: var(--accent); color: var(--bg-primary); }
+
+.terminal-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.terminal-container .xterm { height: 100%; width: 100%; }
+.terminal-container .xterm-screen { height: 100%; }
+.terminal-container .xterm-viewport { height: 100%; overflow-y: auto !important; scrollbar-width: thin; scrollbar-color: var(--bg-tertiary) var(--bg-primary); }
+.terminal-container .xterm-viewport::-webkit-scrollbar { width: 10px; }
+.terminal-container .xterm-viewport::-webkit-scrollbar-track { background: var(--bg-primary); }
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+
+.dv-content-container { position: relative; height: 100%; }
+.dv-content-container > .panel { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+
+.detail-content { padding: 8px; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; }
+
+.inspector-entry { padding: 2px 8px; }
+.inspector-label { color: var(--fg-muted); }
+.inspector-value { color: var(--accent); }
+.inspector-link { color: var(--accent-hover); cursor: pointer; text-decoration: underline; }
+
+.binding-header { color: var(--fg-secondary); font-weight: bold; }
+.inspect-link { color: var(--accent); cursor: pointer; margin-left: 8px; font-size: 0.9em; }
+.inspect-link:hover { text-decoration: underline; color: var(--accent-hover); }

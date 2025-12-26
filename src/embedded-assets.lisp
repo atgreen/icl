@@ -30,6 +30,8 @@
                         "xterm.css"
                         "xterm-addon-fit.min.js"
                         "viz-standalone.js"
+                        "browser.css"
+                        "browser.js"
                         "WEB-LICENSES"))
       (let ((path (merge-pathnames filename assets-dir)))
         (when (probe-file path)

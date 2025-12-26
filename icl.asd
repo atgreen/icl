@@ -63,6 +63,10 @@
                  (:file "mcp-server")
                  (:file "embedded-assets")
                  (:file "browser")
+                 (:file "browser-query")
+                 (:file "browser-websocket")
+                 (:file "browser-ui")
+                 (:file "browser-server")
                  (:file "repl")
                  (:file "main"))))
   :build-operation "program-op"
