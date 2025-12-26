@@ -86,6 +86,11 @@
 (defvar *browser-terminal-active* nil
   "T when running the REPL against a browser-based terminal (xterm.js).")
 
+(defvar *unsafe-visualizations* nil
+  "When T, disable security restrictions on visualizations (HTML, Mermaid, Vega).
+   Allows JavaScript execution in custom visualize methods.
+   Set via --unsafe-visualizations command line option.")
+
 (defvar *capture-backend-output* nil
   "When T, capture backend stdout/stderr and print through the current REPL stream.")
 

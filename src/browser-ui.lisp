@@ -33,7 +33,7 @@
   <link rel='stylesheet' href='/assets/browser.css'>
   <link rel='stylesheet' href='/assets/hljs-github-dark.min.css' id='hljs-theme'>
 </head>
-<body data-ws-token='~A' data-version='~A'>
+<body data-ws-token='~A' data-version='~A' data-unsafe-visualizations='~A'>
   <div id='layout-container'></div>
 
   <!-- External library scripts -->
@@ -50,4 +50,4 @@
   <!-- Main application script -->
   <script src='/assets/browser.js'></script>
 </body>
-</html>" *browser-token* +version+))
+</html>" *browser-token* +version+ (if *unsafe-visualizations* "true" "false")))

@@ -365,6 +365,11 @@ The browser interface also enforces:
 
 These protections ensure that loading untrusted Lisp libraries with custom `visualize` methods cannot execute arbitrary JavaScript in your browser.
 
+To disable these restrictions (for trusted code that requires JavaScript in visualizations), use:
+```bash
+icl -b --unsafe-visualizations
+```
+
 ### Configuration
 
 | Command | Description |

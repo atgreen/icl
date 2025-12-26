@@ -31,13 +31,16 @@
 
 (defun sanitize-visualization-html (html-content)
   "Sanitize HTML content for safe display in the browser.
-   Removes scripts, event handlers, and other potentially dangerous content."
-  (handler-case
-      (sanitize-html:sanitize html-content *visualization-html-policy*)
-    (error (e)
-      (declare (ignore e))
-      ;; If sanitization fails, return a safe error message
-      "<div style='color:red;'>Error: Could not safely render HTML content</div>")))
+   Removes scripts, event handlers, and other potentially dangerous content.
+   When *unsafe-visualizations* is T, returns content unchanged."
+  (if *unsafe-visualizations*
+      html-content
+      (handler-case
+          (sanitize-html:sanitize html-content *visualization-html-policy*)
+        (error (e)
+          (declare (ignore e))
+          ;; If sanitization fails, return a safe error message
+          "<div style='color:red;'>Error: Could not safely render HTML content</div>"))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Resource

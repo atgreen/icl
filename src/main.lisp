@@ -88,6 +88,14 @@
    :key :browser
    :description "Start with browser interface instead of terminal REPL"))
 
+(defun make-unsafe-visualizations-option ()
+  "Create --unsafe-visualizations option to allow JS in visualizations."
+  (clingon:make-option
+   :flag
+   :long-name "unsafe-visualizations"
+   :key :unsafe-visualizations
+   :description "Allow JavaScript in visualizations (disables security sandbox)"))
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; CLI Handler
 ;;; ─────────────────────────────────────────────────────────────────────────────
@@ -118,7 +126,8 @@
         (connect-str (clingon:getopt cmd :connect))
         (verbose (clingon:getopt cmd :verbose))
         (mcp-server (clingon:getopt cmd :mcp-server))
-        (browser-mode (clingon:getopt cmd :browser)))
+        (browser-mode (clingon:getopt cmd :browser))
+        (unsafe-viz (clingon:getopt cmd :unsafe-visualizations)))
     ;; MCP server mode - special handling, runs without config
     (when mcp-server
       (multiple-value-bind (host port)
@@ -127,6 +136,8 @@
       (uiop:quit 0))
     ;; Set verbose mode
     (setf *verbose* verbose)
+    ;; Set unsafe visualizations mode
+    (setf *unsafe-visualizations* unsafe-viz)
     ;; Load config FIRST so *default-lisp* can be set
     ;; (command line --lisp will override it below)
     (unless no-config
@@ -228,15 +239,9 @@ and an extensible command system."
                   (make-connect-option)
                   (make-verbose-option)
                   (make-mcp-server-option)
-                  (make-browser-option))
-   :handler #'handle-cli
-   :examples '(("Start REPL (auto-detects Lisp):" . "icl")
-               ("Evaluate an expression:" . "icl -e '(+ 1 2)'")
-               ("Load a file then start REPL:" . "icl -l init.lisp")
-               ("Start without config:" . "icl --no-config")
-               ("Use a specific Lisp:" . "icl --lisp ccl")
-               ("Connect to existing Slynk:" . "icl --connect localhost:4005")
-               ("Start with browser interface:" . "icl -b"))))
+                  (make-browser-option)
+                  (make-unsafe-visualizations-option))
+   :handler #'handle-cli))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Entry Point

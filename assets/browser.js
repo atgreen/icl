@@ -8,7 +8,8 @@
 // Read configuration from body data attributes (no inline scripts needed)
 const ICL_CONFIG = {
   wsToken: document.body.dataset.wsToken,
-  version: document.body.dataset.version
+  version: document.body.dataset.version,
+  unsafeVisualizations: document.body.dataset.unsafeVisualizations === 'true'
 };
 
 // Helper to setup modal close buttons (CSP-compliant - no inline handlers)
@@ -604,11 +605,12 @@ function renderVegaLite(element, spec) {
     // Use vega-embed to render the chart with theme-aware config
     // Security: expressionFunctions disabled to prevent custom function injection
     // Security: ast mode uses safer AST-based expression evaluation
+    // These can be overridden with --unsafe-visualizations
     const embedConfig = {
       theme: currentThemeIsDark ? 'dark' : 'excel',
       actions: { source: false, compiled: false, editor: true },
-      expressionFunctions: false,  // Block custom expression functions
-      ast: true,                   // Use AST-based expression evaluation (safer)
+      expressionFunctions: ICL_CONFIG.unsafeVisualizations ? undefined : false,
+      ast: ICL_CONFIG.unsafeVisualizations ? false : true,
       config: {
         axis: {
           labelColor: currentThemeIsDark ? '#e0e0e0' : '#333333',
@@ -657,7 +659,7 @@ let mermaidIdCounter = 0;
 mermaid.initialize({
   startOnLoad: false,
   theme: currentThemeIsDark ? 'dark' : 'default',
-  securityLevel: 'strict'  // Blocks click handlers and sanitizes SVG output
+  securityLevel: ICL_CONFIG.unsafeVisualizations ? 'loose' : 'strict'
 });
 
 // Open Mermaid panel - tracks by source expression for updates
@@ -696,7 +698,7 @@ async function renderMermaid(element, definition) {
     mermaid.initialize({
       startOnLoad: false,
       theme: currentThemeIsDark ? 'dark' : 'default',
-      securityLevel: 'strict'  // Blocks click handlers and sanitizes SVG output
+      securityLevel: ICL_CONFIG.unsafeVisualizations ? 'loose' : 'strict'
     });
     const uniqueId = 'mermaid-render-' + (++mermaidIdCounter);
     const { svg } = await mermaid.render(uniqueId, definition);
