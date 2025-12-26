@@ -1445,13 +1445,22 @@ Examples:
                                  (#\& (write-string "&amp;" s))
                                  (otherwise (write-char c s))))))
                   (html (format nil "<html><head>
-<link rel='stylesheet' href='/assets/hljs-github-dark.min.css'>
+<link rel='stylesheet' href='/assets/hljs-github.min.css' media='(prefers-color-scheme: light)'>
+<link rel='stylesheet' href='/assets/hljs-github-dark.min.css' media='(prefers-color-scheme: dark)'>
 <script src='/assets/highlight.min.js'></script>
 <style>
-body { background: #0d1117; padding: 1em; margin: 0; }
-h3 { color: #58a6ff; margin-top: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+body { padding: 1em; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+h3 { margin-top: 0; }
 pre { margin: 0; }
 code { font-size: 13px; line-height: 1.5; }
+@media (prefers-color-scheme: dark) {
+  body { background: #0d1117; color: #c9d1d9; }
+  h3 { color: #58a6ff; }
+}
+@media (prefers-color-scheme: light) {
+  body { background: #ffffff; color: #24292f; }
+  h3 { color: #0969da; }
+}
 </style>
 </head><body>
 <h3>~A</h3>
