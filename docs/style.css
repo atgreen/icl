@@ -121,6 +121,51 @@ a:hover {
   pointer-events: none;
 }
 
+/* Floating Parentheses */
+.floating-parens {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.paren {
+  position: absolute;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  opacity: 0.08;
+  animation: float 20s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) translateZ(0) rotateX(0deg) rotateY(0deg);
+  }
+  25% {
+    transform: translateY(-30px) translateZ(20px) rotateX(10deg) rotateY(5deg);
+  }
+  50% {
+    transform: translateY(-15px) translateZ(-10px) rotateX(-5deg) rotateY(-10deg);
+  }
+  75% {
+    transform: translateY(-40px) translateZ(15px) rotateX(5deg) rotateY(8deg);
+  }
+}
+
+.paren-1 { font-size: 12rem; top: 5%; left: 5%; animation-duration: 25s; animation-delay: 0s; }
+.paren-2 { font-size: 8rem; top: 15%; right: 10%; animation-duration: 22s; animation-delay: -3s; opacity: 0.06; }
+.paren-3 { font-size: 15rem; top: 40%; left: -3%; animation-duration: 28s; animation-delay: -7s; opacity: 0.05; }
+.paren-4 { font-size: 6rem; top: 25%; right: 25%; animation-duration: 20s; animation-delay: -2s; opacity: 0.07; }
+.paren-5 { font-size: 10rem; bottom: 20%; left: 15%; animation-duration: 24s; animation-delay: -5s; opacity: 0.06; }
+.paren-6 { font-size: 18rem; bottom: 5%; right: -5%; animation-duration: 30s; animation-delay: -10s; opacity: 0.04; }
+.paren-7 { font-size: 5rem; top: 60%; left: 30%; animation-duration: 18s; animation-delay: -1s; opacity: 0.08; }
+.paren-8 { font-size: 9rem; top: 10%; left: 40%; animation-duration: 26s; animation-delay: -8s; opacity: 0.05; }
+.paren-9 { font-size: 7rem; bottom: 30%; right: 5%; animation-duration: 21s; animation-delay: -4s; opacity: 0.07; }
+.paren-10 { font-size: 14rem; top: 50%; right: -2%; animation-duration: 27s; animation-delay: -6s; opacity: 0.04; }
+.paren-11 { font-size: 4rem; top: 35%; left: 60%; animation-duration: 19s; animation-delay: -9s; opacity: 0.09; }
+.paren-12 { font-size: 11rem; bottom: 10%; left: 40%; animation-duration: 23s; animation-delay: -12s; opacity: 0.05; }
+
 .hero-content {
   position: relative;
   text-align: center;
@@ -144,6 +189,13 @@ a:hover {
   color: var(--text-secondary);
   margin-top: 1.5rem;
   line-height: 1.6;
+}
+
+.hero-lisps {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
 }
 
 .hero-badges {
