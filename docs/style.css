@@ -166,23 +166,23 @@ a:hover {
 /* Hero Terminal Preview */
 .hero-terminal {
   margin-top: 3rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: #1e1e2e;
+  border: 1px solid #444;
   border-radius: var(--radius);
   overflow: hidden;
   text-align: left;
   max-width: 550px;
   margin-left: auto;
   margin-right: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05);
 }
 
 .terminal-header {
-  background: var(--bg-elevated);
+  background: #2a2a3a;
   padding: 0.75rem 1rem;
   display: flex;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #444;
 }
 
 .terminal-dot {
@@ -201,7 +201,8 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.6;
-  color: var(--text-primary);
+  color: #e0e0e0;
+  background: #1e1e2e;
   overflow-x: auto;
 }
 
