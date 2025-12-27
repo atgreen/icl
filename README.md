@@ -33,6 +33,14 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experi
 
 Profile any expression with `,flame` and explore the results in an interactive [Speedscope](https://www.speedscope.app/) visualization. Switch between Time Order, Left Heavy, and Sandwich views to identify performance bottlenecks.
 
+## Emacs Integration
+
+<p align="center">
+  <img src="assets/emacs-demo.gif" alt="ICL Emacs Demo">
+</p>
+
+*Synchronized browser visualization with SLY/SLIME - updates on C-x C-e, C-c C-c, and REPL input*
+
 ## Features
 
 - **Syntax highlighting** - Colorized input with distinct colors for keywords, strings, comments, numbers, and symbols
