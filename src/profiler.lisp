@@ -67,45 +67,33 @@ MAX-SAMPLES is the maximum number of samples to collect (default 1000000)."
                           (error (car error-box)))
                         ;; Build call graph (required before map-traces)
                         (sb-sprof:report :stream (make-broadcast-stream))
-                        ;; Generate folded stacks like cl-flamegraph does
-                        ;; Build a tree like cl-flamegraph and count at each node
+                        ;; Generate folded stacks (one line per sample in order)
                         ;; Only include traces from our profiler thread, not Slynk threads
-                        (let ((root (make-hash-table :test #'equal))
+                        (let ((samples nil)
                               (trace-count 0))
                           (sb-sprof:map-traces
                            (lambda (thread trace)
                              (when (eq thread profiler-thread)
                                (incf trace-count)
-                               (let ((stack nil)
-                                     (current root))
+                               (let ((stack nil))
                                  (sb-sprof::map-trace-pc-locs
                                   (lambda (info pc-or-offset)
                                     (declare (ignore pc-or-offset))
                                     (when info
                                       (push (get-name info) stack)))
                                   trace)
-                                 ;; Reverse stack: map-trace-pc-locs walks inner->outer,
-                                 ;; flame graphs need outer->inner (entry point at root)
-                                 (dolist (name (nreverse stack))
-                                   (let ((child (gethash name current)))
-                                     (unless child
-                                       (setf child (cons 0 (make-hash-table :test #'equal)))
-                                       (setf (gethash name current) child))
-                                     (incf (car child))
-                                     (setf current (cdr child))))))))
+                                 ;; Reverse stack: map-trace-pc-locs walks outer->inner,
+                                 ;; but push reverses it, so nreverse restores correct order
+                                 (let ((stack (nreverse stack)))
+                                   (when stack
+                                     (push stack samples))))))
                            sb-sprof::*samples*)
-                          ;; Convert tree to folded stacks
+                          ;; Convert samples to folded stacks
+                          ;; map-traces iterates newest-to-oldest, push builds oldest-first
                           (with-output-to-string (s)
                             (format s \";; ~~D traces processed~~%\" trace-count)
-                            (labels ((walk (node path)
-                                       (maphash (lambda (name child)
-                                                  (let ((new-path (append path (list name)))
-                                                        (count (car child))
-                                                        (children (cdr child)))
-                                                    (format s \"~~{~~A~~^;~~} ~~D~~%\" new-path count)
-                                                    (walk children new-path)))
-                                                node)))
-                              (walk root nil)))))))"
+                            (dolist (stack samples)
+                              (format s \"~~{~~A~~^;~~} 1~~%\" stack)))))))))"
                    mode sample-interval max-samples form-string))
          (results (backend-eval-internal profile-code)))
     (if results
@@ -202,14 +190,15 @@ Returns (hash-table frames-vector)."
           (incf index))))
     (values frame-table (coerce (nreverse frames) 'vector))))
 
-(defun stacks-to-speedscope (stacks &optional (profile-name "Lisp Profile"))
+(defun stacks-to-speedscope (stacks &key (profile-name "Lisp Profile") (unit "none") (weight-scale 1.0d0))
   "Convert parsed stack data to Speedscope JSON string.
 STACKS is a list of (stack-list . count) pairs."
-  (let ((total-samples 0))
-    ;; Calculate total samples
-    (dolist (s stacks) (incf total-samples (cdr s)))
+  (let ((total-weight 0.0d0)
+        (scale (coerce weight-scale 'double-float)))
+    ;; Calculate total weight
+    (dolist (s stacks) (incf total-weight (* (cdr s) scale)))
 
-    (if (zerop total-samples)
+    (if (zerop total-weight)
         ;; Empty profile
         (com.inuoe.jzon:stringify
          (alexandria:plist-hash-table
@@ -230,7 +219,7 @@ STACKS is a list of (stack-list . count) pairs."
                 ;; Convert stack to frame indices
                 (let ((indices (mapcar (lambda (f) (gethash f frame-table)) stack)))
                   (push (coerce indices 'vector) samples)
-                  (push count weights))))
+                  (push (* count scale) weights))))
             ;; Build frames array
             (let ((frames-array
                     (map 'vector
@@ -250,18 +239,21 @@ STACKS is a list of (stack-list . count) pairs."
                                   (alexandria:plist-hash-table
                                    (list "type" "sampled"
                                          "name" profile-name
-                                         "unit" "samples"
+                                         "unit" unit
                                          "startValue" 0
-                                         "endValue" total-samples
+                                         "endValue" total-weight
                                          "samples" (coerce (nreverse samples) 'vector)
                                          "weights" (coerce (nreverse weights) 'vector))
                                    :test 'equal))
                       "name" profile-name)
                 :test 'equal))))))))
 
-(defun folded-to-speedscope (folded-string &optional (profile-name "Lisp Profile"))
+(defun folded-to-speedscope (folded-string &key (profile-name "Lisp Profile") (unit "none") (weight-scale 1.0d0))
   "Convert folded stack format to Speedscope JSON string."
-  (stacks-to-speedscope (parse-folded-stacks folded-string) profile-name))
+  (stacks-to-speedscope (parse-folded-stacks folded-string)
+                        :profile-name profile-name
+                        :unit unit
+                        :weight-scale weight-scale))
 
 ;;; Profile storage and retrieval
 
@@ -291,12 +283,14 @@ STACKS is a list of (stack-list . count) pairs."
 
 ;;; High-level profiling interface
 
-(defun profile-and-store (form-string &key (mode :cpu) (name "Lisp Profile"))
+(defun profile-and-store (form-string &key (mode :cpu) (name "Lisp Profile") (sample-interval 0.001))
   "Profile FORM-STRING in the backend, convert to Speedscope format, store and return profile ID.
 Returns (values profile-id has-samples-p)."
-  (let* ((folded (backend-profile-form form-string :mode mode))
+  (let* ((folded (backend-profile-form form-string :mode mode :sample-interval sample-interval))
          (stacks (parse-folded-stacks folded))
          (has-samples (profile-has-samples-p stacks))
-         (json (stacks-to-speedscope stacks name))
+         (unit (if (eq mode :time) "seconds" "none"))
+         (weight-scale (if (eq mode :time) sample-interval 1.0d0))
+         (json (stacks-to-speedscope stacks :profile-name name :unit unit :weight-scale weight-scale))
          (id (store-profile json)))
     (values id has-samples)))
