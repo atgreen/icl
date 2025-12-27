@@ -15,10 +15,11 @@
 
 ;;; Profiling functions - runs in backend via Slynk
 
-(defun backend-profile-form (form-string &key (mode :cpu) (sample-interval 0.001))
+(defun backend-profile-form (form-string &key (mode :cpu) (sample-interval 0.001) (max-samples 1000000))
   "Profile FORM-STRING execution in the backend and return folded stack string.
 MODE can be :cpu (default), :alloc, or :time.
-SAMPLE-INTERVAL is the sampling interval in seconds (default 0.001)."
+SAMPLE-INTERVAL is the sampling interval in seconds (default 0.001).
+MAX-SAMPLES is the maximum number of samples to collect (default 1000000)."
   (unless *slynk-connected-p*
     (error "Not connected to backend"))
   ;; First, ensure sb-sprof is loaded in the backend
@@ -52,6 +53,7 @@ SAMPLE-INTERVAL is the sampling interval in seconds (default 0.001)."
                                              (let ((result nil))
                                                (sb-sprof:with-profiling (:mode ~S
                                                                          :sample-interval ~A
+                                                                         :max-samples ~A
                                                                          :report nil)
                                                  (setf result (multiple-value-list ~A)))
                                                (setf (car result-box) result))
@@ -97,7 +99,7 @@ SAMPLE-INTERVAL is the sampling interval in seconds (default 0.001)."
                                                     (walk children new-path)))
                                                 node)))
                               (walk root nil)))))))"
-                   mode sample-interval form-string))
+                   mode sample-interval max-samples form-string))
          (results (backend-eval-internal profile-code)))
     (if results
         (first results)
