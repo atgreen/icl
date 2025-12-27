@@ -1024,6 +1024,7 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                   (browser-log "send-inspection: first entry=~S" (first parsed)))
                 (let ((car-action (find-inspector-entry-action parsed "car"))
                       (cdr-action (find-inspector-entry-action parsed "cdr")))
+                  (browser-log "send-inspection: car-action=~S cdr-action=~S" car-action cdr-action)
                   (browser-log "send-inspection: sending ws-send inspection message (new)")
                   (ws-send client "inspection"
                            :title (getf data :title)

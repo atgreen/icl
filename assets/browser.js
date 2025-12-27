@@ -1391,8 +1391,8 @@ function renderInspection(msg, panelId) {
     state.carAction = carAction;
     state.cdrAction = cdrAction;
 
-    if (navCar) navCar.disabled = (carAction === null || carAction === undefined);
-    if (navCdr) navCdr.disabled = (cdrAction === null || cdrAction === undefined);
+    if (navCar) navCar.disabled = (typeof carAction !== 'number');
+    if (navCdr) navCdr.disabled = (typeof cdrAction !== 'number');
   }
 
   // Store root entries for tree expansion
