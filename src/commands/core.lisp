@@ -1102,21 +1102,17 @@ Example: ,profile-reset"
 ;;; Flame Graph Profiling (Speedscope)
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(define-command (flame flamegraph fg) (form-string)
-  "Profile a form and display interactive flame graph in browser.
-Opens Speedscope viewer with CPU profiling data.
-When browser mode is active, opens in a Dockview panel.
-Otherwise opens in a new browser tab.
-Example: ,flame (dotimes (i 100000) (sqrt i))
-Example: ,flamegraph (my-expensive-function)"
+(defun run-flame-profiler (form-string mode mode-description)
+  "Run flame graph profiler with MODE and display results.
+MODE-DESCRIPTION is a human-readable description like \"CPU\" or \"wall-clock\"."
   (handler-case
       (progn
         ;; Ensure browser server is running
         (unless *browser-acceptor*
           (format t "~&Starting browser server...~%")
           (start-browser :open-browser nil))
-        (format t "~&Profiling...~%")
-        (multiple-value-bind (profile-id has-samples) (profile-and-store form-string :name form-string)
+        (format t "~&Profiling (~A)...~%" mode-description)
+        (multiple-value-bind (profile-id has-samples) (profile-and-store form-string :mode mode :name form-string)
           (if has-samples
               ;; Check if browser has connected clients
               (if (and *repl-resource*
@@ -1134,6 +1130,26 @@ Example: ,flamegraph (my-expensive-function)"
               (format t "~&No profiling samples collected. The code may have executed too quickly.~%Try profiling longer-running code or increasing iterations.~%"))))
     (error (e)
       (format *error-output* "~&Error profiling: ~A~%" e))))
+
+(define-command (flame flamegraph fg) (form-string)
+  "Profile a form using CPU sampling and display interactive flame graph.
+Samples when the CPU is active. Best for compute-bound code.
+For I/O-bound code (network, disk), use ,flame-time instead.
+Example: ,flame (dotimes (i 100000) (sqrt i))"
+  (run-flame-profiler form-string :cpu "CPU"))
+
+(define-command (flame-time ftime ft) (form-string)
+  "Profile a form using wall-clock sampling and display interactive flame graph.
+Samples based on elapsed time, including I/O wait. Best for I/O-bound code.
+Example: ,flame-time (do-libyear)
+Example: ,ftime (dex:fetch \"https://example.com\")"
+  (run-flame-profiler form-string :time "wall-clock"))
+
+(define-command (flame-alloc falloc fa) (form-string)
+  "Profile a form by sampling on memory allocation and display flame graph.
+Samples when memory is allocated. Best for finding allocation hotspots.
+Example: ,flame-alloc (make-list 1000000)"
+  (run-flame-profiler form-string :alloc "allocation"))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Data Visualization
