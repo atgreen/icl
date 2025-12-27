@@ -500,8 +500,16 @@ Use `configure-lisp` to customize how ICL invokes a Lisp implementation:
 | `Tab` | Complete symbol or show completion menu |
 | `Ctrl+A` / `Home` | Move to beginning of line |
 | `Ctrl+E` / `End` | Move to end of line |
+| `Ctrl+F` | Forward character |
+| `Ctrl+B` | Backward character |
+| `Ctrl+N` | Next line (in multi-line input) |
+| `Ctrl+P` | Previous line (in multi-line input) |
 | `Ctrl+K` | Kill to end of line |
+| `Ctrl+O` | Open line (insert newline, cursor stays) |
+| `Ctrl+T` | Transpose characters |
 | `Ctrl+U` | Clear entire line |
+| `Alt+D` | Kill word forward |
+| `Alt+Backspace` | Kill word backward |
 | `Ctrl+L` | Clear screen |
 | `Ctrl+D` | Delete character at cursor, or EOF if line empty (Emacs-style) |
 | `Ctrl+C` | Cancel current input |

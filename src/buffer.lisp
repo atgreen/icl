@@ -309,3 +309,99 @@
         (make-array 1 :initial-element "" :adjustable t :fill-pointer 1))
   (setf (edit-buffer-row buf) 0
         (edit-buffer-col buf) 0))
+
+(defun buffer-transpose-chars (buf)
+  "Transpose character before cursor with character at cursor.
+   If at end of line, transpose the two characters before cursor.
+   Returns T if transposed."
+  (let* ((line (buffer-current-line buf))
+         (col (edit-buffer-col buf))
+         (len (length line)))
+    (cond
+      ;; At end of line with at least 2 chars - transpose last two
+      ((and (= col len) (>= len 2))
+       (let ((new-line (concatenate 'string
+                                    (subseq line 0 (- len 2))
+                                    (string (char line (1- len)))
+                                    (string (char line (- len 2))))))
+         (setf (buffer-current-line buf) new-line))
+       t)
+      ;; In middle of line with char before cursor
+      ((and (plusp col) (< col len))
+       (let ((new-line (concatenate 'string
+                                    (subseq line 0 (1- col))
+                                    (string (char line col))
+                                    (string (char line (1- col)))
+                                    (subseq line (1+ col)))))
+         (setf (buffer-current-line buf) new-line)
+         (incf (edit-buffer-col buf)))
+       t)
+      (t nil))))
+
+(defun buffer-open-line (buf)
+  "Insert newline after cursor, keeping cursor in place (Ctrl+O)."
+  (let* ((line (buffer-current-line buf))
+         (col (edit-buffer-col buf))
+         (before (subseq line 0 col))
+         (after (subseq line col))
+         (row (edit-buffer-row buf))
+         (lines (edit-buffer-lines buf)))
+    ;; Update current line with text before cursor
+    (setf (buffer-current-line buf) before)
+    ;; Insert new line with text after cursor
+    (vector-push-extend "" lines)
+    ;; Shift lines down
+    (loop for i from (1- (length lines)) downto (+ row 2)
+          do (setf (aref lines i) (aref lines (1- i))))
+    ;; Insert the new line
+    (setf (aref lines (1+ row)) after)
+    ;; Cursor stays in place
+    t))
+
+(defun word-char-p (char)
+  "Return T if CHAR is a word constituent."
+  (or (alphanumericp char)
+      (char= char #\-)
+      (char= char #\_)
+      (char= char #\*)
+      (char= char #\+)))
+
+(defun buffer-kill-word-forward (buf)
+  "Delete from cursor to end of current word. Returns T if deleted."
+  (let* ((line (buffer-current-line buf))
+         (col (edit-buffer-col buf))
+         (len (length line)))
+    (when (< col len)
+      ;; Skip non-word chars first
+      (let ((end col))
+        (loop while (and (< end len) (not (word-char-p (char line end))))
+              do (incf end))
+        ;; Then skip word chars
+        (loop while (and (< end len) (word-char-p (char line end)))
+              do (incf end))
+        (when (> end col)
+          (setf (buffer-current-line buf)
+                (concatenate 'string
+                             (subseq line 0 col)
+                             (subseq line end)))
+          t)))))
+
+(defun buffer-kill-word-backward (buf)
+  "Delete from cursor back to start of previous word. Returns T if deleted."
+  (let* ((line (buffer-current-line buf))
+         (col (edit-buffer-col buf)))
+    (when (plusp col)
+      ;; Skip non-word chars first (going backward)
+      (let ((start col))
+        (loop while (and (plusp start) (not (word-char-p (char line (1- start)))))
+              do (decf start))
+        ;; Then skip word chars (going backward)
+        (loop while (and (plusp start) (word-char-p (char line (1- start))))
+              do (decf start))
+        (when (< start col)
+          (setf (buffer-current-line buf)
+                (concatenate 'string
+                             (subseq line 0 start)
+                             (subseq line col)))
+          (setf (edit-buffer-col buf) start)
+          t)))))

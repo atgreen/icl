@@ -383,6 +383,10 @@
       ((char= c (code-char 5)) :end)       ; Ctrl-E
       ((char= c (code-char 6)) :right)     ; Ctrl-F (forward)
       ((char= c (code-char 11)) :kill-line) ; Ctrl-K
+      ((char= c (code-char 14)) :ctrl-n)   ; Ctrl-N (next line)
+      ((char= c (code-char 15)) :open-line) ; Ctrl-O (open line)
+      ((char= c (code-char 16)) :ctrl-p)   ; Ctrl-P (previous line)
+      ((char= c (code-char 20)) :transpose) ; Ctrl-T (transpose chars)
       ((char= c (code-char 21)) :clear-line) ; Ctrl-U
       ((char= c (code-char 12)) :clear-screen) ; Ctrl-L
       ((char= c (code-char 3)) :interrupt) ; Ctrl-C
