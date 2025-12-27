@@ -64,11 +64,13 @@
                   #:setup-eval-generation-hook
                   #:visualize)))
      ;; Ensure symbols are exported even if package already existed
-     (cl:export '(icl-runtime::usb8-array-to-base64-string
-                  icl-runtime::*eval-generation*
-                  icl-runtime::setup-eval-generation-hook
-                  icl-runtime::visualize)
-                :icl-runtime)
+     ;; Use intern to get symbols in the inferior Lisp's context
+     (cl:let ((pkg (cl:find-package :icl-runtime)))
+       (cl:export (cl:list (cl:intern \"USB8-ARRAY-TO-BASE64-STRING\" pkg)
+                           (cl:intern \"*EVAL-GENERATION*\" pkg)
+                           (cl:intern \"SETUP-EVAL-GENERATION-HOOK\" pkg)
+                           (cl:intern \"VISUALIZE\" pkg))
+                  pkg))
      t)"
   "Phase 1: Create the ICL runtime package and ensure exports.")
 
@@ -76,10 +78,11 @@
 ;; Using LOAD with a string stream ensures proper top-level processing
 (defvar *icl-runtime-phase2*
   "(in-package :icl-runtime)
-   ;; Base64 encoding
-   (defparameter *base64-chars*
+   ;; Base64 encoding (only define if not already present)
+   (defvar *base64-chars*
      \"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\")
-   (defun usb8-array-to-base64-string (bytes)
+   (unless (fboundp 'usb8-array-to-base64-string)
+     (defun usb8-array-to-base64-string (bytes)
      (let* ((len (length bytes))
             (pad (mod (- 3 (mod len 3)) 3))
             (out (make-array (* 4 (ceiling (+ len pad) 3))
@@ -103,37 +106,40 @@
          (setf (char out (- (length out) 1)) #\\=))
        (when (> pad 1)
          (setf (char out (- (length out) 2)) #\\=))
-       out))
+       out)))
    ;; Eval generation tracking - only for real REPL activity
    (defvar *eval-generation* 0)
    (defvar *eval-hook-installed* nil)
    (defvar *original-mrepl-eval* nil)
    (defvar *original-listener-eval* nil)
-   (defun setup-eval-generation-hook ()
-     (unless *eval-hook-installed*
-       ;; SLY uses slynk-mrepl::mrepl-eval for REPL evaluations
-       (when (find-package :slynk-mrepl)
-         (let ((fn-symbol (find-symbol \"MREPL-EVAL\" :slynk-mrepl)))
-           (when (and fn-symbol (fboundp fn-symbol))
-             (setf *original-mrepl-eval* (fdefinition fn-symbol))
-             (setf (fdefinition fn-symbol)
-                   (lambda (repl string)
-                     (prog1 (funcall *original-mrepl-eval* repl string)
-                       (incf *eval-generation*)))))))
-       ;; SLIME uses swank::listener-eval for REPL evaluations
-       (when (find-package :swank)
-         (let ((fn-symbol (find-symbol \"LISTENER-EVAL\" :swank)))
-           (when (and fn-symbol (fboundp fn-symbol))
-             (setf *original-listener-eval* (fdefinition fn-symbol))
-             (setf (fdefinition fn-symbol)
-                   (lambda (string)
-                     (prog1 (funcall *original-listener-eval* string)
-                       (incf *eval-generation*)))))))
-       (setf *eval-hook-installed* t))
-     t)
-   ;; Custom visualization generic function
-   (defgeneric visualize (object)
-     (:documentation \"Return a visualization specification for OBJECT.
+   ;; Only define if not already defined (avoids redefinition warnings on reconnect)
+   (unless (fboundp 'setup-eval-generation-hook)
+     (defun setup-eval-generation-hook ()
+       (unless *eval-hook-installed*
+         ;; SLY uses slynk-mrepl::mrepl-eval for REPL evaluations
+         (when (find-package :slynk-mrepl)
+           (let ((fn-symbol (find-symbol \"MREPL-EVAL\" :slynk-mrepl)))
+             (when (and fn-symbol (fboundp fn-symbol))
+               (setf *original-mrepl-eval* (fdefinition fn-symbol))
+               (setf (fdefinition fn-symbol)
+                     (lambda (repl string)
+                       (prog1 (funcall *original-mrepl-eval* repl string)
+                         (incf *eval-generation*)))))))
+         ;; SLIME uses swank::listener-eval for REPL evaluations
+         (when (find-package :swank)
+           (let ((fn-symbol (find-symbol \"LISTENER-EVAL\" :swank)))
+             (when (and fn-symbol (fboundp fn-symbol))
+               (setf *original-listener-eval* (fdefinition fn-symbol))
+               (setf (fdefinition fn-symbol)
+                     (lambda (string)
+                       (prog1 (funcall *original-listener-eval* string)
+                         (incf *eval-generation*)))))))
+         (setf *eval-hook-installed* t))
+       t))
+   ;; Custom visualization generic function (only define if not exists)
+   (unless (fboundp 'visualize)
+     (defgeneric visualize (object)
+       (:documentation \"Return a visualization specification for OBJECT.
 Returns a list where the first element is a keyword indicating the type:
   (:html string) - Render HTML in sandboxed iframe
   (:svg string) - Render SVG graphics
@@ -142,10 +148,10 @@ Returns a list where the first element is a keyword indicating the type:
   (:mermaid definition-string) - Render Mermaid diagram
   (:image-base64 mime-type base64-string) - Display image from base64
 Return NIL to use default ICL visualization.\"))
-   (defmethod visualize (object)
-     \"Default method returns NIL to use built-in visualization.\"
-     (declare (ignore object))
-     nil)"
+     (defmethod visualize (object)
+       \"Default method returns NIL to use built-in visualization.\"
+       (declare (ignore object))
+       nil))"
   "Phase 2: Define ICL runtime functions.")
 
 (defun inject-icl-runtime ()
