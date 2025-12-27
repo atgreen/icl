@@ -152,9 +152,9 @@
   ;; - data: needed for embedded images
   ;; - api.github.com needed for "Check for Updates" feature
   (setf (hunchentoot:header-out :content-security-policy)
-        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com; frame-ancestors 'none';")
-  ;; Prevent clickjacking
-  (setf (hunchentoot:header-out :x-frame-options) "DENY")
+        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com; frame-ancestors 'self';")
+  ;; Allow same-origin framing (needed for flame graph panel)
+  (setf (hunchentoot:header-out :x-frame-options) "SAMEORIGIN")
   ;; Prevent MIME type sniffing
   (setf (hunchentoot:header-out :x-content-type-options) "nosniff")
   ;; Referrer policy - don't leak URLs
