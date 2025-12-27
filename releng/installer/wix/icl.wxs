@@ -84,10 +84,10 @@
     </ComponentGroup>
     <ComponentGroup Id="EmacsComponents" Directory="IclElDir">
       <Component Id="IclElFile" Guid="E1F2A3B4-C5D6-7890-ABCD-1234567890AB">
-        <File Id="icl_el" Source="$(SourceDir)\icl.el" KeyPath="yes" />
+        <File Id="icl_el" Source="$(SourceDir)\emacs\icl.el" KeyPath="yes" />
       </Component>
       <Component Id="IclAutoloadsFile" Guid="F2A3B4C5-D6E7-8901-BCDE-2345678901BC">
-        <File Id="icl_autoloads_el" Source="$(SourceDir)\icl-autoloads.el" />
+        <File Id="icl_autoloads_el" Source="$(SourceDir)\emacs\icl-autoloads.el" />
       </Component>
     </ComponentGroup>
   </Fragment>

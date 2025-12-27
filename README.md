@@ -135,7 +135,7 @@ syncs visualizations with evals.
 
 Minimal setup (adjust the path for your install):
 ```elisp
-(add-to-list 'load-path "/path/to/icl")
+(add-to-list 'load-path "/path/to/icl/emacs")
 (require 'icl)
 ```
 

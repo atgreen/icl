@@ -24,8 +24,8 @@ override_dh_auto_install:
 	install -m 0644 LICENSE debian/icl/usr/share/doc/icl/
 	install -m 0644 assets/OPEN-SOURCE-NOTICES.txt debian/icl/usr/share/doc/icl/
 	# Emacs integration
-	install -m 0644 icl.el debian/icl/usr/share/emacs/site-lisp/icl/
-	install -m 0644 icl-autoloads.el debian/icl/usr/share/emacs/site-lisp/icl/
+	install -m 0644 emacs/icl.el debian/icl/usr/share/emacs/site-lisp/icl/
+	install -m 0644 emacs/icl-autoloads.el debian/icl/usr/share/emacs/site-lisp/icl/
 
 override_dh_auto_test:
 	# Skip tests - fiveam is not vendored in the source tarball

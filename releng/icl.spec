@@ -51,8 +51,8 @@ cp 3rd-party/asdf/asdf.lisp %{buildroot}%{_datadir}/icl/asdf/
 
 # Install Emacs integration
 mkdir -p %{buildroot}%{_datadir}/emacs/site-lisp/icl
-install -m 0644 icl.el %{buildroot}%{_datadir}/emacs/site-lisp/icl/
-install -m 0644 icl-autoloads.el %{buildroot}%{_datadir}/emacs/site-lisp/icl/
+install -m 0644 emacs/icl.el %{buildroot}%{_datadir}/emacs/site-lisp/icl/
+install -m 0644 emacs/icl-autoloads.el %{buildroot}%{_datadir}/emacs/site-lisp/icl/
 
 # Note: Slynk and browser assets are now embedded in the binary
 

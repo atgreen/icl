@@ -83,8 +83,8 @@ Section "ICL Core" SEC_CORE
 
   ; Install Emacs integration
   SetOutPath "$INSTDIR\share\emacs\site-lisp\icl"
-  File "..\..\..\icl.el"
-  File "..\..\..\icl-autoloads.el"
+  File "..\..\..\emacs\icl.el"
+  File "..\..\..\emacs\icl-autoloads.el"
   SetOutPath "$INSTDIR"
 
   ; Install bundled ASDF (for Lisps that don't bundle it)

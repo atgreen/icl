@@ -230,8 +230,7 @@ jobs:
           Copy-Item "LICENSE" "releng\installer\wix\"
           Copy-Item "README.md" "releng\installer\wix\"
           Copy-Item "THIRD-PARTY-LICENSES.txt" "releng\installer\wix\"
-          Copy-Item "icl.el" "releng\installer\wix\"
-          Copy-Item "icl-autoloads.el" "releng\installer\wix\"
+          Copy-Item -Recurse "emacs" "releng\installer\wix\"
           # Copy bundled ASDF
           Copy-Item -Recurse "3rd-party" "releng\installer\wix\"
           cd releng\installer\wix
