@@ -76,19 +76,23 @@ MAX-SAMPLES is the maximum number of samples to collect (default 1000000)."
                            (lambda (thread trace)
                              (when (eq thread profiler-thread)
                                (incf trace-count)
-                               (let ((current root))
+                               (let ((stack nil)
+                                     (current root))
                                  (sb-sprof::map-trace-pc-locs
                                   (lambda (info pc-or-offset)
                                     (declare (ignore pc-or-offset))
                                     (when info
-                                      (let* ((name (get-name info))
-                                             (child (gethash name current)))
-                                        (unless child
-                                          (setf child (cons 0 (make-hash-table :test #'equal)))
-                                          (setf (gethash name current) child))
-                                        (incf (car child))
-                                        (setf current (cdr child)))))
-                                  trace))))
+                                      (push (get-name info) stack)))
+                                  trace)
+                                 ;; Reverse stack: map-trace-pc-locs walks inner->outer,
+                                 ;; flame graphs need outer->inner (entry point at root)
+                                 (dolist (name (nreverse stack))
+                                   (let ((child (gethash name current)))
+                                     (unless child
+                                       (setf child (cons 0 (make-hash-table :test #'equal)))
+                                       (setf (gethash name current) child))
+                                     (incf (car child))
+                                     (setf current (cdr child))))))))
                            sb-sprof::*samples*)
                           ;; Convert tree to folded stacks
                           (with-output-to-string (s)
