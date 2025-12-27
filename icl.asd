@@ -48,6 +48,7 @@
                  (:file "paredit")
                  (:file "indent")
                  (:file "completion")
+                 (:file "inspector-nav")
                  (:file "inspector")
                  (:file "editor")
                  (:file "input")

@@ -37,7 +37,11 @@
   (max-visible 15 :type fixnum)         ; Max items visible
   (path nil :type list)                 ; Navigation path (list of labels)
   (history nil :type list)              ; Stack of previous states for 'back'
-  (title "" :type string))              ; Title for current view
+  (title "" :type string)               ; Title for current view
+  ;; Advanced navigation (Phase 6)
+  (nav nil :type (or null inspector-nav))   ; Zipper navigation node
+  (visit-history nil :type (or null visit-history)) ; Visit history for back/forward
+  (keyhole-mode nil :type boolean))     ; Focused view mode
 
 (defvar *inspector* nil
   "Current inspector state.")
@@ -235,6 +239,8 @@
          (max-visible (inspector-state-max-visible state))
          (title (inspector-state-title state))
          (path (inspector-state-path state))
+         (nav (inspector-state-nav state))
+         (sibling-pos (when nav (nav-sibling-position nav)))
          (total (length entries))
          (visible-count (min max-visible (- total scroll)))
          (width *inspector-width*)
@@ -243,9 +249,13 @@
     (unless first-render
       (when (> *inspector-lines-drawn* 0)
         (format t "~C[~DA" #\Escape *inspector-lines-drawn*)))
-    ;; Draw top border with title (clear line first)
+    ;; Draw top border with title and sibling position (clear line first)
     (format t "~C[2K" #\Escape)  ; Clear line
-    (let ((display-title (truncate-string title (- width 6))))
+    (let* ((sibling-str (if sibling-pos
+                            (format nil " [~D/~D]" (car sibling-pos) (cdr sibling-pos))
+                            ""))
+           (full-title (concatenate 'string title sibling-str))
+           (display-title (truncate-string full-title (- width 6))))
       (format t "~A┌─ ~A ~A┐~A~%"
               *ansi-bold*
               display-title
@@ -285,13 +295,16 @@
     ;; Draw bottom border
     (format t "~C[2K└~A┘~%" #\Escape (make-string (- width 2) :initial-element #\─))
     (incf lines-to-draw)
-    ;; Draw path if we've navigated
-    (when path
-      (format t "~C[2K~A Path: ~{~A~^ → ~}~A~%"
-              #\Escape *ansi-dim* (reverse path) *ansi-reset*)
-      (incf lines-to-draw))
-    ;; Draw help line
-    (format t "~C[2K~A [↑/↓] navigate  [Enter] drill in  [b] back  [q] quit~A~%"
+    ;; Draw path if we've navigated (use nav path if available, else legacy path)
+    (let ((path-str (if nav
+                        (nav-path-string nav " > ")
+                        (when path (format nil "~{~A~^ > ~}" (reverse path))))))
+      (when (and path-str (not (string= path-str "root")))
+        (format t "~C[2K~A Path: ~A~A~%"
+                #\Escape *ansi-dim* path-str *ansi-reset*)
+        (incf lines-to-draw)))
+    ;; Draw help line with new keybindings
+    (format t "~C[2K~A [↑/↓/j/k] move [Enter] drill [a/d] car/cdr [u] up [e] eval [b] back [q] quit~A~%"
             #\Escape *ansi-dim* *ansi-reset*)
     (incf lines-to-draw)
     ;; Show position if scrollable
@@ -360,7 +373,125 @@
       (let ((new-data (slynk-inspector-pop)))
         (when new-data
           (pop (inspector-state-path state))
+          ;; Update nav to parent if we have nav
+          (let ((nav (inspector-state-nav state)))
+            (when nav
+              (setf (inspector-state-nav state) (nav-up nav))))
           (update-inspector-state new-data))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Advanced Navigation (Phase 6)
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun find-entry-action (entries label)
+  "Find the action index for an entry with LABEL (case-insensitive)."
+  (let ((label-up (string-upcase label)))
+    (dolist (entry entries)
+      (when (string-equal (string-upcase (first entry)) label-up)
+        (return-from find-entry-action (third entry)))))
+  nil)
+
+(defun inspector-nav-sibling (direction)
+  "Navigate to sibling in DIRECTION (:left or :right).
+   For cons cells, left=car, right=cdr."
+  (let* ((state *inspector*)
+         (entries (inspector-state-entries state)))
+    ;; Simple sibling navigation: car <-> cdr
+    (let* ((car-action (find-entry-action entries "car"))
+           (cdr-action (find-entry-action entries "cdr"))
+           (target-action (case direction
+                            (:left car-action)
+                            (:right cdr-action))))
+      (when target-action
+        (let ((new-data (slynk-inspector-action target-action)))
+          (when new-data
+            (let ((label (case direction (:left "car") (:right "cdr"))))
+              (push label (inspector-state-path state)))
+            (update-inspector-state new-data)))))))
+
+(defun inspector-nav-car ()
+  "Navigate into the CAR of current cons cell."
+  (let* ((state *inspector*)
+         (entries (inspector-state-entries state))
+         (car-action (find-entry-action entries "car")))
+    (when car-action
+      (let ((new-data (slynk-inspector-action car-action)))
+        (when new-data
+          (push "car" (inspector-state-path state))
+          (update-inspector-state new-data))))))
+
+(defun inspector-nav-cdr ()
+  "Navigate into the CDR of current cons cell."
+  (let* ((state *inspector*)
+         (entries (inspector-state-entries state))
+         (cdr-action (find-entry-action entries "cdr")))
+    (when cdr-action
+      (let ((new-data (slynk-inspector-action cdr-action)))
+        (when new-data
+          (push "cdr" (inspector-state-path state))
+          (update-inspector-state new-data))))))
+
+(defun inspector-nav-up ()
+  "Navigate up to parent object (same as back for now)."
+  (inspector-go-back))
+
+(defun inspector-history-back ()
+  "Go back in visit history (same as inspector back for now)."
+  (inspector-go-back))
+
+(defun inspector-history-forward ()
+  "Go forward in visit history.
+   Note: Forward navigation requires tracking - not yet implemented."
+  ;; TODO: Implement forward history tracking
+  nil)
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Context Evaluation
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun inspector-eval-in-context ()
+  "Evaluate a form with * bound to current object and ** to root object."
+  (unless *slynk-connected-p*
+    (return-from inspector-eval-in-context nil))
+  ;; Exit raw mode temporarily to allow line input
+  (exit-raw-mode)
+  (clear-inspector)
+  (unwind-protect
+       (progn
+         ;; Prompt for the form
+         (format t "~&Eval (* = current object, ** = root): ")
+         (force-output)
+         (let ((form-string (read-line *standard-input* nil nil)))
+           (when (and form-string (plusp (length (string-trim " " form-string))))
+             ;; Build code that evaluates with bindings
+             ;; * = current inspected object
+             ;; ** = root object (first in inspector history)
+             ;; Use symbol-macrolet to avoid style warnings
+             (let* ((eval-code
+                      (format nil
+                              "(let* ((current-obj (slynk::istate.object (slynk::current-istate)))
+                                      (hist (slynk::inspector-%history (slynk::current-inspector)))
+                                      (root-obj (if (plusp (length hist))
+                                                    (slynk::istate.object (aref hist 0))
+                                                    current-obj)))
+                                 (symbol-macrolet ((* current-obj) (** root-obj))
+                                   ~A))"
+                              form-string))
+                    (result-string (handler-case
+                                       (first (backend-eval-internal eval-code))
+                                     (error (e)
+                                       (format nil "Error: ~A" e)))))
+               (format t "~&~%=> ~A~%~%" result-string)
+               (format t "~&Press any key to continue...")
+               (force-output)
+               ;; Read a single character
+               (enter-raw-mode)
+               (read-key)
+               (exit-raw-mode)))))
+    ;; Re-enter raw mode for the inspector
+    (enter-raw-mode)
+    ;; Force full redraw
+    (setf *inspector-lines-drawn* 0)))
 
 (defun update-inspector-state (data)
   "Update inspector state with new data from Slynk."
@@ -394,10 +525,13 @@
     (unless data
       (format t "~&Could not inspect object.~%")
       (return-from run-inspector nil))
-    ;; Initialize inspector state
-    (setf *inspector* (make-inspector-state))
+    ;; Initialize inspector state with visit history
+    (setf *inspector* (make-inspector-state
+                       :visit-history (make-empty-history)))
     (setf *inspector-lines-drawn* 0)
     (update-inspector-state data)
+    ;; Note: nav is not initialized here because we only have Slynk data,
+    ;; not the actual object. Full zipper navigation requires object access.
     ;; Enter raw mode for keyboard input
     (let ((first-render t))
       (with-raw-mode
@@ -426,6 +560,27 @@
               ((or (eql key #\k) (eql key #\K))
                (inspector-move :up))
               ((or (eql key #\j) (eql key #\J))
-               (inspector-move :down)))))))
+               (inspector-move :down))
+              ;; Sibling navigation (h/l)
+              ((eql key #\h)
+               (inspector-nav-sibling :left))
+              ((eql key #\l)
+               (inspector-nav-sibling :right))
+              ;; Car/cdr navigation (a/d)
+              ((eql key #\a)
+               (inspector-nav-car))
+              ((eql key #\d)
+               (inspector-nav-cdr))
+              ;; Up navigation (u)
+              ((eql key #\u)
+               (inspector-nav-up))
+              ;; History navigation ([/])
+              ((eql key #\[)
+               (inspector-history-back))
+              ((eql key #\])
+               (inspector-history-forward))
+              ;; Context evaluation (e)
+              ((eql key #\e)
+               (inspector-eval-in-context)))))))
     ;; Clear inspector on exit
     (clear-inspector)))

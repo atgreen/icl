@@ -239,6 +239,12 @@ ws.onmessage = (e) => {
       console.log('inspection received:', msg, 'panelId:', msg['panel-id']);
       renderInspection(msg, msg['panel-id']);
       break;
+    case 'inspector-eval-result':
+      handleInspectorEvalResult(msg);
+      break;
+    case 'inspector-expand-result':
+      handleInspectorExpandResult(msg);
+      break;
     case 'symbol-clicked':
       handleSymbolClicked(msg);
       break;
@@ -1195,7 +1201,16 @@ document.addEventListener('click', (e) => {
     inspectVariable(inspectVarEl.dataset.inspectVariable, inspectVarEl.dataset.pkg);
     return;
   }
-  // Inspector action (drill down into object)
+  // Expand/collapse toggle in inspector tree
+  const expandToggleEl = e.target.closest('.expand-toggle');
+  if (expandToggleEl) {
+    const entryId = expandToggleEl.dataset.entryId;
+    const actionIndex = parseInt(expandToggleEl.dataset.action, 10);
+    const panelId = expandToggleEl.dataset.panelId;
+    toggleInspectorExpansion(panelId, entryId, actionIndex);
+    return;
+  }
+  // Inspector action (drill down into object) - legacy handler, kept for compatibility
   const inspectActionEl = e.target.closest('[data-inspect-action]');
   if (inspectActionEl) {
     inspectAction(parseInt(inspectActionEl.dataset.inspectAction, 10), inspectActionEl.dataset.panelId);
@@ -1206,6 +1221,58 @@ document.addEventListener('click', (e) => {
   if (inspectBackEl) {
     inspectBack(inspectBackEl.dataset.inspectBack);
     return;
+  }
+  // Phase 6: Navigation buttons
+  const navUpEl = e.target.closest('[data-nav-up]');
+  if (navUpEl && !navUpEl.disabled) {
+    inspectNav(navUpEl.dataset.navUp, 'up');
+    return;
+  }
+  const navCarEl = e.target.closest('[data-nav-car]');
+  if (navCarEl && !navCarEl.disabled) {
+    inspectNav(navCarEl.dataset.navCar, 'car');
+    return;
+  }
+  const navCdrEl = e.target.closest('[data-nav-cdr]');
+  if (navCdrEl && !navCdrEl.disabled) {
+    inspectNav(navCdrEl.dataset.navCdr, 'cdr');
+    return;
+  }
+  const navLeftEl = e.target.closest('[data-nav-left]');
+  if (navLeftEl && !navLeftEl.disabled) {
+    inspectNav(navLeftEl.dataset.navLeft, 'left');
+    return;
+  }
+  const navRightEl = e.target.closest('[data-nav-right]');
+  if (navRightEl && !navRightEl.disabled) {
+    inspectNav(navRightEl.dataset.navRight, 'right');
+    return;
+  }
+  const histBackEl = e.target.closest('[data-history-back]');
+  if (histBackEl && !histBackEl.disabled) {
+    inspectHistoryNav(histBackEl.dataset.historyBack, 'back');
+    return;
+  }
+  const histForwardEl = e.target.closest('[data-history-forward]');
+  if (histForwardEl && !histForwardEl.disabled) {
+    inspectHistoryNav(histForwardEl.dataset.historyForward, 'forward');
+    return;
+  }
+});
+
+// Handle Enter key on inspector eval input
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const evalInput = e.target.closest('[data-eval-input]');
+    if (evalInput) {
+      e.preventDefault();
+      const panelId = evalInput.dataset.evalInput;
+      const form = evalInput.value.trim();
+      if (form) {
+        inspectorEval(panelId, form);
+        evalInput.value = '';
+      }
+    }
   }
 });
 
@@ -1298,7 +1365,7 @@ function renderInspection(msg, panelId) {
   }
   console.log('state found:', state);
 
-  const { element, header } = state;
+  const { element, header, nav } = state;
   if (!element) return;
 
   // Track depth for Back button
@@ -1309,16 +1376,154 @@ function renderInspection(msg, panelId) {
   // Show/hide Back button
   if (header) header.style.display = state.depth > 1 ? 'block' : 'none';
 
-  let html = `<strong>${msg.title || 'Object'}</strong>\n\n`;
-  (msg.entries || []).forEach(([label, value, action]) => {
-    const escapedValue = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    if (action !== null) {
-      html += `<span class='inspector-label'>${label}: </span><span class='inspector-link' data-inspect-action="${action}" data-panel-id="${panelId}">${escapedValue}</span>\n`;
+  // Update navigation button states and store action indices
+  if (nav) {
+    const navUp = nav.querySelector('[data-nav-up]');
+    const navCar = nav.querySelector('[data-nav-car]');
+    const navCdr = nav.querySelector('[data-nav-cdr]');
+
+    // Enable Up button when we have depth (can go back)
+    if (navUp) navUp.disabled = state.depth <= 1;
+
+    // Store and enable car/cdr based on server-provided action indices
+    const carAction = msg['car-action'];
+    const cdrAction = msg['cdr-action'];
+    state.carAction = carAction;
+    state.cdrAction = cdrAction;
+
+    if (navCar) navCar.disabled = (carAction === null || carAction === undefined);
+    if (navCdr) navCdr.disabled = (cdrAction === null || cdrAction === undefined);
+  }
+
+  // Store root entries for tree expansion
+  state.rootTitle = msg.title || 'Object';
+  state.rootEntries = msg.entries || [];
+  state.expansions = state.expansions || new Map();  // Preserve existing expansions on refresh
+
+  // When replacing the root (new inspection), clear old expansions
+  if (msg.action === 'new') {
+    state.expansions.clear();
+  }
+
+  // Render as expandable tree
+  renderInspectorTree(panelId);
+}
+
+// Generate unique entry ID based on depth and position
+function generateEntryId(prefix, index) {
+  return prefix + '-' + index;
+}
+
+// Render the inspector as a tree with expand/collapse
+function renderInspectorTree(panelId) {
+  const state = inspectorStates.get(panelId);
+  if (!state || !state.element) return;
+
+  let html = `<div class="inspector-tree">`;
+  html += `<div class="inspector-root"><strong>${escapeHtml(state.rootTitle)}</strong></div>`;
+  html += renderInspectorEntries(state.rootEntries, state.expansions, panelId, 0, 'root');
+  html += `</div>`;
+  state.element.innerHTML = html;
+}
+
+// Recursively render entries with indentation
+function renderInspectorEntries(entries, expansions, panelId, depth, parentId) {
+  if (!entries || entries.length === 0) return '';
+
+  let html = '';
+  entries.forEach((entry, index) => {
+    const [label, value, action] = entry;
+    const entryId = generateEntryId(parentId, index);
+    const expandable = action !== null && action !== undefined;
+    const expansion = expansions.get(entryId);
+    const isExpanded = expansion?.expanded;
+
+    html += `<div class="inspector-entry">`;
+
+    if (expandable) {
+      const icon = isExpanded ? '▼' : '▶';
+      html += `<span class="expand-toggle" data-entry-id="${entryId}" data-action="${action}" data-panel-id="${panelId}">${icon}</span>`;
     } else {
-      html += `<span class='inspector-label'>${label}: </span><span class='inspector-value'>${escapedValue}</span>\n`;
+      html += `<span class="expand-placeholder"></span>`;
+    }
+
+    html += `<span class="entry-label">${escapeHtml(label)}</span> `;
+    html += `<span class="entry-value">${escapeHtml(String(value))}</span>`;
+    html += `</div>`;
+
+    // Render children if expanded with colored depth boxes
+    if (isExpanded && expansion.children && expansion.children.length > 0) {
+      const childDepth = (depth + 1) % 6;  // Cycle through 6 colors
+      html += `<div class="inspector-children" data-depth="${childDepth}">`;
+      // Show type title if available
+      if (expansion.title) {
+        html += `<div class="inspector-child-title">${escapeHtml(expansion.title)}</div>`;
+      }
+      html += renderInspectorEntries(expansion.children, expansions, panelId, depth + 1, entryId);
+      html += `</div>`;
     }
   });
-  element.innerHTML = html;
+
+  return html;
+}
+
+// Handle expand/collapse toggle
+function toggleInspectorExpansion(panelId, entryId, actionIndex) {
+  const state = inspectorStates.get(panelId);
+  if (!state) return;
+
+  const expansion = state.expansions.get(entryId);
+
+  if (expansion?.expanded) {
+    // Collapse: just toggle the flag, keep cached children
+    expansion.expanded = false;
+    renderInspectorTree(panelId);
+  } else if (expansion?.children) {
+    // Expand with cached children
+    expansion.expanded = true;
+    renderInspectorTree(panelId);
+  } else {
+    // Fetch children from server
+    ws.send(JSON.stringify({
+      type: 'inspector-expand',
+      panelId: panelId,
+      actionIndex: actionIndex,
+      entryId: entryId
+    }));
+  }
+}
+
+// Handle expansion result from server
+function handleInspectorExpandResult(msg) {
+  const panelId = msg.panelId;
+  const entryId = msg.entryId;
+  const state = inspectorStates.get(panelId);
+
+  if (!state) {
+    console.log('handleInspectorExpandResult: no state for panel', panelId);
+    return;
+  }
+
+  if (msg.error) {
+    console.log('handleInspectorExpandResult: error', msg.error);
+    return;
+  }
+
+  // Store children and mark expanded
+  state.expansions.set(entryId, {
+    expanded: true,
+    children: msg.entries || [],
+    title: msg.title
+  });
+
+  // Re-render the tree
+  renderInspectorTree(panelId);
+}
+
+// Escape HTML for safe display (only < and > to match original behavior)
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function selectPackage(pkg) {
@@ -1345,6 +1550,66 @@ function inspectAction(action, panelId) {
 
 function inspectBack(panelId) {
   ws.send(JSON.stringify({type: 'inspector-pop', panelId: panelId}));
+}
+
+// Phase 6: Advanced navigation functions
+function inspectNav(panelId, direction) {
+  const state = inspectorStates.get(panelId);
+  const msg = {type: 'inspector-nav', panelId: panelId, direction: direction};
+
+  // For car/cdr, include the action index from stored state
+  if (state) {
+    if (direction === 'car' && state.carAction !== undefined) {
+      msg.actionIndex = state.carAction;
+    } else if (direction === 'cdr' && state.cdrAction !== undefined) {
+      msg.actionIndex = state.cdrAction;
+    }
+  }
+
+  ws.send(JSON.stringify(msg));
+}
+
+function inspectHistoryNav(panelId, direction) {
+  ws.send(JSON.stringify({type: 'inspector-history', panelId: panelId, direction: direction}));
+}
+
+function updateInspectorBreadcrumb(panelId, path) {
+  const state = inspectorStates.get(panelId);
+  if (state && state.breadcrumb) {
+    state.path = path || ['root'];
+    state.breadcrumb.textContent = state.path.join(' > ');
+  }
+}
+
+function updateInspectorSiblingPosition(panelId, current, total) {
+  const state = inspectorStates.get(panelId);
+  if (state && state.position) {
+    if (current && total && total > 1) {
+      state.position.textContent = `[${current}/${total}]`;
+    } else {
+      state.position.textContent = '';
+    }
+  }
+}
+
+// Inspector context evaluation
+function inspectorEval(panelId, form) {
+  if (!form || !form.trim()) return;
+  ws.send(JSON.stringify({type: 'inspector-eval', panelId: panelId, form: form}));
+}
+
+function handleInspectorEvalResult(msg) {
+  const panelId = msg.panelId;
+  const result = msg.result;
+  const resultEl = document.getElementById('eval-result-' + panelId);
+  if (resultEl) {
+    resultEl.textContent = '=> ' + result;
+    // Fade result after 5 seconds
+    resultEl.classList.remove('fade-out');
+    setTimeout(() => {
+      resultEl.classList.add('fade-out');
+    }, 5000);
+  }
 }
 
 function openInspector(form, pkg) {
@@ -2510,10 +2775,29 @@ class DynamicInspectorPanel {
   init(params) {
     this._panelId = params.params?.panelId;
     const headerId = 'header-' + this._panelId;
+    const navId = 'nav-' + this._panelId;
+    const breadcrumbId = 'breadcrumb-' + this._panelId;
     const contentId = 'content-' + this._panelId;
     this._element.innerHTML = `
+      <div class='inspector-nav' id='${navId}'>
+        <div class='inspector-breadcrumb' id='${breadcrumbId}'>root</div>
+        <div class='inspector-nav-buttons'>
+          <button class='nav-up' data-nav-up="${this._panelId}" title='Up (u)' disabled>&#8593;</button>
+          <button class='nav-car' data-nav-car="${this._panelId}" title='CAR (a)' disabled>car</button>
+          <button class='nav-cdr' data-nav-cdr="${this._panelId}" title='CDR (d)' disabled>cdr</button>
+          <button class='nav-left' data-nav-left="${this._panelId}" title='Sibling left (h)' disabled>&#8592;</button>
+          <button class='nav-right' data-nav-right="${this._panelId}" title='Sibling right (l)' disabled>&#8594;</button>
+          <button class='nav-back' data-history-back="${this._panelId}" title='History back ([)' disabled>&#9664;</button>
+          <button class='nav-forward' data-history-forward="${this._panelId}" title='History forward (])' disabled>&#9654;</button>
+        </div>
+        <span class='nav-position' id='pos-${this._panelId}'></span>
+      </div>
+      <div class='inspector-eval-bar' id='eval-${this._panelId}'>
+        <input type='text' class='inspector-eval-input' data-eval-input='${this._panelId}' placeholder='Eval: * = current, ** = root'>
+        <span class='inspector-eval-result' id='eval-result-${this._panelId}'></span>
+      </div>
       <div class='panel-header' id='${headerId}' style='display:none;'>
-        <button data-inspect-back="${this._panelId}" style='padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--fg-primary);border-radius:3px;cursor:pointer;'>← Back</button>
+        <button data-inspect-back="${this._panelId}" style='padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--fg-primary);border-radius:3px;cursor:pointer;'>&#8592; Back</button>
       </div>
       <div class='panel-content detail-content' id='${contentId}'>
         Loading...
@@ -2521,11 +2805,20 @@ class DynamicInspectorPanel {
     // Register this panel's state - use querySelector on this element since it's not in DOM yet
     const contentEl = this._element.querySelector('#' + contentId);
     const headerEl = this._element.querySelector('#' + headerId);
+    const navEl = this._element.querySelector('#' + navId);
+    const breadcrumbEl = this._element.querySelector('#' + breadcrumbId);
+    const posEl = this._element.querySelector('#pos-' + this._panelId);
     console.log('DynamicInspectorPanel init:', this._panelId, 'contentEl:', contentEl, 'headerEl:', headerEl);
     inspectorStates.set(this._panelId, {
       depth: 0,
       element: contentEl,
-      header: headerEl
+      header: headerEl,
+      nav: navEl,
+      breadcrumb: breadcrumbEl,
+      position: posEl,
+      path: ['root'],        // Breadcrumb path
+      history: [],           // Visit history
+      historyIndex: -1       // Current position in history
     });
     // Apply any inspection that arrived before this panel initialized.
     const pending = pendingInspections.get(this._panelId);
@@ -2599,7 +2892,13 @@ class TerminalPanel {
           const dy = Math.abs(e.clientY - mouseDownPos.y);
           // If mouse moved less than 5 pixels, treat as a click not a drag
           if (dx < 5 && dy < 5) {
-            ws.send(JSON.stringify({type: 'symbol-click', symbol: hoveredSymbol}));
+            if (e.ctrlKey || e.metaKey) {
+              // Ctrl+click (or Cmd+click on Mac): open inspector panel
+              openInspector(hoveredSymbol, null);
+            } else {
+              // Regular click: update Symbol Info
+              ws.send(JSON.stringify({type: 'symbol-click', symbol: hoveredSymbol}));
+            }
             terminal.focus();
           }
         }

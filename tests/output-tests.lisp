@@ -68,8 +68,12 @@
   (let ((saved (uiop:getenv "NO_COLOR")))
     (unwind-protect
          (progn
-           (setf (uiop:getenv "NO_COLOR") nil)
+           ;; Use sb-posix:unsetenv to properly remove the variable
+           #+sbcl (sb-posix:unsetenv "NO_COLOR")
+           #-sbcl (setf (uiop:getenv "NO_COLOR") "")
            ;; NO_COLOR not set should return NIL
            (is-false (icl::no-color-p)))
-      (when saved
-        (setf (uiop:getenv "NO_COLOR") saved)))))
+      (if saved
+          (setf (uiop:getenv "NO_COLOR") saved)
+          #+sbcl (sb-posix:unsetenv "NO_COLOR")
+          #-sbcl nil))))

@@ -154,6 +154,49 @@
                 (send-inspector-pop client panel-id))
               :name "inspector-pop-handler")))
 
+          ;; Inspector navigation (Phase 6)
+          ((string= type "inspector-nav")
+           (let ((panel-id (gethash "panelId" json))
+                 (direction (gethash "direction" json))
+                 (action-index (gethash "actionIndex" json)))
+             (browser-log "WS inspector-nav: panel-id=~S direction=~S action=~S" panel-id direction action-index)
+             (bt:make-thread
+              (lambda ()
+                (send-inspector-nav client panel-id direction action-index))
+              :name "inspector-nav-handler")))
+
+          ;; Inspector history navigation (Phase 6)
+          ((string= type "inspector-history")
+           (let ((panel-id (gethash "panelId" json))
+                 (direction (gethash "direction" json)))
+             (browser-log "WS inspector-history: panel-id=~S direction=~S" panel-id direction)
+             (bt:make-thread
+              (lambda ()
+                (send-inspector-history client panel-id direction))
+              :name "inspector-history-handler")))
+
+          ;; Inspector context evaluation
+          ((string= type "inspector-eval")
+           (let ((panel-id (gethash "panelId" json))
+                 (form (gethash "form" json)))
+             (browser-log "WS inspector-eval: panel-id=~S form=~S" panel-id form)
+             (bt:make-thread
+              (lambda ()
+                (send-inspector-eval client panel-id form))
+              :name "inspector-eval-handler")))
+
+          ;; Inspector expand (inline tree expansion)
+          ((string= type "inspector-expand")
+           (let ((panel-id (gethash "panelId" json))
+                 (action-index (gethash "actionIndex" json))
+                 (entry-id (gethash "entryId" json)))
+             (browser-log "WS inspector-expand: panel-id=~S action-index=~S entry-id=~S"
+                          panel-id action-index entry-id)
+             (bt:make-thread
+              (lambda ()
+                (send-inspector-expand client panel-id action-index entry-id))
+              :name "inspector-expand-handler")))
+
           ;; Click on symbol in REPL - update all panels
           ;; Run in separate thread to avoid blocking WebSocket handler
           ((string= type "symbol-click")
@@ -979,13 +1022,17 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                              (if parsed (length parsed) 0))
                 (when parsed
                   (browser-log "send-inspection: first entry=~S" (first parsed)))
-                (browser-log "send-inspection: sending ws-send inspection message (new)")
-                (ws-send client "inspection"
-                         :title (getf data :title)
-                         :action "new"
-                         :panel-id panel-id
-                         :entries (or parsed nil))
-                (browser-log "send-inspection: ws-send completed"))
+                (let ((car-action (find-inspector-entry-action parsed "car"))
+                      (cdr-action (find-inspector-entry-action parsed "cdr")))
+                  (browser-log "send-inspection: sending ws-send inspection message (new)")
+                  (ws-send client "inspection"
+                           :title (getf data :title)
+                           :action "new"
+                           :panel-id panel-id
+                           :entries (or parsed nil)
+                           :car-action car-action
+                           :cdr-action cdr-action)
+                  (browser-log "send-inspection: ws-send completed")))
               (let ((msg (or err "Inspector returned no data")))
                 (browser-log "send-inspection: NO DATA - sending error message: ~S" msg)
                 (ws-send client "inspection"
@@ -1011,15 +1058,19 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                                 raw-content))
                    (parsed (when (listp content)
                              (parse-inspector-content content))))
-              (browser-log "send-inspector-action: title=~S parsed-count=~A"
-                           (getf data :title) (if parsed (length parsed) 0))
-              (browser-log "send-inspector-action: sending ws-send inspection message (push)")
-              (ws-send client "inspection"
-                       :title (getf data :title)
-                       :action "push"
-                       :panel-id panel-id
-                       :entries (or parsed nil))
-              (browser-log "send-inspector-action: ws-send completed"))
+              (let ((car-action (find-inspector-entry-action parsed "car"))
+                    (cdr-action (find-inspector-entry-action parsed "cdr")))
+                (browser-log "send-inspector-action: title=~S parsed-count=~A"
+                             (getf data :title) (if parsed (length parsed) 0))
+                (browser-log "send-inspector-action: sending ws-send inspection message (push)")
+                (ws-send client "inspection"
+                         :title (getf data :title)
+                         :action "push"
+                         :panel-id panel-id
+                         :entries (or parsed nil)
+                         :car-action car-action
+                         :cdr-action cdr-action)
+                (browser-log "send-inspector-action: ws-send completed")))
             (browser-log "send-inspector-action: NO DATA returned from slynk-inspector-action")))
     (error (e)
       (browser-log "send-inspector-action: EXCEPTION: ~A" e)
@@ -1039,19 +1090,170 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                                 raw-content))
                    (parsed (when (listp content)
                              (parse-inspector-content content))))
-              (browser-log "send-inspector-pop: title=~S parsed-count=~A"
-                           (getf data :title) (if parsed (length parsed) 0))
-              (browser-log "send-inspector-pop: sending ws-send inspection message (pop)")
-              (ws-send client "inspection"
-                       :title (getf data :title)
-                       :action "pop"
-                       :panel-id panel-id
-                       :entries (or parsed nil))
-              (browser-log "send-inspector-pop: ws-send completed"))
+              (let ((car-action (find-inspector-entry-action parsed "car"))
+                    (cdr-action (find-inspector-entry-action parsed "cdr")))
+                (browser-log "send-inspector-pop: title=~S parsed-count=~A"
+                             (getf data :title) (if parsed (length parsed) 0))
+                (browser-log "send-inspector-pop: sending ws-send inspection message (pop)")
+                (ws-send client "inspection"
+                         :title (getf data :title)
+                         :action "pop"
+                         :panel-id panel-id
+                         :entries (or parsed nil)
+                         :car-action car-action
+                         :cdr-action cdr-action)
+                (browser-log "send-inspector-pop: ws-send completed")))
             (browser-log "send-inspector-pop: NO DATA returned from slynk-inspector-pop")))
     (error (e)
       (browser-log "send-inspector-pop: EXCEPTION: ~A" e)
       (format *error-output* "~&; Error in inspector pop: ~A~%" e))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Phase 6: Advanced Inspector Navigation
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun find-inspector-entry-action (entries label)
+  "Find action index for entry with LABEL in parsed ENTRIES."
+  (let ((label-up (string-upcase label)))
+    (dolist (entry entries)
+      (when (and (listp entry)
+                 (>= (length entry) 3)
+                 (string-equal (string-upcase (or (first entry) "")) label-up))
+        (return-from find-inspector-entry-action (third entry)))))
+  nil)
+
+(defun send-inspector-nav (client panel-id direction action-index)
+  "Handle inspector navigation in DIRECTION for PANEL-ID.
+   DIRECTION is one of: car, cdr, up.
+   ACTION-INDEX is the action index for car/cdr navigation (sent by browser)."
+  (browser-log "send-inspector-nav: panel-id=~S direction=~S action-index=~S"
+               panel-id direction action-index)
+  (handler-case
+      (let* ((dir-key (intern (string-upcase direction) :keyword))
+             ;; For car/cdr, use the action-index from client
+             ;; For up, use slynk-inspector-pop
+             (new-data (case dir-key
+                         (:up (slynk-inspector-pop))
+                         ((:car :cdr)
+                          (when action-index
+                            (slynk-inspector-action action-index)))
+                         (t nil))))
+        (if new-data
+            (let* ((raw-content (getf new-data :content))
+                   (content (if (and (listp raw-content) (listp (first raw-content)))
+                                (first raw-content)
+                                raw-content))
+                   (parsed (when (listp content)
+                             (parse-inspector-content content)))
+                   (car-action (find-inspector-entry-action parsed "car"))
+                   (cdr-action (find-inspector-entry-action parsed "cdr")))
+              (ws-send client "inspection"
+                       :title (getf new-data :title)
+                       :action "push"  ; Use push for navigation (updates depth)
+                       :panel-id panel-id
+                       :entries (or parsed nil)
+                       :car-action car-action
+                       :cdr-action cdr-action))
+            ;; Send error if no action index provided for car/cdr
+            (let ((obj (make-hash-table :test 'equal)))
+              (setf (gethash "type" obj) "inspector-nav-result")
+              (setf (gethash "panelId" obj) panel-id)
+              (setf (gethash "status" obj) "error")
+              (setf (gethash "message" obj)
+                    (format nil "Navigation ~A requires action index" direction))
+              (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
+    (error (e)
+      (browser-log "send-inspector-nav: EXCEPTION: ~A" e))))
+
+(defun send-inspector-history (client panel-id direction)
+  "Handle inspector history navigation in DIRECTION for PANEL-ID.
+   DIRECTION is one of: back, forward."
+  (browser-log "send-inspector-history: panel-id=~S direction=~S" panel-id direction)
+  (handler-case
+      ;; Placeholder - full implementation requires per-panel history tracking
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "inspector-history-result")
+        (setf (gethash "panelId" obj) panel-id)
+        (setf (gethash "direction" obj) direction)
+        (setf (gethash "status" obj) "pending")
+        (setf (gethash "message" obj)
+              (format nil "History ~A: Per-panel history pending implementation" direction))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))
+    (error (e)
+      (browser-log "send-inspector-history: EXCEPTION: ~A" e))))
+
+(defun send-inspector-eval (client panel-id form)
+  "Evaluate FORM in inspector context (* = current object, ** = root)."
+  (browser-log "send-inspector-eval: panel-id=~S form=~S" panel-id form)
+  (handler-case
+      (let* ((obj (make-hash-table :test 'equal))
+             ;; Build code that evaluates with bindings
+             ;; Use symbol-macrolet to avoid style warnings about special variable names
+             (eval-code
+               (format nil
+                       "(let* ((current-obj (slynk::istate.object (slynk::current-istate)))
+                               (hist (slynk::inspector-%history (slynk::current-inspector)))
+                               (root-obj (if (plusp (length hist))
+                                             (slynk::istate.object (aref hist 0))
+                                             current-obj)))
+                          (symbol-macrolet ((* current-obj) (** root-obj))
+                            ~A))"
+                       form))
+             (result-string (handler-case
+                                (first (backend-eval-internal eval-code))
+                              (error (e)
+                                (format nil "Error: ~A" e)))))
+        (setf (gethash "type" obj) "inspector-eval-result")
+        (setf (gethash "panelId" obj) panel-id)
+        (setf (gethash "result" obj) result-string)
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))
+    (error (e)
+      (browser-log "send-inspector-eval: EXCEPTION: ~A" e)
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "inspector-eval-result")
+        (setf (gethash "panelId" obj) panel-id)
+        (setf (gethash "result" obj) (format nil "Error: ~A" e))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
+
+(defun send-inspector-expand (client panel-id action-index entry-id)
+  "Fetch children for ENTRY-ID without changing inspector root.
+   This preserves the parent context while expanding inline.
+   After fetching children, we pop back to restore the parent context."
+  (browser-log "send-inspector-expand: panel-id=~S action-index=~S entry-id=~S"
+               panel-id action-index entry-id)
+  (handler-case
+      (let ((data (slynk-inspector-action action-index)))
+        (if data
+            (let* ((raw-content (getf data :content))
+                   (content (if (and (listp raw-content) (listp (first raw-content)))
+                                (first raw-content)
+                                raw-content))
+                   (parsed (when (listp content)
+                             (parse-inspector-content content)))
+                   (obj (make-hash-table :test 'equal)))
+              ;; Pop back to parent so multiple expansions at same level work
+              (slynk-inspector-pop)
+              (setf (gethash "type" obj) "inspector-expand-result")
+              (setf (gethash "panelId" obj) panel-id)
+              (setf (gethash "entryId" obj) entry-id)
+              (setf (gethash "title" obj) (getf data :title))
+              (setf (gethash "entries" obj) (or parsed nil))
+              (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))
+            ;; No data returned
+            (let ((obj (make-hash-table :test 'equal)))
+              (setf (gethash "type" obj) "inspector-expand-result")
+              (setf (gethash "panelId" obj) panel-id)
+              (setf (gethash "entryId" obj) entry-id)
+              (setf (gethash "error" obj) "No inspector data returned")
+              (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
+    (error (e)
+      (browser-log "send-inspector-expand: EXCEPTION: ~A" e)
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "inspector-expand-result")
+        (setf (gethash "panelId" obj) panel-id)
+        (setf (gethash "entryId" obj) entry-id)
+        (setf (gethash "error" obj) (format nil "Error: ~A" e))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Theme Helpers
