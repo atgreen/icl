@@ -397,7 +397,8 @@
   #+sbcl
   (setf *inferior-process*
         (sb-ext:run-program "sbcl"
-                            (list "--core" (namestring cached-image)
+                            (list "--noinform"
+                                  "--core" (namestring cached-image)
                                   (princ-to-string port))
                             :search t
                             :wait nil

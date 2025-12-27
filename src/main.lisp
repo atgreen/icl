@@ -154,6 +154,10 @@
     ;; (command line --lisp will override it below)
     (unless no-config
       (load-user-config))
+    ;; Initialize themes early, before starting inferior lisp
+    ;; This queries terminal background while terminal is in clean state
+    (initialize-themes)
+    (setup-highlight-colors)
     ;; Configure backend mode
     (cond
       ;; Connect to existing Slynk server

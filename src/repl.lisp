@@ -122,10 +122,12 @@
   "Start ICL REPL with optional configuration loading.
    LOAD-CONFIG: if T, load ~/.iclrc
    BANNER: if T, print startup banner"
-  ;; Initialize theming system (auto-detects dark/light mode)
-  (initialize-themes)
-  ;; Set up paren match colors based on terminal background
-  (setup-highlight-colors)
+  ;; Theme initialization is done early in handle-cli (before inferior lisp)
+  ;; to avoid race conditions with terminal queries. Only initialize here
+  ;; if called directly (not through handle-cli).
+  (unless *current-terminal-theme*
+    (initialize-themes)
+    (setup-highlight-colors))
   ;; Load user config (may override theme settings)
   (when load-config
     (load-user-config))
