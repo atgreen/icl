@@ -48,6 +48,8 @@
           do (case char
                (#\" (write-string "'" out))
                (#\\ (write-string "\\\\" out))
+               (#\[ (write-string "#91;" out))
+               (#\] (write-string "#93;" out))
                (#\Newline (write-string " " out))
                (otherwise (write-char char out))))))
 
@@ -65,6 +67,9 @@
     ((eq spec :whitespace-char-class) "\\\\s")
     ((eq spec :non-whitespace-char-class) "\\\\S")
     (t (escape-label (princ-to-string spec)))))
+
+;; Forward declaration
+(declaim (ftype (function (t t t) list) emit-state))
 
 (defun tree-to-mermaid (tree pattern)
   "Convert a CL-PPCRE parse tree to Mermaid stateDiagram format."
