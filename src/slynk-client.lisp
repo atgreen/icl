@@ -37,11 +37,11 @@
 (defvar *icl-runtime-injected* nil
   "T when ICL runtime has been injected into the inferior Lisp.")
 
-(defun slynk-verify-connection (connection &optional (timeout-seconds 3))
+(defun slynk-verify-connection (connection &optional (timeout-seconds 15))
   "Verify that CONNECTION is responsive by doing a simple eval with timeout.
    Returns T if the connection is responsive, NIL otherwise.
-   Default timeout is 3 seconds to allow multiple retry attempts within
-   the startup window."
+   Default timeout is 15 seconds because some backends (CCL, ABCL) take
+   longer to become responsive after Slynk starts."
   #+sbcl
   (handler-case
       (sb-ext:with-timeout timeout-seconds
@@ -50,7 +50,7 @@
           (eq result t)))
     (sb-ext:timeout ()
       (when *verbose*
-        (format *error-output* "~&; Slynk connection verification timed out~%"))
+        (format *error-output* "~&; Slynk connection verification timed out after ~Ds~%" timeout-seconds))
       nil)
     (error (e)
       (when *verbose*
@@ -75,8 +75,10 @@
                 (setf *slynk-connected-p* t)
                 t)
               ;; Connection established but not responsive - close it
+              ;; Give dispatcher thread time to clean up before retrying
               (progn
                 (ignore-errors (slynk-client:slime-close conn))
+                (sleep 0.5)
                 nil))))
     (error (e)
       (setf *slynk-connected-p* nil)
