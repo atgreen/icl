@@ -361,6 +361,23 @@ Return `NIL` from your method to fall back to ICL's built-in type detection.
 
 See `examples/vega.lisp` for Vega-Lite visualization and `examples/mermaid.lisp` for Mermaid diagrams.
 
+#### Library Integration
+
+Libraries can provide visualizations that work even when loaded before ICL connects (e.g., when attaching ICL to a running Lisp from Emacs). Define a `REGISTER-ICL-VIZ` function in your package:
+
+```lisp
+(in-package :my-library)
+
+(defun register-icl-viz ()
+  "Called by ICL to register visualizations for this library."
+  (defmethod icl-runtime:visualize ((obj my-data-structure))
+    (list :mermaid (my-struct-to-mermaid obj)))
+  (defmethod icl-runtime:visualize ((obj my-config))
+    (list :json (config-to-json obj))))
+```
+
+ICL automatically discovers and calls `REGISTER-ICL-VIZ` in all packages when `,viz` is invoked. Each package is only processed once per session.
+
 #### Security
 
 Custom visualizations are protected with multiple layers of security:
