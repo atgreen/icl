@@ -2246,6 +2246,8 @@ Example: ,browser          - Start browser and open in web browser
          ,browser stop     - Stop the browser server
          ,browser test     - Run browser self-test (for CI)"
   (cond
+    (*browser-terminal-active*
+     (format t "~&; Already in browser mode.~%"))
     ((and action (string-equal action "stop"))
      (if *browser-acceptor*
          (progn
