@@ -63,6 +63,7 @@ Profile any expression with `,flame` and explore the results in an interactive [
 - **Data visualization** - Visualize hash tables, classes, sets, SVG, HTML, JSON, Vega-Lite charts, Mermaid diagrams, regex railroad diagrams, and function disassembly
 - **Custom visualizations** - Define `icl-runtime:visualize` methods for your own classes
 - **Flame graph profiling** - Interactive Speedscope visualizations for performance analysis (SBCL)
+- **Code coverage** - HTML coverage reports via sb-cover (SBCL)
 - **Emacs integration** - Works with SLY/SLIME for synchronized browser visualization
 
 ## Installation
@@ -255,8 +256,14 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 | `,profile-stop` | Stop profiling and show results |
 | `,profile-reset` | Reset profiler data |
 | `,flame <form>` | Profile and show interactive flame graph in browser |
+| `,cover-ql <system>` | Load system with code coverage instrumentation |
+| `,cover-file <path>` | Load file with code coverage instrumentation |
+| `,cover-report` | Generate and display HTML coverage report |
+| `,cover-reset` | Clear all coverage data |
 
 The `,flame` command (aliases: `,flamegraph`, `,fg`) profiles the expression and opens an interactive [Speedscope](https://www.speedscope.app/) flame graph in the browser. Requires browser mode (`,browser` or `icl -b`).
+
+The `,cover-*` commands use SBCL's [sb-cover](https://www.sbcl.org/manual/#sb_002dcover) for code coverage analysis. Load code with `,cover-ql` or `,cover-file`, run your tests, then `,cover-report` to see which lines were executed. Aliases: `,cql` for `,cover-ql`, `,cf` for `,cover-file`.
 
 ### Browser Visualization
 
