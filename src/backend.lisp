@@ -216,6 +216,8 @@
             ;; when ASDF isn't loaded yet (Windows SBCL doesn't preload ASDF)
             ;; First ensure ASDF is available - some Lisps (CLISP) don't bundle it
             (format nil "(progn
+  (format t \"~~&;; Starting Slynk init...~~%%\")
+  (force-output)
   ;; Ensure ASDF is available (some Lisps like CLISP don't bundle it)
   (unless (find-package :asdf)
     (handler-case
@@ -223,13 +225,16 @@
       (error ()~@[
         ;; ASDF not built in, load bundled version
         (load ~S)~])))
+  (format t \"~~&;; ASDF loaded, adding Slynk to registry...~~%%\")
+  (force-output)
   (push ~S (symbol-value (read-from-string \"asdf:*central-registry*\")))
-  ;; Suppress all warnings and output during Slynk loading
-  (let ((*debug-io* (make-broadcast-stream))
-        (*error-output* (make-broadcast-stream))
-        (*standard-output* (make-broadcast-stream)))
-    (handler-bind ((warning #'muffle-warning))
-      (funcall (read-from-string \"asdf:load-system\") :slynk)))
+  ;; Load Slynk - show output for debugging
+  (format t \"~~&;; Loading Slynk system...~~%%\")
+  (force-output)
+  (handler-bind ((warning #'muffle-warning))
+    (funcall (read-from-string \"asdf:load-system\") :slynk))
+  (format t \"~~&;; Slynk loaded, configuring...~~%%\")
+  (force-output)
   ;; Disable auth/secret expectations and SWANK->SLYNK translation
   (let ((secret (find-symbol \"SLY-SECRET\" :slynk)))
     (when secret (setf (symbol-function secret) (lambda () nil))))
@@ -239,6 +244,9 @@
     (when x (setf (symbol-value x) nil)))
   ;; Configure worker thread bindings so *debug-io* output goes through stdout
   ;; instead of directly to the terminal. This allows ICL to capture all output.
+  ;; NOTE: On CCL, binding IO streams to the main thread's streams in worker threads
+  ;; can cause hangs, so we skip this for CCL.
+  #-ccl
   (let ((bindings-var (find-symbol \"*DEFAULT-WORKER-THREAD-BINDINGS*\" :slynk)))
     (when bindings-var
       (let ((io (make-two-way-stream *standard-input* *standard-output*)))
@@ -246,14 +254,20 @@
               (list (cons '*debug-io* io)
                     (cons '*query-io* io)
                     (cons '*terminal-io* io))))))
-  ;; Suppress Slynk startup message
-  (let ((*standard-output* (make-broadcast-stream)))
-    (funcall (read-from-string \"slynk:create-server\")
-             :port ~D :dont-close t))
+  (format t \"~~&;; Starting Slynk server on port ~D...~~%%\")
+  (force-output)
+  (funcall (read-from-string \"slynk:create-server\")
+           :port ~D :dont-close t)
+  ;; Give the server thread time to fully initialize before we consider it ready.
+  ;; Some implementations (CCL, ABCL) need this delay for the accept thread to start.
+  (sleep 2)
+  (format t \"~~&;; Slynk server ready, entering sleep loop...~~%%\")
+  (force-output)
   ;; Keep process alive (needed for CLISP with -x which exits after eval)
   (loop (sleep 60)))"
                     (when asdf-file (uiop:unix-namestring asdf-file))
                     (uiop:unix-namestring slynk-dir)
+                    port
                     port)
             ;; Slynk not found - error
             (error "Cannot find Slynk. This should not happen with embedded Slynk.")))))
@@ -492,7 +506,7 @@
             (max-seconds 60)  ; 60 seconds max (was 42s but CCL needs more time)
             (last-attempt-time 0)
             (attempt-interval 0.5)  ; seconds between attempts
-            (initial-delay 1.5)  ; seconds before first attempt
+            (initial-delay 4.0)  ; seconds before first attempt (allow time for Slynk init + 2s settle delay)
             (message (format nil "Starting ~A..." lisp))
             #+sbcl (proc-output (sb-ext:process-output *inferior-process*)))
         (loop

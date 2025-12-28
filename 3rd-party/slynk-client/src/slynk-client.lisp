@@ -219,6 +219,10 @@ are communications problems."
 	 (setf id (incf (continuation-counter connection)))
 	 (push (list id continuation form package-name thread) (rex-continuations connection))
 	 (when (eq (state connection) :dead) (error 'slime-network-error)))
+       (when *slynk-client-debug*
+         (format *error-output* "~&; [slynk-client] sending :emacs-rex id=~D form=~S~%"
+                 id form)
+         (force-output *error-output*))
        (let ((name (format nil "slynk sender for ~A/~D" (host-name connection) (port connection))))
 	 (bordeaux-threads:make-thread
 	  (lambda ()
@@ -229,6 +233,10 @@ are communications problems."
 	      (slime-network-error ())))
 	  :name name))))
     ((:return value id)
+     (when *slynk-client-debug*
+       (format *error-output* "~&; [slynk-client] received :return id=~D value=~S~%"
+               id value)
+       (force-output *error-output*))
      (let ((send-to-emacs t))
        (bordeaux-threads:with-lock-held ((connection-lock connection))
 	 (let ((rec (assoc id (rex-continuations connection))))
@@ -507,9 +515,16 @@ Signals SLIME-NETWORK-ERROR when there are network problems."
 			    new-connection)))
   (setf (rex-continuations old-connection) '()))
 
+(defvar *slynk-client-debug* nil
+  "When non-nil, print debug information about Slynk client operations.")
+
 (defun slime-dispatch-events (connection connection-closed-hook)
   "Reads and dispatches incoming events for a CONNECTION to a Slynk server.  If
 provided, function CONNECTION-CLOSED-HOOK is called when CONNECTION is closed."
+  (when *slynk-client-debug*
+    (format *error-output* "~&; [slynk-client] dispatcher thread started for ~A:~D~%"
+            (host-name connection) (port connection))
+    (force-output *error-output*))
   (flet ((close-connection ()
 	   (bordeaux-threads:with-lock-held ((connection-lock connection))
 	     (usocket:socket-close (usocket connection))
@@ -517,6 +532,10 @@ provided, function CONNECTION-CLOSED-HOOK is called when CONNECTION is closed."
 	   (remove-open-connection connection)
 	   (when connection-closed-hook (funcall connection-closed-hook))))
     (loop (let ((event (slime-net-read connection)))
+            (when *slynk-client-debug*
+              (format *error-output* "~&; [slynk-client] received event: ~S~%"
+                      (if event (car event) :nil))
+              (force-output *error-output*))
 	    (unless event
 	      (close-connection)
 	      (return-from slime-dispatch-events))

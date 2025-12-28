@@ -12,4 +12,5 @@
            #:slime-network-error
            #:slime-pending-evals-p
            #:with-slime-connection
-           #:*write-string-hook*))
+           #:*write-string-hook*
+           #:*slynk-client-debug*))
