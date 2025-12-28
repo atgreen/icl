@@ -37,17 +37,45 @@
 (defvar *icl-runtime-injected* nil
   "T when ICL runtime has been injected into the inferior Lisp.")
 
-(defun slynk-connect (&key (host *slynk-host*) (port *slynk-port*))
-  "Connect to a backend server at HOST:PORT."
+(defun slynk-verify-connection (connection &optional (timeout-seconds 10))
+  "Verify that CONNECTION is responsive by doing a simple eval with timeout.
+   Returns T if the connection is responsive, NIL otherwise."
+  #+sbcl
+  (handler-case
+      (sb-ext:with-timeout timeout-seconds
+        ;; Try a minimal eval - just return T
+        (let ((result (slynk-client:slime-eval 'cl:t connection)))
+          (eq result t)))
+    (sb-ext:timeout ()
+      (when *verbose*
+        (format *error-output* "~&; Slynk connection verification timed out~%"))
+      nil)
+    (error (e)
+      (when *verbose*
+        (format *error-output* "~&; Slynk connection verification failed: ~A~%" e))
+      nil))
+  #-sbcl
+  ;; On non-SBCL, we can't easily add timeouts, so just return T
+  t)
+
+(defun slynk-connect (&key (host *slynk-host*) (port *slynk-port*) (verify t))
+  "Connect to a backend server at HOST:PORT.
+   If VERIFY is T (default), verifies the connection is responsive before returning."
   (when *slynk-connection*
     (slynk-disconnect))
   (setf *icl-runtime-injected* nil)
   (handler-case
       (let ((conn (slynk-client:slime-connect host port)))
         (when conn
-          (setf *slynk-connection* conn)
-          (setf *slynk-connected-p* t)
-          t))
+          (if (or (not verify) (slynk-verify-connection conn))
+              (progn
+                (setf *slynk-connection* conn)
+                (setf *slynk-connected-p* t)
+                t)
+              ;; Connection established but not responsive - close it
+              (progn
+                (ignore-errors (slynk-client:slime-close conn))
+                nil))))
     (error (e)
       (setf *slynk-connected-p* nil)
       (format *error-output* "~&; Failed to connect to Slynk: ~A~%" e)

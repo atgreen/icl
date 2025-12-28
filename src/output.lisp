@@ -264,12 +264,20 @@
 (defun print-banner ()
   "Print ICL startup banner."
   (format t "icl ~A" +version+)
-  ;; Get version from inferior Lisp
+  ;; Get version from inferior Lisp with a short timeout
+  ;; Some backends (like CCL) can hang on Slynk communication
   (handler-case
+      #+sbcl
+      (sb-ext:with-timeout 5
+        (let ((impl-type (first (backend-eval-internal "(lisp-implementation-type)")))
+              (impl-version (first (backend-eval-internal "(lisp-implementation-version)"))))
+          (format t " (~A ~A)" impl-type impl-version)))
+      #-sbcl
       (let ((impl-type (first (backend-eval-internal "(lisp-implementation-type)")))
             (impl-version (first (backend-eval-internal "(lisp-implementation-version)"))))
         (format t " (~A ~A)" impl-type impl-version))
-    (error () nil))
+    (error () nil)
+    #+sbcl (sb-ext:timeout () nil))
   (when *paredit-mode*
     (format t " [paredit]"))
   (format t "~%by Anthony Green • https://github.com/atgreen/icl~%")
