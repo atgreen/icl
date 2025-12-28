@@ -269,6 +269,9 @@ ws.onmessage = (e) => {
     case 'open-speedscope':
       openSpeedscopePanel(msg.profileId, msg.title);
       break;
+    case 'open-coverage':
+      openCoveragePanel(msg.title);
+      break;
     case 'class-graph':
       handleClassGraph(msg);
       break;
@@ -367,6 +370,21 @@ function openSpeedscopePanel(profileId, title) {
       component: 'speedscope',
       title: title || 'Flame Graph',
       params: { profileUrl: profileUrl },
+      position: { referencePanel: 'terminal', direction: 'right' }
+    });
+  }
+}
+
+// Open coverage report panel
+let coverageCounter = 0;
+function openCoveragePanel(title) {
+  const panelId = 'coverage-' + (++coverageCounter);
+  if (dockviewApi) {
+    dockviewApi.addPanel({
+      id: panelId,
+      component: 'coverage',
+      title: title || 'Coverage Report',
+      params: {},
       position: { referencePanel: 'terminal', direction: 'right' }
     });
   }
@@ -1847,6 +1865,17 @@ class SpeedscopePanel {
   }
 }
 
+class CoveragePanel {
+  constructor() {
+    this._element = document.createElement('div');
+    this._element.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;';
+  }
+  get element() { return this._element; }
+  init(params) {
+    this._element.innerHTML = '<iframe src="/coverage/cover-index.html" style="width:100%;height:100%;border:none;background:white;"></iframe>';
+  }
+}
+
 class HashTablePanel {
   constructor() {
     this._element = document.createElement('div');
@@ -3169,6 +3198,7 @@ const api = dv.createDockview(container, {
       case 'inspector': return new InspectorPanel();
       case 'dynamic-inspector': return new DynamicInspectorPanel();
       case 'speedscope': return new SpeedscopePanel();
+      case 'coverage': return new CoveragePanel();
       case 'hashtable': return new HashTablePanel();
       case 'svg': return new SvgPanel();
       case 'html': return new HtmlPanel();

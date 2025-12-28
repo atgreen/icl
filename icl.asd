@@ -60,6 +60,7 @@
                  (:file "highlight")
                  (:file "eval")
                  (:file "profiler")
+                 (:file "coverage")
                  (:module "commands"
                   :components
                   ((:file "registry")

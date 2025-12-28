@@ -1152,6 +1152,107 @@ Example: ,flame-alloc (make-list 1000000)"
   (run-flame-profiler form-string :alloc "allocation"))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Code Coverage (sb-cover)
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(define-command cover-start ()
+  "Enable code coverage instrumentation for subsequent compilations.
+Code compiled after this will have coverage data collected.
+Use ,cover-report to view results, ,cover-reset to clear data.
+SBCL only.
+Example: ,cover-start"
+  (handler-case
+      (let ((result (first (backend-coverage-start))))
+        (format t "~&~A~%" result))
+    (error (e)
+      (format *error-output* "~&Error: ~A~%" e))))
+
+(define-command cover-stop ()
+  "Disable code coverage instrumentation for subsequent compilations.
+Previously instrumented code continues to collect coverage data.
+SBCL only.
+Example: ,cover-stop"
+  (handler-case
+      (let ((result (first (backend-coverage-stop))))
+        (format t "~&~A~%" result))
+    (error (e)
+      (format *error-output* "~&Error: ~A~%" e))))
+
+(define-command cover-reset ()
+  "Clear all collected coverage data.
+SBCL only.
+Example: ,cover-reset"
+  (handler-case
+      (let ((result (first (backend-coverage-reset))))
+        (format t "~&~A~%" result))
+    (error (e)
+      (format *error-output* "~&Error: ~A~%" e))))
+
+(define-command (cover-file cf) (filepath)
+  "Load a file with coverage instrumentation enabled.
+The file will be compiled with coverage data collection.
+Use ,cover-report to view results after running the code.
+SBCL only.
+Example: ,cover-file \"mylib.lisp\"
+Example: ,cf tests/test-utils.lisp"
+  (handler-case
+      (progn
+        ;; Ensure browser server is running for report display
+        (unless *browser-acceptor*
+          (format t "~&Starting browser server...~%")
+          (start-browser :open-browser nil))
+        (let ((result (first (backend-coverage-load-file filepath))))
+          (format t "~&~A~%" result)
+          (format t "~&Run your code, then use ,cover-report to see coverage.~%")))
+    (error (e)
+      (format *error-output* "~&Error: ~A~%" e))))
+
+(define-command (cover-ql cql) (system-name)
+  "Load a system with coverage instrumentation enabled.
+Uses ocicl, Quicklisp, or ASDF (whichever is available).
+Use ,cover-report to view results after running the code.
+SBCL only.
+Example: ,cover-ql my-library
+Example: ,cql alexandria"
+  (handler-case
+      (progn
+        ;; Ensure browser server is running for report display
+        (unless *browser-acceptor*
+          (format t "~&Starting browser server...~%")
+          (start-browser :open-browser nil))
+        (backend-coverage-load-system system-name)
+        (format t "~&Run your code, then use ,cover-report to see coverage.~%"))
+    (error (e)
+      (format *error-output* "~&Error: ~A~%" e))))
+
+(define-command cover-report ()
+  "Generate and display HTML coverage report.
+Shows which lines of instrumented code were executed.
+SBCL only.
+Example: ,cover-report"
+  (handler-case
+      (progn
+        ;; Ensure browser server is running
+        (unless *browser-acceptor*
+          (format t "~&Starting browser server...~%")
+          (start-browser :open-browser nil))
+        (format t "~&Generating coverage report...~%")
+        (let ((report-dir (backend-coverage-report)))
+          (if (and *repl-resource*
+                   (hunchensocket:clients *repl-resource*))
+              ;; Open in Dockview panel
+              (progn
+                (format t "~&Opening coverage report in panel...~%")
+                (open-coverage-panel "Coverage Report"))
+              ;; Fall back to opening a new browser tab
+              (let ((url (format nil "http://127.0.0.1:~A/coverage/cover-index.html"
+                                 *browser-port*)))
+                (format t "~&Opening coverage report: ~A~%" url)
+                (ignore-errors (uiop:run-program (list "xdg-open" url)))))))
+    (error (e)
+      (format *error-output* "~&Error: ~A~%" e))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Data Visualization
 ;;; ─────────────────────────────────────────────────────────────────────────────
 

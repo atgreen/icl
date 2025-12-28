@@ -198,6 +198,15 @@
       ((and (> (length path) 14)
             (string= (subseq path 0 14) "/profile-data/"))
        (serve-profile-data (subseq path 14)))
+      ;; Serve coverage report files
+      ((and (> (length path) 10)
+            (string= (subseq path 0 10) "/coverage/"))
+       (let ((asset (serve-coverage-asset (subseq path 10))))
+         (if asset
+             asset
+             (progn
+               (setf (hunchentoot:return-code*) 404)
+               "Coverage report not found"))))
       ;; 404 for all other paths (security)
       (t
        (setf (hunchentoot:return-code*) 404)
