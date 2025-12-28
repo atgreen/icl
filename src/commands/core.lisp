@@ -1215,6 +1215,8 @@ Examples:
   ,viz *my-bag*             ; FSet bag with element counts
   ,viz *my-set*             ; single FSet set as circle
   ,viz *set-a* *set-b*      ; two FSet sets as Venn diagram"
+  ;; Always check for new library visualizations before processing
+  (process-library-visualizations)
   (cond
     ((not *browser-terminal-active*)
      (format t "~&; Browser not active. Use ,browser to start.~%"))
