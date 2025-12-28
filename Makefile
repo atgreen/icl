@@ -1,5 +1,3 @@
-SLYNK_DIR := $(wildcard ocicl/sly-*/slynk)
-
 .PHONY: all clean lint test check
 
 all: icl
@@ -36,13 +34,15 @@ assets/OPEN-SOURCE-NOTICES.txt: assets/WEB-LICENSES ocicl.csv
 	@echo "" >> $@
 	@ocicl collect-licenses 2>/dev/null >> $@
 
-slynk.zip: $(SLYNK_DIR)/*
+slynk.zip:
 	@echo "Creating slynk.zip..."
+	@ocicl install slynk
+	@rm -f slynk.zip
 	sbcl --non-interactive \
 	     --eval "(require 'asdf)" \
 	     --eval "(asdf:initialize-source-registry (list :source-registry :inherit-configuration (list :directory (uiop:getcwd)) (list :tree (merge-pathnames \"ocicl/\" (uiop:getcwd)))))" \
 	     --eval "(asdf:load-system :zip)" \
-	     --eval "(zip:zip \"slynk.zip\" \"$(SLYNK_DIR)/\" :if-exists :supersede)" \
+	     --eval "(zip:zip \"slynk.zip\" (first (directory \"ocicl/sly-*/slynk/\")) :if-exists :supersede)" \
 	     --quit
 
 icl: slynk.zip src/*.lisp *.asd
