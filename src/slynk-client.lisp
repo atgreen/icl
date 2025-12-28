@@ -225,22 +225,20 @@ Tracks which packages have been processed to avoid duplicate registrations."
             (cl:unless (cl:boundp 'cl-user::*icl-viz-registered-packages*)
               (cl:setf (cl:symbol-value 'cl-user::*icl-viz-registered-packages*)
                        (cl:make-hash-table :test 'cl:eq)))
-            (cl:dolist (cl-user::pkg (cl:list-all-packages))
-              (cl:let ((cl-user::fn (cl:find-symbol "REGISTER-ICL-VIZ" cl-user::pkg)))
-                (cl:when (cl:and cl-user::fn
-                                 (cl:fboundp cl-user::fn)
-                                 (cl:not (cl:gethash cl-user::pkg
-                                                     cl-user::*icl-viz-registered-packages*)))
-                  (cl:handler-case
-                      (cl:progn
-                        (cl:funcall cl-user::fn)
-                        (cl:setf (cl:gethash cl-user::pkg
-                                             cl-user::*icl-viz-registered-packages*)
-                                 cl:t))
-                    (cl:error (cl-user::e)
-                      (cl:format cl:*error-output*
-                                 "~&; Warning: ~A:REGISTER-ICL-VIZ failed: ~A~%"
-                                 (cl:package-name cl-user::pkg) cl-user::e)))))))
+            (cl:let ((cl-user::ht (cl:symbol-value 'cl-user::*icl-viz-registered-packages*)))
+              (cl:dolist (cl-user::pkg (cl:list-all-packages))
+                (cl:let ((cl-user::fn (cl:find-symbol "REGISTER-ICL-VIZ" cl-user::pkg)))
+                  (cl:when (cl:and cl-user::fn
+                                   (cl:fboundp cl-user::fn)
+                                   (cl:not (cl:gethash cl-user::pkg cl-user::ht)))
+                    (cl:handler-case
+                        (cl:progn
+                          (cl:funcall cl-user::fn)
+                          (cl:setf (cl:gethash cl-user::pkg cl-user::ht) cl:t))
+                      (cl:error (cl-user::e)
+                        (cl:format cl:*error-output*
+                                   "~&; Warning: ~A:REGISTER-ICL-VIZ failed: ~A~%"
+                                   (cl:package-name cl-user::pkg) cl-user::e))))))))
          *slynk-connection*)
       (error (e)
         (format *error-output* "~&; Warning: Failed to process library visualizations: ~A~%" e)))))
