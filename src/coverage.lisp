@@ -223,15 +223,17 @@ Uses stored position data when available to avoid reader macro issues."
                                                :state state-kw
                                                :is-branch (member current-state '(5 6 9 10)))
                                          annotations))))
-                             ;; Add file data
-                             (push (list :path file
-                                         :content content
-                                         :annotations (nreverse annotations)
-                                         :summary (list :expr-covered (sb-cover::covered-of expr-count)
-                                                       :expr-total (sb-cover::all-of expr-count)
-                                                       :branch-covered (sb-cover::covered-of branch-count)
-                                                       :branch-total (sb-cover::all-of branch-count)))
-                                   files-data))))))
+                             ;; Add file data - use find-symbol for sb-cover accessors
+                             (let ((ok-of-fn (find-symbol \"OK-OF\" \"SB-COVER\"))
+                                   (all-of-fn (find-symbol \"ALL-OF\" \"SB-COVER\")))
+                               (push (list :path file
+                                           :content content
+                                           :annotations (nreverse annotations)
+                                           :summary (list :expr-covered (funcall ok-of-fn expr-count)
+                                                         :expr-total (funcall all-of-fn expr-count)
+                                                         :branch-covered (funcall ok-of-fn branch-count)
+                                                         :branch-total (funcall all-of-fn branch-count)))
+                                     files-data)))))))
                  (error () nil))))))
        ht)
 
