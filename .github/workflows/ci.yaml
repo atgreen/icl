@@ -146,3 +146,31 @@ jobs:
           output=$(printf ',browser test\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
           echo "$output"
           echo "$output" | grep -q "Browser test passed" || (echo "FAIL: Browser test did not pass" && exit 1)
+
+      - name: Test ,dis command (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          output=$(printf ',dis car\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "disassembly for CAR" || (echo "FAIL: ,dis car did not produce disassembly" && exit 1)
+
+      - name: Test ,dis command (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          output=$(printf ',dis car\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "disassembly for CAR" || (echo "FAIL: ,dis car did not produce disassembly" && exit 1)
+
+      - name: Test ,dis with package context (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          output=$(printf ',cd cl\n,dis length\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "disassembly for LENGTH" || (echo "FAIL: ,dis length after ,cd cl did not work" && exit 1)
+
+      - name: Test ,dis with package context (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          output=$(printf ',cd cl\n,dis length\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "disassembly for LENGTH" || (echo "FAIL: ,dis length after ,cd cl did not work" && exit 1)
