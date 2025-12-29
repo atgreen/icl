@@ -670,6 +670,9 @@ function renderImage(element, imageUrl) {
 const vegaLiteStates = new Map();
 let currentThemeIsDark = true;  // Track current theme for Vega-Lite
 
+// Monaco iframe registry for theme updates
+const monacoIframes = new Set();
+
 // Open Vega-Lite panel - tracks by source expression for updates
 function openVegaLitePanel(title, spec, sourceExpr) {
   console.log('openVegaLitePanel called:', title, spec?.length, sourceExpr);
@@ -1291,6 +1294,16 @@ function applyTheme(themeData) {
     mermaidStates.forEach((panel) => {
       if (panel.reRender) {
         panel.reRender();
+      }
+    });
+
+    // Update all Monaco iframes with new theme
+    monacoIframes.forEach((iframe) => {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: 'set-theme',
+          theme: isDark ? 'dark' : 'light'
+        }, '*');
       }
     });
   }
@@ -2069,6 +2082,7 @@ class MonacoCoveragePanel {
     window.addEventListener('message', this._messageHandler);
 
     container.appendChild(this._iframe);
+    monacoIframes.add(this._iframe);
   }
 
   _sendContentToEditor() {
@@ -2145,6 +2159,9 @@ class MonacoCoveragePanel {
     if (this._messageHandler) {
       window.removeEventListener('message', this._messageHandler);
     }
+    if (this._iframe) {
+      monacoIframes.delete(this._iframe);
+    }
     this._iframe = null;
   }
 }
@@ -2213,6 +2230,7 @@ class MonacoSourcePanel {
     window.addEventListener('message', this._messageHandler);
 
     container.appendChild(this._iframe);
+    monacoIframes.add(this._iframe);
   }
 
   _sendContentToEditor() {
@@ -2239,6 +2257,9 @@ class MonacoSourcePanel {
   dispose() {
     if (this._messageHandler) {
       window.removeEventListener('message', this._messageHandler);
+    }
+    if (this._iframe) {
+      monacoIframes.delete(this._iframe);
     }
     this._iframe = null;
   }

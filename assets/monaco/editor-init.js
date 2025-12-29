@@ -86,6 +86,12 @@ require(['vs/editor/editor.main'], function() {
           }]);
         }
       }
+    } else if (e.data.type === 'set-theme') {
+      // Theme change from parent window
+      if (editor) {
+        const isDark = e.data.theme === 'dark';
+        monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs');
+      }
     }
   });
 });
