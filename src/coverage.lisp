@@ -171,8 +171,10 @@ Uses stored position data when available to avoid reader macro issues."
            (let ((file-size (ignore-errors (with-open-file (s file) (file-length s)))))
              (when (and file-size (< file-size max-file-size))
                (handler-case
-                   (let* ((locations (sb-c::coverage-instrumented-file-locations file-info))
-                          (linelengths (sb-c::coverage-instrumented-file-lines file-info)))
+                   (let* ((loc-accessor (find-symbol \"COVERAGE-INSTRUMENTED-FILE-LOCATIONS\" \"SB-C\"))
+                          (lines-accessor (find-symbol \"COVERAGE-INSTRUMENTED-FILE-LINES\" \"SB-C\"))
+                          (locations (and loc-accessor (funcall loc-accessor file-info)))
+                          (linelengths (and lines-accessor (funcall lines-accessor file-info))))
                      ;; Only process if stored positions are available
                      (when (and locations linelengths)
                        (incf file-count)
