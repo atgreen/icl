@@ -6,7 +6,7 @@
 ;; Author: Anthony Green <green@moxielogic.com>
 ;; Maintainer: Anthony Green <green@moxielogic.com>
 ;; URL: https://github.com/moxielogic/icl
-;; Version: 1.19.2
+;; Version: 1.19.3
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: lisp, tools, repl
 
