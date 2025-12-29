@@ -1276,12 +1276,17 @@ function applyTheme(themeData) {
     }
   });
 
-  // Detect dark/light mode from theme
-  if (themeData.dockviewTheme) {
-    const isDark = themeData.dockviewTheme.includes('dark') ||
-                  themeData.dockviewTheme.includes('vs-dark') ||
-                  themeData.dockviewTheme === 'dockview-theme-dark';
+  // Detect dark/light mode from theme (darkP is sent from Lisp)
+  if (themeData.darkP !== undefined) {
+    const isDark = themeData.darkP;
     currentThemeIsDark = isDark;
+
+    // Set body class for dark mode detection
+    if (isDark) {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
 
     // Re-render all Vega-Lite panels to apply new theme
     vegaLiteStates.forEach((panel) => {
