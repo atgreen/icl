@@ -21,6 +21,7 @@
                  (:file "theme-tests")
                  (:file "completion-tests")
                  (:file "highlight-tests")
-                 (:file "indent-tests"))))
+                 (:file "indent-tests")
+                 (:file "command-tests")))))
   :perform (test-op (o c)
              (symbol-call :fiveam :run! :icl-tests)))
