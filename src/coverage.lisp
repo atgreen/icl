@@ -250,6 +250,15 @@ Uses stored position data when available to avoid reader macro issues."
          (result-string (first raw-result))
          (result (when (and result-string (stringp result-string))
                    (ignore-errors (read-from-string result-string)))))
+    ;; Debug output
+    (format *error-output* "~&Coverage debug: raw-result type=~A, result-string=~S~%"
+            (type-of raw-result) (if (> (length (princ-to-string result-string)) 200)
+                                     (subseq (princ-to-string result-string) 0 200)
+                                     result-string))
+    (format *error-output* "~&Coverage debug: result type=~A, result=~S~%"
+            (type-of result) (if (and result (> (length (princ-to-string result)) 200))
+                                 (subseq (princ-to-string result) 0 200)
+                                 result))
     ;; Check for error result (dotted pair like (:error . "message"))
     (when (and (consp result) (eq (car result) :error))
       (format *error-output* "~&Coverage extraction failed: ~A~%" (cdr result))
