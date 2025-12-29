@@ -518,8 +518,7 @@ Example: ,source my-function"
   (handler-case
       (let ((locations (slynk-find-definitions symbol-name)))
         (if locations
-            (dolist (loc locations)
-              (format-source-location loc))
+            (open-source-for-definition (first locations) symbol-name)
             (format *error-output* "~&No source location found for: ~A~%" symbol-name)))
     (error (e)
       (format *error-output* "~&Error finding source: ~A~%" e))))
@@ -531,6 +530,59 @@ Example: ,source my-function"
   (slynk-client:slime-eval
    `(cl:funcall (cl:read-from-string "slynk:find-definitions-for-emacs") ,name)
    *slynk-connection*))
+
+(defun position-to-line (file-path position)
+  "Convert character POSITION (1-based) to line number in FILE-PATH."
+  (when (and file-path (probe-file file-path) position)
+    (with-open-file (in file-path :direction :input)
+      (let ((line 1)
+            (char-count 0))
+        (loop for ch = (read-char in nil nil)
+              while ch
+              do (incf char-count)
+                 (when (>= char-count position)
+                   (return line))
+                 (when (char= ch #\Newline)
+                   (incf line)))
+        line))))
+
+(defun open-source-for-definition (location symbol-name)
+  "Open Monaco source panel for a source LOCATION from Slynk."
+  ;; Location formats vary:
+  ;; (label (:location (:file "...") (:position N) ...))
+  ;; (label ((:file "...") (:position N) ...))
+  ;; (label (:error "..."))
+  (when (listp location)
+    (let* ((label (first location))
+           (loc-data (second location))
+           file pos)
+      ;; Extract file and position
+      (cond
+        ;; (:location (:file ...) (:position ...))
+        ((and (listp loc-data) (eq (first loc-data) :location))
+         (let ((props (rest loc-data)))
+           (setf file (second (assoc :file props)))
+           (setf pos (second (assoc :position props)))))
+        ;; ((:file ...) (:position ...)) - direct alist
+        ((and (listp loc-data) (listp (first loc-data)) (eq (first (first loc-data)) :file))
+         (setf file (second (assoc :file loc-data)))
+         (setf pos (second (assoc :position loc-data))))
+        ;; (:error "message")
+        ((and (listp loc-data) (eq (first loc-data) :error))
+         (format *error-output* "~&~A: ~A~%" label (second loc-data))
+         (return-from open-source-for-definition nil))
+        (t
+         (format *error-output* "~&Unknown location format: ~S~%" loc-data)
+         (return-from open-source-for-definition nil)))
+      ;; Open the source panel
+      (cond
+        ((and file (probe-file file))
+         (let ((line (when pos (position-to-line file pos))))
+           (icl::open-source-panel symbol-name file :line line)))
+        (file
+         (format *error-output* "~&File not found: ~A~%" file))
+        (t
+         (format *error-output* "~&No file path in location~%"))))))
 
 (defun format-source-location (location)
   "Format and print a source location from Slynk."
@@ -1226,7 +1278,7 @@ Example: ,cql alexandria"
       (format *error-output* "~&Error: ~A~%" e))))
 
 (define-command cover-report ()
-  "Generate and display HTML coverage report.
+  "Generate and display coverage report with syntax highlighting.
 Shows which lines of instrumented code were executed.
 SBCL only.
 Example: ,cover-report"
@@ -1237,14 +1289,15 @@ Example: ,cover-report"
           (format t "~&Starting browser server...~%")
           (start-browser :open-browser nil))
         (format t "~&Generating coverage report...~%")
-        (let ((report-dir (backend-coverage-report)))
-          (if (and *repl-resource*
-                   (hunchensocket:clients *repl-resource*))
-              ;; Open in Dockview panel
-              (progn
-                (format t "~&Opening coverage report in panel...~%")
-                (open-coverage-panel "Coverage Report"))
-              ;; Fall back to opening a new browser tab
+        (if (and *repl-resource*
+                 (hunchensocket:clients *repl-resource*))
+            ;; Open Monaco-style panel with syntax highlighting
+            (progn
+              (format t "~&Opening coverage report in panel...~%")
+              (open-coverage-panel "Coverage Report" t))
+            ;; Fall back to legacy HTML report in browser tab
+            (progn
+              (backend-coverage-report)  ; Generate HTML report
               (let ((url (format nil "http://127.0.0.1:~A/coverage/cover-index.html"
                                  *browser-port*)))
                 (format t "~&Opening coverage report: ~A~%" url)

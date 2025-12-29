@@ -104,6 +104,189 @@ Uses COMPILE-FILE + LOAD to ensure coverage data is collected."
     (fresh-line)
     nil))
 
+(defun backend-coverage-json ()
+  "Extract coverage data with line/column positions for Monaco display.
+Returns JSON string with file contents and coverage annotations."
+  (unless *slynk-connected-p*
+    (error "Not connected to backend"))
+  ;; This code runs in the backend to extract detailed coverage data
+  (let* ((extract-code "
+(handler-case
+(progn
+  (require 'sb-cover)
+
+  ;; Helper: convert file position to (line . column), 1-based
+  ;; Use labels for recursive navigate-to-subform
+  (labels ((pos-to-line-col (content pos)
+           (let ((line 1) (col 1))
+             (loop for i from 0 below (min pos (length content))
+                   for ch = (char content i)
+                   do (if (char= ch #\\Newline)
+                          (progn (incf line) (setf col 1))
+                          (incf col)))
+             (cons line col)))
+
+         ;; Navigate to subform using source path (with error handling for special forms)
+         (navigate-to-subform (form path)
+           (handler-case
+               (if (null path)
+                   form
+                   (let ((index (car path)))
+                     (cond
+                       ((and (consp form) (integerp index))
+                        (let ((len (list-length form)))  ; Returns NIL for circular/improper
+                          (when (and len (< index len))
+                            (navigate-to-subform (nth index form) (cdr path)))))
+                       (t nil))))
+             (error () nil)))
+
+         ;; Read file to string
+         (read-file-to-string (path)
+           (with-open-file (stream path :direction :input)
+             (let ((content (make-string (file-length stream))))
+               (read-sequence content stream)
+               content))))
+
+    ;; Refresh coverage info to update records with execution state
+    (funcall (find-symbol \"REFRESH-COVERAGE-INFO\" \"SB-COVER\"))
+
+    (let* ((ht (sb-cover::code-coverage-hashtable))
+           (files-data nil)
+           (file-count 0)
+           (max-files 30)        ; Limit number of files to prevent overwhelming
+           (max-file-size 200000)) ; Skip files larger than 200KB
+
+      ;; Process each covered file (with limits)
+      (maphash
+       (lambda (file records)
+         (when (and (< file-count max-files)
+                    (probe-file file))
+           ;; Check file size before processing
+           (let ((file-size (with-open-file (s file) (file-length s))))
+             (when (< file-size max-file-size)
+               (incf file-count)
+               (let* ((content (read-file-to-string file))
+                      (annotations nil)
+                      (expr-covered 0) (expr-total 0)
+                      (branch-covered 0) (branch-total 0)
+                      (all-maps (make-hash-table :test 'eq))
+                      (forms nil)
+                      (max-records 2000)  ; Limit records per file
+                      (record-count 0))
+
+             ;; Read all forms to build source map
+             (with-open-file (stream file :direction :input)
+               (let ((sb-cover::*current-package* *package*))
+                 (loop
+                   (multiple-value-bind (form source-map)
+                       (funcall (find-symbol \"READ-AND-RECORD-SOURCE-MAP\" \"SB-COVER\") stream)
+                     (when (eq form sb-int:*eof-object*)
+                       (return))
+                     (push form forms)
+                     (maphash (lambda (k v) (setf (gethash k all-maps) v)) source-map)))))
+             (setf forms (nreverse forms))
+
+             ;; Process each coverage record (with limit)
+             (dolist (record records)
+               (when (>= record-count max-records)
+                 (return))  ; Stop processing if we hit the limit
+               (incf record-count)
+               (let* ((path (car record))
+                      (state (cdr record))
+                      (is-branch (member (car path) '(:then :else)))
+                      ;; Path is (subform-idx ... top-level-idx), reverse to navigate
+                      (reversed-path (reverse (remove-if #'keywordp path)))
+                      (form-idx (car reversed-path))
+                      (subform-path (cdr reversed-path)))
+
+                 ;; Count coverage
+                 (if is-branch
+                     (progn
+                       (incf branch-total)
+                       (when state (incf branch-covered)))
+                     (progn
+                       (incf expr-total)
+                       (when state (incf expr-covered))))
+
+                 ;; Find positions
+                 (when (and (integerp form-idx) (< form-idx (length forms)))
+                   (let* ((top-form (nth form-idx forms))
+                          (subform (navigate-to-subform top-form subform-path))
+                          (positions (when subform (gethash subform all-maps))))
+                     (when positions
+                       (let* ((pos-info (first positions))
+                              (start (first pos-info))
+                              (end (second pos-info))
+                              (start-lc (pos-to-line-col content start))
+                              (end-lc (pos-to-line-col content end)))
+                         (push (list :start-line (car start-lc)
+                                     :start-col (cdr start-lc)
+                                     :end-line (car end-lc)
+                                     :end-col (cdr end-lc)
+                                     :state (cond
+                                              ;; Branch coverage: :then/:else is in path, state is T/NIL
+                                              ((eq (car path) :then)
+                                               (if state :then-taken :then-not-taken))
+                                              ((eq (car path) :else)
+                                               (if state :else-taken :else-not-taken))
+                                              ;; Expression coverage
+                                              ((eq state t) :executed)
+                                              ((null state) :not-executed)
+                                              (t :unknown))
+                                     :is-branch is-branch)
+                               annotations)))))))
+
+             ;; Add file data
+             (push (list :path file
+                         :content content
+                         :annotations (nreverse annotations)
+                         :summary (list :expr-covered expr-covered
+                                       :expr-total expr-total
+                                       :branch-covered branch-covered
+                                       :branch-total branch-total))
+                   files-data))))))  ; extra )) for file-size when + let
+       ht)
+
+      ;; Return the data
+      files-data)))
+  (error (e) (format nil \"(:error . ~S)\" (princ-to-string e))))")
+         (raw-result (backend-eval-internal extract-code))
+         (result-string (first raw-result))
+         (result (when (and result-string (stringp result-string))
+                   (ignore-errors (read-from-string result-string)))))
+    (if result
+        ;; Convert to JSON
+        (let ((json-obj (make-hash-table :test 'equal))
+              (files-array (make-array (length result) :fill-pointer 0)))
+          (dolist (file-data result)
+            (let ((file-obj (make-hash-table :test 'equal))
+                  (ann-array (make-array (length (getf file-data :annotations)) :fill-pointer 0)))
+              (setf (gethash "path" file-obj) (getf file-data :path))
+              (setf (gethash "content" file-obj) (getf file-data :content))
+              ;; Convert annotations
+              (dolist (ann (getf file-data :annotations))
+                (let ((ann-obj (make-hash-table :test 'equal)))
+                  (setf (gethash "startLine" ann-obj) (getf ann :start-line))
+                  (setf (gethash "startCol" ann-obj) (getf ann :start-col))
+                  (setf (gethash "endLine" ann-obj) (getf ann :end-line))
+                  (setf (gethash "endCol" ann-obj) (getf ann :end-col))
+                  (setf (gethash "state" ann-obj) (string-downcase (symbol-name (getf ann :state))))
+                  (setf (gethash "isBranch" ann-obj) (getf ann :is-branch))
+                  (vector-push-extend ann-obj ann-array)))
+              (setf (gethash "annotations" file-obj) ann-array)
+              ;; Summary
+              (let ((summary (getf file-data :summary))
+                    (sum-obj (make-hash-table :test 'equal)))
+                (setf (gethash "exprCovered" sum-obj) (getf summary :expr-covered))
+                (setf (gethash "exprTotal" sum-obj) (getf summary :expr-total))
+                (setf (gethash "branchCovered" sum-obj) (getf summary :branch-covered))
+                (setf (gethash "branchTotal" sum-obj) (getf summary :branch-total))
+                (setf (gethash "summary" file-obj) sum-obj))
+              (vector-push-extend file-obj files-array)))
+          (setf (gethash "files" json-obj) files-array)
+          (com.inuoe.jzon:stringify json-obj))
+        nil)))
+
 (defun backend-coverage-report ()
   "Generate coverage HTML report in backend and transfer files to ICL.
 Returns the report ID for serving."
@@ -184,12 +367,26 @@ Returns the report ID for serving."
 
 ;;; Panel integration
 
-(defun open-coverage-panel (&optional title)
-  "Send message to browser to open a coverage report panel."
+(defun open-coverage-panel (&optional title use-monaco)
+  "Send message to browser to open a coverage report panel.
+If USE-MONACO is true, sends JSON data for Monaco display.
+Otherwise, opens the legacy HTML report in an iframe."
   (when *repl-resource*
     (dolist (client (hunchensocket:clients *repl-resource*))
       (let ((obj (make-hash-table :test 'equal)))
-        (setf (gethash "type" obj) "open-coverage")
-        (when title
-          (setf (gethash "title" obj) title))
+        (if use-monaco
+            (let ((json-data (backend-coverage-json)))
+              (if json-data
+                  (progn
+                    (setf (gethash "type" obj) "open-monaco-coverage")
+                    (setf (gethash "data" obj) json-data)
+                    (when title
+                      (setf (gethash "title" obj) title)))
+                  (progn
+                    (format *error-output* "~&Failed to extract coverage data.~%")
+                    (return-from open-coverage-panel nil))))
+            (progn
+              (setf (gethash "type" obj) "open-coverage")
+              (when title
+                (setf (gethash "title" obj) title))))
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))

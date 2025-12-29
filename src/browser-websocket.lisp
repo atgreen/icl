@@ -104,6 +104,28 @@
                (loop for char across data
                      do (chanl:send (input-queue resource) char)))))
 
+          ;; Paste - send as bracketed paste (ESC[200~ ... ESC[201~)
+          ((string= type "paste")
+           (let ((data (gethash "data" json)))
+             (when data
+               ;; Send bracketed paste start sequence
+               (chanl:send (input-queue resource) #\Escape)
+               (chanl:send (input-queue resource) #\[)
+               (chanl:send (input-queue resource) #\2)
+               (chanl:send (input-queue resource) #\0)
+               (chanl:send (input-queue resource) #\0)
+               (chanl:send (input-queue resource) #\~)
+               ;; Send the pasted content
+               (loop for char across data
+                     do (chanl:send (input-queue resource) char))
+               ;; Send bracketed paste end sequence
+               (chanl:send (input-queue resource) #\Escape)
+               (chanl:send (input-queue resource) #\[)
+               (chanl:send (input-queue resource) #\2)
+               (chanl:send (input-queue resource) #\0)
+               (chanl:send (input-queue resource) #\1)
+               (chanl:send (input-queue resource) #\~))))
+
           ;; Request packages list
           ((string= type "get-packages")
            (send-packages-list client))
@@ -898,6 +920,25 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
         (setf (gethash "pattern" obj) pattern)
         (setf (gethash "sourceExpr" obj) source-expr)
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
+
+(defun open-source-panel (title file-path &key position line)
+  "Send message to browser to open a Monaco source viewer panel.
+   FILE-PATH is the path to the source file.
+   POSITION is the character position (1-based) to highlight/scroll to.
+   LINE is the line number (1-based) to scroll to (alternative to position)."
+  (when (and *repl-resource* (probe-file file-path))
+    (let ((content (uiop:read-file-string file-path)))
+      (dolist (client (hunchensocket:clients *repl-resource*))
+        (let ((obj (make-hash-table :test 'equal)))
+          (setf (gethash "type" obj) "open-source")
+          (setf (gethash "title" obj) title)
+          (setf (gethash "path" obj) (namestring file-path))
+          (setf (gethash "content" obj) content)
+          (when position
+            (setf (gethash "position" obj) position))
+          (when line
+            (setf (gethash "line" obj) line))
+          (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))))
 
 (defun needs-case-escape-p (str)
   "Return T if STR contains lowercase letters that would be upcased by the reader."

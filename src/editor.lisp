@@ -913,20 +913,17 @@
        (dotimes (i (length text))
          (let ((c (char text i)))
            (cond
-             ;; Convert CR or CRLF to newline
+             ;; Convert CR or CRLF to newline (no auto-indent - pasted text has its own)
              ((char= c #\Return)
               ;; Skip if followed by LF
               (unless (and (< (1+ i) (length text))
                            (char= (char text (1+ i)) #\Newline))
-                (buffer-insert-newline buf)))
+                (buffer-insert-newline buf :auto-indent nil)))
              ((char= c #\Newline)
-              (buffer-insert-newline buf))
-             ;; Regular character
+              (buffer-insert-newline buf :auto-indent nil))
+             ;; Regular character - skip paredit during paste to preserve formatting
              (t
-              (if (and *paredit-mode*
-                       (eql (paredit-handle-char buf c) :handled))
-                  nil  ; Paredit handled it
-                  (buffer-insert-char buf c)))))))
+              (buffer-insert-char buf c))))))
      :redraw)
     ;; Regular character (with paredit support)
     ((characterp key)

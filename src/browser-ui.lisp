@@ -31,7 +31,6 @@
   <link rel='stylesheet' href='/assets/dockview.css'>
   <link rel='stylesheet' href='/assets/xterm.css'>
   <link rel='stylesheet' href='/assets/browser.css'>
-  <link rel='stylesheet' href='/assets/hljs-github-dark.min.css' id='hljs-theme'>
 </head>
 <body data-ws-token='~A' data-version='~A' data-unsafe-visualizations='~A'>
   <div id='layout-container'></div>
@@ -41,7 +40,7 @@
   <script src='/assets/xterm.min.js'></script>
   <script src='/assets/xterm-addon-fit.min.js'></script>
   <script src='/assets/viz-standalone.js'></script>
-  <script src='/assets/highlight.min.js'></script>
+  <script src='/assets/monaco/vs/loader.js'></script>
   <script src='/assets/vega.min.js'></script>
   <script src='/assets/vega-lite.min.js'></script>
   <script src='/assets/vega-embed.min.js'></script>

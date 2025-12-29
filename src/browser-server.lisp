@@ -58,6 +58,7 @@
   (flet ((set-content-type ()
            (setf (hunchentoot:content-type*)
                  (cond
+                   ((alexandria:ends-with-subseq ".html" filename) "text/html")
                    ((alexandria:ends-with-subseq ".css" filename) "text/css")
                    ((alexandria:ends-with-subseq ".js" filename) "application/javascript")
                    ((alexandria:ends-with-subseq ".png" filename) "image/png")
@@ -151,8 +152,9 @@
   ;; - blob: needed for Vega image export
   ;; - data: needed for embedded images
   ;; - api.github.com needed for "Check for Updates" feature
+  ;; - cdn.jsdelivr.net needed for Monaco editor (coverage panel)
   (setf (hunchentoot:header-out :content-security-policy)
-        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com; frame-ancestors 'self';")
+        "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'; worker-src 'self' blob:;")
   ;; Allow same-origin framing (needed for flame graph panel)
   (setf (hunchentoot:header-out :x-frame-options) "SAMEORIGIN")
   ;; Prevent MIME type sniffing

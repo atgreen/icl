@@ -12,6 +12,33 @@ const ICL_CONFIG = {
   unsafeVisualizations: document.body.dataset.unsafeVisualizations === 'true'
 };
 
+// Monaco editor for syntax highlighting (colorizer only, not full editor)
+let monacoReady = false;
+let monacoReadyPromise = null;
+
+function initMonaco() {
+  if (monacoReadyPromise) return monacoReadyPromise;
+
+  monacoReadyPromise = new Promise((resolve) => {
+    if (typeof require !== 'undefined' && require.config) {
+      require.config({ paths: { 'vs': '/assets/monaco/vs' }});
+      require(['vs/editor/editor.main'], function() {
+        monacoReady = true;
+        resolve();
+      });
+    } else {
+      // Monaco loader not available yet, wait a bit
+      setTimeout(() => {
+        initMonaco().then(resolve);
+      }, 100);
+    }
+  });
+  return monacoReadyPromise;
+}
+
+// Start loading Monaco immediately
+initMonaco();
+
 // Helper to setup modal close buttons (CSP-compliant - no inline handlers)
 function setupModalCloseButtons(container) {
   container.querySelectorAll('.modal-close-btn').forEach(btn => {
@@ -272,6 +299,9 @@ ws.onmessage = (e) => {
     case 'open-coverage':
       openCoveragePanel(msg.title);
       break;
+    case 'open-monaco-coverage':
+      openMonacoCoveragePanel(msg.title, msg.data);
+      break;
     case 'class-graph':
       handleClassGraph(msg);
       break;
@@ -351,6 +381,10 @@ ws.onmessage = (e) => {
     case 'regexp-refresh':
       handleRegexpRefresh(msg);
       break;
+    case 'open-source':
+      openSourcePanel(msg.title, msg.path, msg.content, msg.position, msg.line);
+      restoreTerminalFocus();
+      break;
   }
 };
 
@@ -375,7 +409,7 @@ function openSpeedscopePanel(profileId, title) {
   }
 }
 
-// Open coverage report panel
+// Open coverage report panel (legacy HTML iframe)
 let coverageCounter = 0;
 function openCoveragePanel(title) {
   const panelId = 'coverage-' + (++coverageCounter);
@@ -385,6 +419,35 @@ function openCoveragePanel(title) {
       component: 'coverage',
       title: title || 'Coverage Report',
       params: {},
+      position: { referencePanel: 'terminal', direction: 'right' }
+    });
+  }
+}
+
+// Open Monaco-style coverage panel with syntax highlighting
+function openMonacoCoveragePanel(title, data) {
+  const panelId = 'monaco-coverage-' + (++coverageCounter);
+  if (dockviewApi) {
+    dockviewApi.addPanel({
+      id: panelId,
+      component: 'monaco-coverage',
+      title: title || 'Coverage Report',
+      params: { data: data },
+      position: { referencePanel: 'terminal', direction: 'right' }
+    });
+  }
+}
+
+// Open Monaco source viewer panel (for ,source command)
+let sourceCounter = 0;
+function openSourcePanel(title, path, content, position, line) {
+  const panelId = 'source-' + (++sourceCounter);
+  if (dockviewApi) {
+    dockviewApi.addPanel({
+      id: panelId,
+      component: 'monaco-source',
+      title: title || path.split('/').pop() || 'Source',
+      params: { path: path, content: content, position: position, line: line },
       position: { referencePanel: 'terminal', direction: 'right' }
     });
   }
@@ -1084,30 +1147,50 @@ function renderHashTable(element, count, entries) {
   element.innerHTML = html;
 }
 
-// Render code/text with syntax highlighting via highlight.js
+// Render code/text with syntax highlighting via Monaco colorizer
 function renderJson(element, content) {
   let formatted = content;
+  let language = 'plaintext';
+
   // Try to pretty-print if it looks like JSON
   try {
     const parsed = JSON.parse(content);
     formatted = JSON.stringify(parsed, null, 2);
+    language = 'json';
   } catch (e) {
-    // Not valid JSON, use as-is
+    // Not valid JSON - try to detect language
+    if (content.trim().startsWith('(') || content.includes('defun') || content.includes('defmacro')) {
+      language = 'scheme';  // Close to Lisp
+    }
   }
 
-  // Create pre/code structure for highlight.js
+  // Create container
   const pre = document.createElement('pre');
   pre.style.cssText = 'margin:0;padding:12px;font-family:monospace;font-size:13px;' +
     'background:var(--bg-primary);overflow:auto;height:100%;';
-  const code = document.createElement('code');
-  code.textContent = formatted;
-  pre.appendChild(code);
   element.innerHTML = '';
   element.appendChild(pre);
 
-  // Apply highlight.js with auto-detection
-  if (window.hljs) {
-    hljs.highlightElement(code);
+  // Use Monaco colorizer if available
+  if (monacoReady && typeof monaco !== 'undefined') {
+    const isDark = document.body.classList.contains('dark');
+    monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs');
+    monaco.editor.colorize(formatted, language, {}).then(html => {
+      pre.innerHTML = html;
+    });
+  } else {
+    // Fallback: plain text until Monaco loads
+    pre.textContent = formatted;
+    // Retry when Monaco is ready
+    initMonaco().then(() => {
+      if (typeof monaco !== 'undefined') {
+        const isDark = document.body.classList.contains('dark');
+        monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs');
+        monaco.editor.colorize(formatted, language, {}).then(html => {
+          pre.innerHTML = html;
+        });
+      }
+    });
   }
 }
 
@@ -1196,13 +1279,6 @@ function applyTheme(themeData) {
                   themeData.dockviewTheme.includes('vs-dark') ||
                   themeData.dockviewTheme === 'dockview-theme-dark';
     currentThemeIsDark = isDark;
-
-    // Switch highlight.js theme based on dark/light mode
-    const hljsThemeLink = document.getElementById('hljs-theme');
-    if (hljsThemeLink) {
-      const hljsTheme = isDark ? 'github-dark' : 'github';
-      hljsThemeLink.href = '/assets/hljs-' + hljsTheme + '.min.css';
-    }
 
     // Re-render all Vega-Lite panels to apply new theme
     vegaLiteStates.forEach((panel) => {
@@ -1873,6 +1949,298 @@ class CoveragePanel {
   get element() { return this._element; }
   init(params) {
     this._element.innerHTML = '<iframe src="/coverage/cover-index.html" style="width:100%;height:100%;border:none;background:white;"></iframe>';
+  }
+}
+
+// Monaco editor coverage panel with real Monaco editor and line decorations
+// Monaco runs entirely inside an iframe to isolate from regulex.js AMD conflicts
+
+class MonacoCoveragePanel {
+  constructor() {
+    this._element = document.createElement('div');
+    this._element.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;background:var(--bg-primary);';
+    this._currentFileIndex = 0;
+    this._files = [];
+    this._iframe = null;
+    this._iframeReady = false;
+    this._pendingUpdate = null;
+  }
+
+  get element() { return this._element; }
+
+  init(params) {
+    const data = params.params?.data;
+    if (!data) {
+      this._element.innerHTML = '<div style="padding:20px;color:var(--fg-secondary);">No coverage data available</div>';
+      return;
+    }
+
+    // Parse JSON if it's a string
+    const coverageData = typeof data === 'string' ? JSON.parse(data) : data;
+    this._files = coverageData.files || [];
+
+    if (this._files.length === 0) {
+      this._element.innerHTML = '<div style="padding:20px;color:var(--fg-secondary);">No files with coverage data</div>';
+      return;
+    }
+
+    this._render();
+  }
+
+  _render() {
+    const file = this._files[this._currentFileIndex];
+    const summary = file.summary || {};
+    const exprPct = summary.exprTotal > 0 ? ((summary.exprCovered / summary.exprTotal) * 100).toFixed(1) : '0.0';
+    const branchPct = summary.branchTotal > 0 ? ((summary.branchCovered / summary.branchTotal) * 100).toFixed(1) : '0.0';
+
+    // File selector if multiple files
+    let fileSelector = '';
+    if (this._files.length > 1) {
+      fileSelector = '<select id="coverage-file-select" style="margin-left:10px;padding:4px 8px;background:var(--bg-tertiary);color:var(--fg-primary);border:1px solid var(--border);border-radius:4px;">';
+      this._files.forEach((f, i) => {
+        const name = f.path.split('/').pop();
+        const selected = i === this._currentFileIndex ? ' selected' : '';
+        // Calculate coverage percentage for this file
+        const sum = f.summary || {};
+        const total = (sum.exprTotal || 0) + (sum.branchTotal || 0);
+        const covered = (sum.exprCovered || 0) + (sum.branchCovered || 0);
+        const pct = total > 0 ? Math.round((covered / total) * 100) : 0;
+        fileSelector += '<option value="' + i + '"' + selected + '>' + this._escapeHtml(name) + ' (' + pct + '%)</option>';
+      });
+      fileSelector += '</select>';
+    }
+
+    this._element.innerHTML = `
+      <div style="padding:10px 15px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:15px;flex-shrink:0;">
+        <div id="coverage-filename" style="font-weight:600;color:var(--fg-primary);font-size:13px;">${this._escapeHtml(file.path.split('/').pop())}</div>
+        ${fileSelector}
+        <div style="flex:1;"></div>
+        <div id="coverage-summary" style="display:flex;gap:15px;font-size:12px;">
+          <span style="color:var(--fg-secondary);">Expressions: <span style="color:${exprPct === '100.0' ? '#3fb950' : exprPct === '0.0' ? '#f85149' : '#d29922'}">${summary.exprCovered}/${summary.exprTotal} (${exprPct}%)</span></span>
+          <span style="color:var(--fg-secondary);">Branches: <span style="color:${branchPct === '100.0' ? '#3fb950' : branchPct === '0.0' ? '#f85149' : '#d29922'}">${summary.branchCovered}/${summary.branchTotal} (${branchPct}%)</span></span>
+        </div>
+      </div>
+      <div style="padding:5px 10px;background:var(--bg-tertiary);border-bottom:1px solid var(--border);font-size:11px;color:var(--fg-secondary);flex-shrink:0;">
+        <span style="display:inline-block;width:12px;height:12px;background:rgba(35,134,54,0.5);border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Executed
+        <span style="display:inline-block;width:12px;height:12px;background:rgba(218,54,51,0.5);border-radius:2px;vertical-align:middle;margin-left:15px;margin-right:4px;"></span>Not executed
+        <span style="display:inline-block;width:12px;height:12px;background:rgba(180,40,40,0.6);border-radius:2px;vertical-align:middle;margin-left:15px;margin-right:4px;"></span>Neither branch
+        <span style="display:inline-block;width:12px;height:12px;background:rgba(158,106,3,0.5);border-radius:2px;vertical-align:middle;margin-left:15px;margin-right:4px;"></span>Partial
+      </div>
+      <div id="monaco-container" style="flex:1;position:relative;"></div>
+    `;
+
+    // Add file selector event listener
+    const select = this._element.querySelector('#coverage-file-select');
+    if (select) {
+      select.addEventListener('change', (e) => {
+        this._currentFileIndex = parseInt(e.target.value, 10);
+        this._updateEditor();
+        this._updateSummary();
+      });
+    }
+
+    // Create iframe for Monaco editor
+    this._createMonacoIframe();
+  }
+
+  _createMonacoIframe() {
+    const container = this._element.querySelector('#monaco-container');
+    if (!container) return;
+
+    this._iframe = document.createElement('iframe');
+    this._iframe.style.cssText = 'width:100%;height:100%;border:none;';
+    this._iframe.src = '/assets/monaco/editor.html';
+
+    // Listen for messages from iframe
+    this._messageHandler = (e) => {
+      if (e.source !== this._iframe?.contentWindow) return;
+      if (e.data && e.data.type === 'monaco-ready') {
+        this._iframeReady = true;
+        this._sendContentToEditor();
+      } else if (e.data && e.data.type === 'copy-to-repl') {
+        // Send the code to the REPL as a bracketed paste
+        const code = e.data.code;
+        if (code && ws && ws.readyState === WebSocket.OPEN) {
+          // Send as paste (uses bracketed paste protocol) - preserves formatting
+          ws.send(JSON.stringify({type: 'paste', data: code}));
+        }
+      }
+    };
+    window.addEventListener('message', this._messageHandler);
+
+    container.appendChild(this._iframe);
+  }
+
+  _sendContentToEditor() {
+    if (!this._iframe || !this._iframeReady) return;
+
+    const file = this._files[this._currentFileIndex];
+    const isDark = document.body.classList.contains('dark');
+
+    this._iframe.contentWindow.postMessage({
+      type: 'set-content',
+      content: file.content,
+      theme: isDark ? 'dark' : 'light',
+      annotations: file.annotations || []  // Pass raw annotations for precise highlighting
+    }, '*');
+  }
+
+  _updateEditor() {
+    this._sendContentToEditor();
+  }
+
+  _updateSummary() {
+    const file = this._files[this._currentFileIndex];
+    const summary = file.summary || {};
+    const exprPct = summary.exprTotal > 0 ? ((summary.exprCovered / summary.exprTotal) * 100).toFixed(1) : '0.0';
+    const branchPct = summary.branchTotal > 0 ? ((summary.branchCovered / summary.branchTotal) * 100).toFixed(1) : '0.0';
+
+    const summaryEl = this._element.querySelector('#coverage-summary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <span style="color:var(--fg-secondary);">Expressions: <span style="color:${exprPct === '100.0' ? '#3fb950' : exprPct === '0.0' ? '#f85149' : '#d29922'}">${summary.exprCovered}/${summary.exprTotal} (${exprPct}%)</span></span>
+        <span style="color:var(--fg-secondary);">Branches: <span style="color:${branchPct === '100.0' ? '#3fb950' : branchPct === '0.0' ? '#f85149' : '#d29922'}">${summary.branchCovered}/${summary.branchTotal} (${branchPct}%)</span></span>
+      `;
+    }
+
+    // Update file name
+    const nameEl = this._element.querySelector('#coverage-filename');
+    if (nameEl) {
+      nameEl.textContent = file.path.split('/').pop();
+    }
+  }
+
+  _buildLineCoverage(file) {
+    // Map: line number -> { executed: bool, notExecuted: bool, partialBranch: bool }
+    const coverage = {};
+    (file.annotations || []).forEach(ann => {
+      for (let line = ann.startLine; line <= ann.endLine; line++) {
+        if (!coverage[line]) {
+          coverage[line] = { executed: false, notExecuted: false, partialBranch: false };
+        }
+        if (ann.state === 'executed' || ann.state === 'then-taken' || ann.state === 'else-taken') {
+          coverage[line].executed = true;
+        }
+        if (ann.state === 'not-executed' || ann.state === 'then-not-taken' || ann.state === 'else-not-taken') {
+          coverage[line].notExecuted = true;
+        }
+        // Partial branch: both taken and not-taken states on same line
+        if (coverage[line].executed && coverage[line].notExecuted) {
+          coverage[line].partialBranch = true;
+        }
+      }
+    });
+    return coverage;
+  }
+
+  _escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  dispose() {
+    if (this._messageHandler) {
+      window.removeEventListener('message', this._messageHandler);
+    }
+    this._iframe = null;
+  }
+}
+
+// Monaco-based source viewer panel (for ,source command)
+class MonacoSourcePanel {
+  constructor() {
+    this._element = document.createElement('div');
+    this._element.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;background:var(--bg-primary);';
+    this._iframe = null;
+    this._iframeReady = false;
+    this._content = '';
+    this._path = '';
+    this._line = null;
+  }
+
+  get element() { return this._element; }
+
+  init(params) {
+    this._content = params.params?.content || '';
+    this._path = params.params?.path || '';
+    this._line = params.params?.line || null;
+
+    if (!this._content) {
+      this._element.innerHTML = '<div style="padding:20px;color:var(--fg-secondary);">No source available</div>';
+      return;
+    }
+
+    this._render();
+  }
+
+  _render() {
+    const filename = this._path.split('/').pop() || 'source';
+
+    this._element.innerHTML = `
+      <div style="padding:8px 15px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <div style="font-weight:600;color:var(--fg-primary);font-size:13px;">${this._escapeHtml(filename)}</div>
+        <div style="flex:1;color:var(--fg-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this._escapeHtml(this._path)}</div>
+      </div>
+      <div id="monaco-container" style="flex:1;position:relative;"></div>
+    `;
+
+    this._createMonacoIframe();
+  }
+
+  _createMonacoIframe() {
+    const container = this._element.querySelector('#monaco-container');
+    if (!container) return;
+
+    this._iframe = document.createElement('iframe');
+    this._iframe.style.cssText = 'width:100%;height:100%;border:none;';
+    this._iframe.src = '/assets/monaco/editor.html';
+
+    this._messageHandler = (e) => {
+      if (e.source !== this._iframe?.contentWindow) return;
+      if (e.data && e.data.type === 'monaco-ready') {
+        this._iframeReady = true;
+        this._sendContentToEditor();
+      } else if (e.data && e.data.type === 'copy-to-repl') {
+        const code = e.data.code;
+        if (code && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({type: 'paste', data: code}));
+        }
+      }
+    };
+    window.addEventListener('message', this._messageHandler);
+
+    container.appendChild(this._iframe);
+  }
+
+  _sendContentToEditor() {
+    if (!this._iframe || !this._iframeReady) return;
+
+    const isDark = document.body.classList.contains('dark');
+
+    this._iframe.contentWindow.postMessage({
+      type: 'set-content',
+      content: this._content,
+      theme: isDark ? 'dark' : 'light',
+      line: this._line
+    }, '*');
+  }
+
+  _escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  dispose() {
+    if (this._messageHandler) {
+      window.removeEventListener('message', this._messageHandler);
+    }
+    this._iframe = null;
   }
 }
 
@@ -3199,6 +3567,8 @@ const api = dv.createDockview(container, {
       case 'dynamic-inspector': return new DynamicInspectorPanel();
       case 'speedscope': return new SpeedscopePanel();
       case 'coverage': return new CoveragePanel();
+      case 'monaco-coverage': return new MonacoCoveragePanel();
+      case 'monaco-source': return new MonacoSourcePanel();
       case 'hashtable': return new HashTablePanel();
       case 'svg': return new SvgPanel();
       case 'html': return new HtmlPanel();
