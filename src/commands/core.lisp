@@ -518,7 +518,7 @@ Example: ,source my-function"
   (handler-case
       (let ((locations (slynk-find-definitions symbol-name)))
         (if locations
-            (open-source-for-definition (first locations) symbol-name)
+            (open-source-for-definitions locations symbol-name)
             (format *error-output* "~&No source location found for: ~A~%" symbol-name)))
     (error (e)
       (format *error-output* "~&Error finding source: ~A~%" e))))
@@ -555,6 +555,59 @@ Returns the file content as a string, or NIL if not available."
                str)))
          *slynk-connection*)
       (error () nil))))
+
+(defun extract-location-info (location)
+  "Extract file, position, and label from a Slynk LOCATION.
+Returns (values label file position) or NIL if invalid."
+  ;; Location formats vary:
+  ;; (label (:location (:file "...") (:position N) ...))
+  ;; (label ((:file "...") (:position N) ...))
+  ;; (label (:error "..."))
+  (when (listp location)
+    (let* ((label (first location))
+           (loc-data (second location))
+           file pos)
+      (cond
+        ;; (:location (:file ...) (:position ...))
+        ((and (listp loc-data) (eq (first loc-data) :location))
+         (let ((props (rest loc-data)))
+           (setf file (second (assoc :file props)))
+           (setf pos (second (assoc :position props)))))
+        ;; ((:file ...) (:position ...)) - direct alist
+        ((and (listp loc-data) (listp (first loc-data)) (eq (first (first loc-data)) :file))
+         (setf file (second (assoc :file loc-data)))
+         (setf pos (second (assoc :position loc-data))))
+        ;; (:error "message") - skip errors
+        ((and (listp loc-data) (eq (first loc-data) :error))
+         (return-from extract-location-info nil))
+        (t
+         (return-from extract-location-info nil)))
+      (when file
+        (values label file pos)))))
+
+(defun open-source-for-definitions (locations symbol-name)
+  "Open Monaco source panel with all LOCATIONS for SYMBOL-NAME.
+Shows a dropdown when multiple definitions exist."
+  (let ((definitions nil))
+    ;; Process each location
+    (dolist (location locations)
+      (multiple-value-bind (label file pos) (extract-location-info location)
+        (when file
+          (let* ((content (if (probe-file file)
+                              (uiop:read-file-string file)
+                              (slynk-read-file file)))
+                 (line (when (and content pos)
+                         (position-to-line-from-string content pos))))
+            (when content
+              (push (list :label label
+                          :path (if (pathnamep file) (namestring file) file)
+                          :content content
+                          :line line)
+                    definitions))))))
+    ;; Send to browser
+    (if definitions
+        (icl::open-source-panel-multi symbol-name (nreverse definitions))
+        (format *error-output* "~&No accessible source files found~%"))))
 
 (defun open-source-for-definition (location symbol-name)
   "Open Monaco source panel for a source LOCATION from Slynk."
@@ -1256,13 +1309,13 @@ Example: ,cover-reset"
     (error (e)
       (format *error-output* "~&Error: ~A~%" e))))
 
-(define-command (cover-file cf) (filepath)
+(define-command (cover-load cl) (filepath)
   "Load a file with coverage instrumentation enabled.
 The file will be compiled with coverage data collection.
 Use ,cover-report to view results after running the code.
 SBCL only.
-Example: ,cover-file \"mylib.lisp\"
-Example: ,cf tests/test-utils.lisp"
+Example: ,cover-load \"mylib.lisp\"
+Example: ,cl tests/test-utils.lisp"
   (handler-case
       (progn
         ;; Ensure browser server is running for report display

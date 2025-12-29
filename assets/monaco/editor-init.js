@@ -3,10 +3,78 @@
 
 let editor = null;
 let decorations = [];
+let hoverRequestId = 0;
+const pendingHoverRequests = new Map();
 
 require.config({ paths: { 'vs': '/assets/monaco/vs' }});
 
 require(['vs/editor/editor.main'], function() {
+  // Register Common Lisp language
+  monaco.languages.register({ id: 'lisp' });
+
+  // Configure word pattern for Lisp symbols (includes -, *, +, /, etc.)
+  monaco.languages.setLanguageConfiguration('lisp', {
+    wordPattern: /[a-zA-Z_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:][a-zA-Z0-9_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:]*|[0-9]+/g,
+    brackets: [['(', ')'], ['[', ']']],
+    autoClosingPairs: [
+      { open: '(', close: ')' },
+      { open: '[', close: ']' },
+      { open: '"', close: '"' }
+    ],
+    comments: { lineComment: ';' }
+  });
+
+  // Basic Lisp syntax highlighting
+  monaco.languages.setMonarchTokensProvider('lisp', {
+    defaultToken: '',
+    keywords: [
+      'defun', 'defmacro', 'defvar', 'defparameter', 'defconstant', 'defclass',
+      'defmethod', 'defgeneric', 'defstruct', 'defpackage', 'deftype',
+      'lambda', 'let', 'let*', 'flet', 'labels', 'macrolet', 'symbol-macrolet',
+      'if', 'when', 'unless', 'cond', 'case', 'ecase', 'typecase', 'etypecase',
+      'progn', 'prog1', 'prog2', 'block', 'return', 'return-from',
+      'loop', 'do', 'do*', 'dolist', 'dotimes', 'tagbody', 'go',
+      'catch', 'throw', 'unwind-protect', 'handler-case', 'handler-bind',
+      'restart-case', 'restart-bind', 'with-simple-restart',
+      'multiple-value-bind', 'multiple-value-call', 'multiple-value-prog1',
+      'setq', 'setf', 'psetq', 'psetf', 'incf', 'decf', 'push', 'pop',
+      'and', 'or', 'not', 'the', 'declare', 'locally', 'eval-when',
+      'quote', 'function', 'in-package', 'use-package', 'require', 'provide',
+      'nil', 't'
+    ],
+    operators: ['eq', 'eql', 'equal', 'equalp', 'null', 'atom', 'listp', 'consp',
+                'car', 'cdr', 'cons', 'list', 'append', 'apply', 'funcall',
+                'mapcar', 'mapc', 'mapcan', 'format', 'print', 'princ', 'prin1'],
+    tokenizer: {
+      root: [
+        [/;.*$/, 'comment'],
+        [/#\|/, 'comment', '@blockComment'],
+        [/"(?:[^"\\]|\\.)*"/, 'string'],
+        [/#\\[a-zA-Z]+|#\\./, 'string.char'],
+        [/'[a-zA-Z_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:][a-zA-Z0-9_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:]*/, 'variable.quoted'],
+        [/:[a-zA-Z_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:][a-zA-Z0-9_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:]*/, 'constant'],
+        [/&[a-zA-Z_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:][a-zA-Z0-9_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:]*/, 'variable.parameter'],
+        [/\*[a-zA-Z_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:][a-zA-Z0-9_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:]*\*/, 'variable.special'],
+        [/[a-zA-Z_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:][a-zA-Z0-9_\-\+\*\/\?\!\=\<\>\&\%\$\@\#\^\.\:]*/, {
+          cases: {
+            '@keywords': 'keyword',
+            '@operators': 'predefined',
+            '@default': 'identifier'
+          }
+        }],
+        [/[0-9]+(\.[0-9]+)?([eE][\-+]?[0-9]+)?/, 'number'],
+        [/#[xXoObB][0-9a-fA-F]+/, 'number.hex'],
+        [/[()\[\]]/, 'delimiter.parenthesis'],
+        [/`|,@|,|'/, 'delimiter.quote']
+      ],
+      blockComment: [
+        [/[^|#]+/, 'comment'],
+        [/\|#/, 'comment', '@pop'],
+        [/[|#]/, 'comment']
+      ]
+    }
+  });
+
   // Notify parent that Monaco is ready
   window.parent.postMessage({ type: 'monaco-ready' }, '*');
 
@@ -19,7 +87,7 @@ require(['vs/editor/editor.main'], function() {
       if (!editor) {
         editor = monaco.editor.create(document.getElementById('container'), {
           value: e.data.content,
-          language: 'scheme',  // Close to Lisp
+          language: 'lisp',
           theme: isDark ? 'vs-dark' : 'vs',
           readOnly: true,
           minimap: { enabled: true },
@@ -53,12 +121,37 @@ require(['vs/editor/editor.main'], function() {
           }
         });
 
+        // Add Find action to context menu (Ctrl+F may be intercepted by browser)
+        editor.addAction({
+          id: 'find-in-file',
+          label: 'Find...',
+          keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF],
+          contextMenuGroupId: 'navigation',
+          contextMenuOrder: 1.6,
+          run: function(ed) {
+            ed.getAction('actions.find').run();
+          }
+        });
+
         // Remove default clipboard actions from context menu
         editor.addAction({
           id: 'editor.action.clipboardCopyAction',
           label: '',
           contextMenuGroupId: null,
           run: function() {}
+        });
+
+        // Handle clicks on symbols - update Packages/Symbols/Symbol Info panels
+        editor.onMouseUp(function(e) {
+          if (e.target.position) {
+            const word = getSymbolAtPosition(editor.getModel(), e.target.position);
+            if (word) {
+              window.parent.postMessage({
+                type: 'symbol-click',
+                symbol: word.word
+              }, '*');
+            }
+          }
         });
       } else {
         editor.setValue(e.data.content);
@@ -92,6 +185,49 @@ require(['vs/editor/editor.main'], function() {
         const isDark = e.data.theme === 'dark';
         monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs');
       }
+    } else if (e.data.type === 'hover-response') {
+      // Documentation response from parent
+      const resolver = pendingHoverRequests.get(e.data.requestId);
+      if (resolver) {
+        pendingHoverRequests.delete(e.data.requestId);
+        resolver(e.data.documentation);
+      }
+    }
+  });
+
+  // Register hover provider for Lisp symbols
+  monaco.languages.registerHoverProvider('lisp', {
+    provideHover: function(model, position) {
+      const word = getSymbolAtPosition(model, position);
+      if (!word) return null;
+
+      return new Promise((resolve) => {
+        const requestId = ++hoverRequestId;
+
+        // Set up timeout to avoid hanging
+        const timeout = setTimeout(() => {
+          pendingHoverRequests.delete(requestId);
+          resolve(null);
+        }, 3000);
+
+        pendingHoverRequests.set(requestId, (doc) => {
+          clearTimeout(timeout);
+          if (doc) {
+            resolve({
+              contents: [{ value: '```lisp\n' + doc + '\n```' }]
+            });
+          } else {
+            resolve(null);
+          }
+        });
+
+        // Request documentation from parent
+        window.parent.postMessage({
+          type: 'get-hover-doc',
+          requestId: requestId,
+          symbol: word.word
+        }, '*');
+      });
     }
   });
 });
@@ -278,4 +414,48 @@ function findEnclosingToplevelForm(model, position) {
   }
 
   return null;  // Unbalanced parens
+}
+
+// Extract Lisp symbol at position (handles special chars like -, *, +, etc.)
+function getSymbolAtPosition(model, position) {
+  const line = model.getLineContent(position.lineNumber);
+  const col = position.column - 1;  // 0-based
+
+  if (col >= line.length) return null;
+
+  // Lisp symbol characters (excluding whitespace, parens, quotes, etc.)
+  const isSymbolChar = (ch) => {
+    if (!ch) return false;
+    // Not whitespace, parens, quotes, semicolon, comma, backtick
+    return !/[\s()\[\]{}"';,`]/.test(ch);
+  };
+
+  // Check if we're on a symbol character
+  if (!isSymbolChar(line[col])) return null;
+
+  // Find start of symbol
+  let start = col;
+  while (start > 0 && isSymbolChar(line[start - 1])) {
+    start--;
+  }
+
+  // Find end of symbol
+  let end = col;
+  while (end < line.length - 1 && isSymbolChar(line[end + 1])) {
+    end++;
+  }
+
+  const word = line.substring(start, end + 1);
+
+  // Skip if it looks like a number
+  if (/^-?\d+\.?\d*$/.test(word)) return null;
+
+  // Skip very short symbols (likely noise)
+  if (word.length < 2) return null;
+
+  return {
+    word: word,
+    startColumn: start + 1,
+    endColumn: end + 2
+  };
 }

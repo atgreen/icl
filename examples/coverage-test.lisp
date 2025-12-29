@@ -1,7 +1,7 @@
 ;;; coverage-test.lisp - Test file for sb-cover demonstration
 ;;;
 ;;; Usage:
-;;;   ,cover-file examples/coverage-test.lisp
+;;;   ,cover-load examples/coverage-test.lisp
 ;;;   (run-coverage-test)
 ;;;   ,cover-report
 

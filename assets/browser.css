@@ -268,8 +268,8 @@ body { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: va
 }
 
 .binding-header { color: var(--fg-secondary); font-weight: bold; }
-.inspect-link { color: var(--accent); cursor: pointer; margin-left: 8px; font-size: 0.9em; }
-.inspect-link:hover { text-decoration: underline; color: var(--accent-hover); }
+.inspect-link, .source-link { color: var(--accent); cursor: pointer; margin-left: 8px; font-size: 0.9em; }
+.inspect-link:hover, .source-link:hover { text-decoration: underline; color: var(--accent-hover); }
 
 /* Menu button */
 .menu-button {

@@ -257,13 +257,13 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 | `,profile-reset` | Reset profiler data |
 | `,flame <form>` | Profile and show interactive flame graph in browser |
 | `,cover-ql <system>` | Load system with code coverage instrumentation |
-| `,cover-file <path>` | Load file with code coverage instrumentation |
+| `,cover-load <path>` | Load file with code coverage instrumentation |
 | `,cover-report` | Generate and display HTML coverage report |
 | `,cover-reset` | Clear all coverage data |
 
 The `,flame` command (aliases: `,flamegraph`, `,fg`) profiles the expression and opens an interactive [Speedscope](https://www.speedscope.app/) flame graph in the browser. Requires browser mode (`,browser` or `icl -b`).
 
-The `,cover-*` commands use SBCL's [sb-cover](https://www.sbcl.org/manual/#sb_002dcover) for code coverage analysis. Load code with `,cover-ql` or `,cover-file`, run your tests, then `,cover-report` to see which lines were executed. Aliases: `,cql` for `,cover-ql`, `,cf` for `,cover-file`.
+The `,cover-*` commands use SBCL's [sb-cover](https://www.sbcl.org/manual/#sb_002dcover) for code coverage analysis. Load code with `,cover-ql` or `,cover-load`, run your tests, then `,cover-report` to see which lines were executed. Aliases: `,cql` for `,cover-ql`, `,cl` for `,cover-load`.
 
 ### Browser Visualization
 

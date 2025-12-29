@@ -382,8 +382,26 @@ ws.onmessage = (e) => {
       handleRegexpRefresh(msg);
       break;
     case 'open-source':
-      openSourcePanel(msg.title, msg.path, msg.content, msg.position, msg.line);
+      if (msg.definitions) {
+        // Multiple definitions with dropdown
+        openSourcePanel(msg.title, null, null, null, null, msg.definitions);
+      } else {
+        // Single definition (legacy)
+        openSourcePanel(msg.title, msg.path, msg.content, msg.position, msg.line);
+      }
       restoreTerminalFocus();
+      break;
+    case 'hover-doc-response':
+      // Route documentation response back to the requesting Monaco iframe
+      const iframe = pendingHoverRequests.get(msg.requestId);
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: 'hover-response',
+          requestId: msg.requestId,
+          documentation: msg.documentation
+        }, '*');
+        pendingHoverRequests.delete(msg.requestId);
+      }
       break;
   }
 };
@@ -440,16 +458,28 @@ function openMonacoCoveragePanel(title, data) {
 
 // Open Monaco source viewer panel (for ,source command)
 let sourceCounter = 0;
-function openSourcePanel(title, path, content, position, line) {
+function openSourcePanel(title, path, content, position, line, definitions) {
   const panelId = 'source-' + (++sourceCounter);
   if (dockviewApi) {
-    dockviewApi.addPanel({
-      id: panelId,
-      component: 'monaco-source',
-      title: title || path.split('/').pop() || 'Source',
-      params: { path: path, content: content, position: position, line: line },
-      position: { referencePanel: 'terminal', direction: 'right' }
-    });
+    if (definitions && definitions.length > 0) {
+      // Multiple definitions mode
+      dockviewApi.addPanel({
+        id: panelId,
+        component: 'monaco-source',
+        title: title || 'Source',
+        params: { definitions: definitions },
+        position: { referencePanel: 'terminal', direction: 'right' }
+      });
+    } else {
+      // Single definition mode (legacy)
+      dockviewApi.addPanel({
+        id: panelId,
+        component: 'monaco-source',
+        title: title || path.split('/').pop() || 'Source',
+        params: { path: path, content: content, position: position, line: line },
+        position: { referencePanel: 'terminal', direction: 'right' }
+      });
+    }
   }
 }
 
@@ -672,6 +702,30 @@ let currentThemeIsDark = true;  // Track current theme for Vega-Lite
 
 // Monaco iframe registry for theme updates
 const monacoIframes = new Set();
+
+// Pending hover documentation requests (requestId -> {iframe, resolve})
+const pendingHoverRequests = new Map();
+
+// Handle hover documentation request from Monaco iframe
+function handleHoverDocRequest(iframe, requestId, symbol) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    // Track the request so we can route the response back
+    pendingHoverRequests.set(requestId, iframe);
+    // Send request to Lisp backend
+    ws.send(JSON.stringify({
+      type: 'hover-doc',
+      requestId: requestId,
+      symbol: symbol
+    }));
+  } else {
+    // No connection, send empty response
+    iframe.contentWindow.postMessage({
+      type: 'hover-response',
+      requestId: requestId,
+      documentation: null
+    }, '*');
+  }
+}
 
 // Open Vega-Lite panel - tracks by source expression for updates
 function openVegaLitePanel(title, spec, sourceExpr) {
@@ -1435,6 +1489,12 @@ document.addEventListener('click', (e) => {
     inspectVariable(inspectVarEl.dataset.inspectVariable, inspectVarEl.dataset.pkg);
     return;
   }
+  // View source for symbol
+  const sourceSymEl = e.target.closest('[data-source-symbol]');
+  if (sourceSymEl) {
+    viewSource(sourceSymEl.dataset.sourceSymbol, sourceSymEl.dataset.pkg);
+    return;
+  }
   // Expand/collapse toggle in inspector tree
   const expandToggleEl = e.target.closest('.expand-toggle');
   if (expandToggleEl) {
@@ -1532,6 +1592,13 @@ function inspectVariable(name, pkg) {
   openInspector(prefix + name, pkg);
 }
 
+function viewSource(name, pkg) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const symbol = pkg ? (pkg + "::" + name) : name;
+    ws.send(JSON.stringify({type: 'get-source', symbol: symbol}));
+  }
+}
+
 function renderSymbolInfo(info) {
   const el = document.getElementById('detail-content');
   if (!el || !info) return;
@@ -1559,7 +1626,8 @@ function renderSymbolInfo(info) {
     const typeLabel = {function: 'Function', macro: 'Macro', generic: 'Generic Function'}[info.function.type] || 'Function';
     const fnType = info.function.type || 'function';
     html += `<span class='binding-header'>[${typeLabel}]</span>`;
-    html += `<span class='inspect-link' data-inspect-function="${name}" data-pkg="${pkgStr}" data-fn-type="${fnType}">[Inspect]</span>\n`;
+    html += `<span class='inspect-link' data-inspect-function="${name}" data-pkg="${pkgStr}" data-fn-type="${fnType}">[Inspect]</span>`;
+    html += `<span class='source-link' data-source-symbol="${name}" data-pkg="${pkgStr}">[Source]</span>\n`;
     if (info.function.arglist) html += `<strong>Arguments:</strong> ${info.function.arglist}\n`;
     if (info.function.documentation) html += `<strong>Documentation:</strong>\n${info.function.documentation}\n`;
     html += '\n';
@@ -2081,6 +2149,15 @@ class MonacoCoveragePanel {
         if (code && ws && ws.readyState === WebSocket.OPEN) {
           // Send as paste (uses bracketed paste protocol) - preserves formatting
           ws.send(JSON.stringify({type: 'paste', data: code}));
+          restoreTerminalFocus();
+        }
+      } else if (e.data && e.data.type === 'get-hover-doc') {
+        // Request documentation for symbol under cursor
+        handleHoverDocRequest(this._iframe, e.data.requestId, e.data.symbol);
+      } else if (e.data && e.data.type === 'symbol-click') {
+        // Forward symbol click to server for Packages/Symbols/Symbol Info update
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({type: 'symbol-click', symbol: e.data.symbol, source: 'monaco'}));
         }
       }
     };
@@ -2178,6 +2255,9 @@ class MonacoSourcePanel {
     this._element.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;background:var(--bg-primary);';
     this._iframe = null;
     this._iframeReady = false;
+    this._definitions = [];  // Array of {label, path, content, line}
+    this._currentIndex = 0;
+    // Legacy single-definition mode
     this._content = '';
     this._path = '';
     this._line = null;
@@ -2186,9 +2266,20 @@ class MonacoSourcePanel {
   get element() { return this._element; }
 
   init(params) {
-    this._content = params.params?.content || '';
-    this._path = params.params?.path || '';
-    this._line = params.params?.line || null;
+    if (params.params?.definitions && params.params.definitions.length > 0) {
+      // Multi-definition mode
+      this._definitions = params.params.definitions;
+      this._currentIndex = 0;
+      const def = this._definitions[0];
+      this._content = def.content || '';
+      this._path = def.path || '';
+      this._line = def.line || null;
+    } else {
+      // Legacy single-definition mode
+      this._content = params.params?.content || '';
+      this._path = params.params?.path || '';
+      this._line = params.params?.line || null;
+    }
 
     if (!this._content) {
       this._element.innerHTML = '<div style="padding:20px;color:var(--fg-secondary);">No source available</div>';
@@ -2201,15 +2292,63 @@ class MonacoSourcePanel {
   _render() {
     const filename = this._path.split('/').pop() || 'source';
 
-    this._element.innerHTML = `
-      <div style="padding:8px 15px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
-        <div style="font-weight:600;color:var(--fg-primary);font-size:13px;">${this._escapeHtml(filename)}</div>
-        <div style="flex:1;color:var(--fg-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this._escapeHtml(this._path)}</div>
-      </div>
-      <div id="monaco-container" style="flex:1;position:relative;"></div>
-    `;
+    let headerHtml;
+    if (this._definitions.length > 1) {
+      // Multiple definitions - show dropdown
+      const options = this._definitions.map((def, i) => {
+        const label = def.label || `Definition ${i + 1}`;
+        const shortPath = def.path ? def.path.split('/').pop() : '';
+        return `<option value="${i}" ${i === this._currentIndex ? 'selected' : ''}>${this._escapeHtml(label)} - ${this._escapeHtml(shortPath)}</option>`;
+      }).join('');
+      headerHtml = `
+        <div style="padding:8px 15px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <select id="definition-selector" style="background:var(--bg-tertiary);color:var(--fg-primary);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;max-width:300px;">
+            ${options}
+          </select>
+          <div style="flex:1;color:var(--fg-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this._escapeHtml(this._path)}</div>
+        </div>
+      `;
+    } else {
+      // Single definition - simple header
+      headerHtml = `
+        <div style="padding:8px 15px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="font-weight:600;color:var(--fg-primary);font-size:13px;">${this._escapeHtml(filename)}</div>
+          <div style="flex:1;color:var(--fg-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this._escapeHtml(this._path)}</div>
+        </div>
+      `;
+    }
+
+    this._element.innerHTML = headerHtml + '<div id="monaco-container" style="flex:1;position:relative;"></div>';
+
+    // Set up dropdown change handler
+    if (this._definitions.length > 1) {
+      const selector = this._element.querySelector('#definition-selector');
+      if (selector) {
+        selector.addEventListener('change', (e) => {
+          this._switchDefinition(parseInt(e.target.value, 10));
+        });
+      }
+    }
 
     this._createMonacoIframe();
+  }
+
+  _switchDefinition(index) {
+    if (index < 0 || index >= this._definitions.length) return;
+    this._currentIndex = index;
+    const def = this._definitions[index];
+    this._content = def.content || '';
+    this._path = def.path || '';
+    this._line = def.line || null;
+
+    // Update path display
+    const pathEl = this._element.querySelector('div[style*="text-overflow:ellipsis"]');
+    if (pathEl) {
+      pathEl.textContent = this._path;
+    }
+
+    // Send new content to Monaco
+    this._sendContentToEditor();
   }
 
   _createMonacoIframe() {
@@ -2229,6 +2368,15 @@ class MonacoSourcePanel {
         const code = e.data.code;
         if (code && ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({type: 'paste', data: code}));
+          restoreTerminalFocus();
+        }
+      } else if (e.data && e.data.type === 'get-hover-doc') {
+        // Request documentation for symbol under cursor
+        handleHoverDocRequest(this._iframe, e.data.requestId, e.data.symbol);
+      } else if (e.data && e.data.type === 'symbol-click') {
+        // Forward symbol click to server for Packages/Symbols/Symbol Info update
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({type: 'symbol-click', symbol: e.data.symbol, source: 'monaco'}));
         }
       }
     };

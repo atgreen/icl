@@ -231,6 +231,15 @@
                   (send-symbol-click-response client symbol-string source))
                 :name "symbol-click-handler"))))
 
+          ;; Get source location for symbol (from Symbol Info panel)
+          ((string= type "get-source")
+           (let ((symbol-name (gethash "symbol" json)))
+             (when symbol-name
+               (bt:make-thread
+                (lambda ()
+                  (send-source-for-symbol symbol-name))
+                :name "get-source-handler"))))
+
           ;; Client reports dark mode preference
           ((string= type "dark-mode-preference")
            (let ((dark-p (gethash "dark" json)))
@@ -339,7 +348,17 @@
                (bt:make-thread
                 (lambda ()
                   (send-viz-refresh client source-expr panel-id))
-                :name "refresh-viz-handler")))))))))
+                :name "refresh-viz-handler"))))
+
+          ;; Hover documentation request from Monaco editor
+          ((string= type "hover-doc")
+           (let ((request-id (gethash "requestId" json))
+                 (symbol-name (gethash "symbol" json)))
+             (when (and request-id symbol-name)
+               (bt:make-thread
+                (lambda ()
+                  (send-hover-doc-response client request-id symbol-name))
+                :name "hover-doc-handler")))))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Send Helpers
@@ -379,6 +398,54 @@
       (browser-log "ws-send: json length=~D" (length json-str))
       (hunchensocket:send-text-message client json-str)
       (browser-log "ws-send: message sent successfully"))))
+
+(defun send-hover-doc-response (client request-id symbol-name)
+  "Send hover documentation for SYMBOL-NAME to CLIENT."
+  (browser-log "send-hover-doc-response: request-id=~S symbol-name=~S" request-id symbol-name)
+  (handler-case
+      (let* ((doc-query (format nil
+                                "(let* ((sym-name ~S)
+                                        (sym (or (find-symbol (string-upcase sym-name))
+                                                 (find-symbol (string-upcase sym-name) :cl))))
+                                   (when sym
+                                     (let ((doc (or (documentation sym 'function)
+                                                    (documentation sym 'variable)
+                                                    (documentation sym 'type)))
+                                           (arglist (ignore-errors
+                                                      (when (fboundp sym)
+                                                        (slynk-backend:arglist sym)))))
+                                       (when (or doc arglist)
+                                         (with-output-to-string (s)
+                                           (when arglist
+                                             (format s \"(~~A~~{ ~~A~~})~~%\" sym-name arglist))
+                                           (when doc
+                                             (write-string doc s)))))))"
+                                symbol-name))
+             (documentation (browser-query doc-query))
+             (obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "hover-doc-response")
+        (setf (gethash "requestId" obj) request-id)
+        (setf (gethash "documentation" obj) documentation)
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))
+    (error (e)
+      (browser-log "send-hover-doc-response: ERROR ~A" e)
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "hover-doc-response")
+        (setf (gethash "requestId" obj) request-id)
+        (setf (gethash "documentation" obj) nil)
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
+
+(defun send-source-for-symbol (symbol-name)
+  "Find and open source for SYMBOL-NAME (triggered from Symbol Info panel)."
+  (browser-log "send-source-for-symbol: symbol-name=~S" symbol-name)
+  (handler-case
+      (let ((locations (slynk-find-definitions symbol-name)))
+        (if locations
+            (open-source-for-definition (first locations) symbol-name)
+            (format *error-output* "~&No source location found for: ~A~%" symbol-name)))
+    (error (e)
+      (browser-log "send-source-for-symbol: ERROR ~A" e)
+      (format *error-output* "~&Error finding source: ~A~%" e))))
 
 (defun send-lisp-info (client)
   "Send Lisp implementation info to CLIENT."
@@ -945,6 +1012,26 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
             (when line
               (setf (gethash "line" obj) line))
             (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))))
+
+(defun open-source-panel-multi (title definitions)
+  "Send message to browser to open Monaco source viewer with multiple DEFINITIONS.
+   DEFINITIONS is a list of plists with :label :path :content :line keys."
+  (when *repl-resource*
+    (dolist (client (hunchensocket:clients *repl-resource*))
+      (let ((obj (make-hash-table :test 'equal))
+            (defs-array (mapcar (lambda (def)
+                                  (let ((h (make-hash-table :test 'equal)))
+                                    (setf (gethash "label" h) (getf def :label))
+                                    (setf (gethash "path" h) (getf def :path))
+                                    (setf (gethash "content" h) (getf def :content))
+                                    (when (getf def :line)
+                                      (setf (gethash "line" h) (getf def :line)))
+                                    h))
+                                definitions)))
+        (setf (gethash "type" obj) "open-source")
+        (setf (gethash "title" obj) title)
+        (setf (gethash "definitions" obj) (coerce defs-array 'vector))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
 (defun needs-case-escape-p (str)
   "Return T if STR contains lowercase letters that would be upcased by the reader."
