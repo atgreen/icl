@@ -2214,11 +2214,20 @@ class MonacoCoveragePanel {
         if (!coverage[line]) {
           coverage[line] = { executed: false, notExecuted: false, partialBranch: false };
         }
-        if (ann.state === 'executed' || ann.state === 'then-taken' || ann.state === 'else-taken') {
+        // Handle both old states (then-taken, etc) and new states (both-branches, etc)
+        if (ann.state === 'executed' || ann.state === 'then-taken' || ann.state === 'else-taken' ||
+            ann.state === 'both-branches') {
           coverage[line].executed = true;
         }
-        if (ann.state === 'not-executed' || ann.state === 'then-not-taken' || ann.state === 'else-not-taken') {
+        if (ann.state === 'not-executed' || ann.state === 'then-not-taken' || ann.state === 'else-not-taken' ||
+            ann.state === 'neither-branch') {
           coverage[line].notExecuted = true;
+        }
+        // Partial branch coverage (one branch taken)
+        if (ann.state === 'one-branch') {
+          coverage[line].executed = true;
+          coverage[line].notExecuted = true;
+          coverage[line].partialBranch = true;
         }
         // Partial branch: both taken and not-taken states on same line
         if (coverage[line].executed && coverage[line].notExecuted) {

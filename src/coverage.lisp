@@ -106,153 +106,133 @@ Uses COMPILE-FILE + LOAD to ensure coverage data is collected."
 
 (defun backend-coverage-json ()
   "Extract coverage data with line/column positions for Monaco display.
-Returns JSON string with file contents and coverage annotations."
+Returns JSON string with file contents and coverage annotations.
+Uses stored position data when available to avoid reader macro issues."
   (unless *slynk-connected-p*
     (error "Not connected to backend"))
   ;; This code runs in the backend to extract detailed coverage data
+  ;; Uses compute-file-states when stored positions are available (no reader needed)
   (let* ((extract-code "
 (handler-case
 (progn
   (require 'sb-cover)
 
-  ;; Helper: convert file position to (line . column), 1-based
-  ;; Use labels for recursive navigate-to-subform
-  (labels ((pos-to-line-col (content pos)
-           (let ((line 1) (col 1))
-             (loop for i from 0 below (min pos (length content))
-                   for ch = (char content i)
-                   do (if (char= ch #\\Newline)
-                          (progn (incf line) (setf col 1))
-                          (incf col)))
-             (cons line col)))
+  (labels (;; Read file to string (plain text, no Lisp parsing)
+           (read-file-to-string (path)
+             (with-open-file (stream path :direction :input)
+               (let ((content (make-string (file-length stream))))
+                 (read-sequence content stream)
+                 content)))
 
-         ;; Navigate to subform using source path (with error handling for special forms)
-         (navigate-to-subform (form path)
-           (handler-case
-               (if (null path)
-                   form
-                   (let ((index (car path)))
-                     (cond
-                       ((and (consp form) (integerp index))
-                        (let ((len (list-length form)))  ; Returns NIL for circular/improper
-                          (when (and len (< index len))
-                            (navigate-to-subform (nth index form) (cdr path)))))
-                       (t nil))))
-             (error () nil)))
+           ;; Convert character position to (line . column) using line lengths
+           (pos-to-line-col-from-lengths (pos linelengths)
+             (let ((line 1)
+                   (remaining pos))
+               (loop for i from 0 below (length linelengths)
+                     for len = (aref linelengths i)
+                     do (if (<= remaining len)
+                            (return-from pos-to-line-col-from-lengths
+                              (cons line (1+ remaining)))  ; 1-based column
+                            (progn
+                              (decf remaining (1+ len))  ; +1 for newline
+                              (incf line))))
+               ;; Past end of file
+               (cons line 1)))
 
-         ;; Read file to string
-         (read-file-to-string (path)
-           (with-open-file (stream path :direction :input)
-             (let ((content (make-string (file-length stream))))
-               (read-sequence content stream)
-               content))))
+           ;; State nibble to coverage state keyword
+           ;; Based on sb-cover state encoding
+           (state-to-keyword (state-nibble)
+             (cond
+               ((= state-nibble 0) nil)  ; not instrumented
+               ((= state-nibble 1) :executed)
+               ((= state-nibble 2) :not-executed)
+               ;; Branch states (bits: else-state << 2 | then-state)
+               ;; state 1 = executed, state 2 = not executed
+               ((= state-nibble 5) :both-branches)      ; 01|01 = both taken
+               ((= state-nibble 6) :one-branch)         ; 01|10 or 10|01
+               ((= state-nibble 9) :one-branch)         ; 10|01
+               ((= state-nibble 10) :neither-branch)    ; 10|10 = neither taken
+               ((= state-nibble 15) nil)  ; conditionalized out
+               (t nil))))
 
-    ;; Refresh coverage info to update records with execution state
-    (funcall (find-symbol \"REFRESH-COVERAGE-INFO\" \"SB-COVER\"))
+    ;; Refresh coverage info
+    (funcall (find-symbol \"REFRESH-COVERAGE-BITS\" \"SB-COVER\"))
 
     (let* ((ht (sb-cover::code-coverage-hashtable))
            (files-data nil)
            (file-count 0)
-           (max-files 30)        ; Limit number of files to prevent overwhelming
-           (max-file-size 200000)) ; Skip files larger than 200KB
+           (max-files 30)
+           (max-file-size 200000))
 
-      ;; Process each covered file (with limits)
       (maphash
-       (lambda (file records)
+       (lambda (file file-info)
          (when (and (< file-count max-files)
                     (probe-file file))
-           ;; Check file size before processing
-           (let ((file-size (with-open-file (s file) (file-length s))))
-             (when (< file-size max-file-size)
-               ;; Wrap in handler-case to skip files with reader errors
+           (let ((file-size (ignore-errors (with-open-file (s file) (file-length s)))))
+             (when (and file-size (< file-size max-file-size))
                (handler-case
-                   (progn
-                     (incf file-count)
-                     (let* ((content (read-file-to-string file))
-                            (annotations nil)
-                            (expr-covered 0) (expr-total 0)
-                            (branch-covered 0) (branch-total 0)
-                            (all-maps (make-hash-table :test 'eq))
-                            (forms nil)
-                            (max-records 2000)  ; Limit records per file
-                            (record-count 0))
-
-                       ;; Read all forms to build source map
-                       (with-open-file (stream file :direction :input)
-                         (let ((sb-cover::*current-package* *package*))
-                           (loop
-                             (multiple-value-bind (form source-map)
-                                 (funcall (find-symbol \"READ-AND-RECORD-SOURCE-MAP\" \"SB-COVER\") stream)
-                               (when (eq form sb-int:*eof-object*)
-                                 (return))
-                               (push form forms)
-                               (maphash (lambda (k v) (setf (gethash k all-maps) v)) source-map)))))
-                       (setf forms (nreverse forms))
-
-             ;; Process each coverage record (with limit)
-             (dolist (record records)
-               (when (>= record-count max-records)
-                 (return))  ; Stop processing if we hit the limit
-               (incf record-count)
-               (let* ((path (car record))
-                      (state (cdr record))
-                      (is-branch (member (car path) '(:then :else)))
-                      ;; Path is (subform-idx ... top-level-idx), reverse to navigate
-                      (reversed-path (reverse (remove-if #'keywordp path)))
-                      (form-idx (car reversed-path))
-                      (subform-path (cdr reversed-path)))
-
-                 ;; Count coverage
-                 (if is-branch
-                     (progn
-                       (incf branch-total)
-                       (when state (incf branch-covered)))
-                     (progn
-                       (incf expr-total)
-                       (when state (incf expr-covered))))
-
-                 ;; Find positions
-                 (when (and (integerp form-idx) (< form-idx (length forms)))
-                   (let* ((top-form (nth form-idx forms))
-                          (subform (navigate-to-subform top-form subform-path))
-                          (positions (when subform (gethash subform all-maps))))
-                     (when positions
-                       (let* ((pos-info (first positions))
-                              (start (first pos-info))
-                              (end (second pos-info))
-                              (start-lc (pos-to-line-col content start))
-                              (end-lc (pos-to-line-col content end)))
-                         (push (list :start-line (car start-lc)
-                                     :start-col (cdr start-lc)
-                                     :end-line (car end-lc)
-                                     :end-col (cdr end-lc)
-                                     :state (cond
-                                              ;; Branch coverage: :then/:else is in path, state is T/NIL
-                                              ((eq (car path) :then)
-                                               (if state :then-taken :then-not-taken))
-                                              ((eq (car path) :else)
-                                               (if state :else-taken :else-not-taken))
-                                              ;; Expression coverage
-                                              ((eq state t) :executed)
-                                              ((null state) :not-executed)
-                                              (t :unknown))
-                                     :is-branch is-branch)
-                               annotations)))))))
-
-                       ;; Add file data
-                       (push (list :path file
-                                   :content content
-                                   :annotations (nreverse annotations)
-                                   :summary (list :expr-covered expr-covered
-                                                 :expr-total expr-total
-                                                 :branch-covered branch-covered
-                                                 :branch-total branch-total))
-                             files-data)))
-                 ;; Skip files that cause reader errors
+                   (let* ((locations (sb-c::coverage-instrumented-file-locations file-info))
+                          (linelengths (sb-c::coverage-instrumented-file-lines file-info)))
+                     ;; Only process if stored positions are available
+                     (when (and locations linelengths)
+                       (incf file-count)
+                       (multiple-value-bind (counts states)
+                           (funcall (find-symbol \"COMPUTE-FILE-STATES\" \"SB-COVER\") file)
+                         (when states
+                           (let* ((content (read-file-to-string file))
+                                  (annotations nil)
+                                  (expr-count (getf counts :expression))
+                                  (branch-count (getf counts :branch))
+                                  ;; Extract spans from state changes
+                                  (current-state 0)
+                                  (span-start 0))
+                             ;; Walk through states array, emit spans on state changes
+                             (loop for i from 0 below (length states)
+                                   for state = (aref states i)
+                                   do (when (/= state current-state)
+                                        ;; Emit previous span if it was instrumented
+                                        (when (and (> current-state 0)
+                                                   (/= current-state 15)
+                                                   (> i span-start))
+                                          (let* ((start-lc (pos-to-line-col-from-lengths span-start linelengths))
+                                                 (end-lc (pos-to-line-col-from-lengths (1- i) linelengths))
+                                                 (state-kw (state-to-keyword current-state)))
+                                            (when state-kw
+                                              (push (list :start-line (car start-lc)
+                                                          :start-col (cdr start-lc)
+                                                          :end-line (car end-lc)
+                                                          :end-col (cdr end-lc)
+                                                          :state state-kw
+                                                          :is-branch (member current-state '(5 6 9 10)))
+                                                    annotations))))
+                                        (setf current-state state
+                                              span-start i)))
+                             ;; Emit final span
+                             (when (and (> current-state 0)
+                                        (/= current-state 15))
+                               (let* ((start-lc (pos-to-line-col-from-lengths span-start linelengths))
+                                      (end-lc (pos-to-line-col-from-lengths (1- (length states)) linelengths))
+                                      (state-kw (state-to-keyword current-state)))
+                                 (when state-kw
+                                   (push (list :start-line (car start-lc)
+                                               :start-col (cdr start-lc)
+                                               :end-line (car end-lc)
+                                               :end-col (cdr end-lc)
+                                               :state state-kw
+                                               :is-branch (member current-state '(5 6 9 10)))
+                                         annotations))))
+                             ;; Add file data
+                             (push (list :path file
+                                         :content content
+                                         :annotations (nreverse annotations)
+                                         :summary (list :expr-covered (sb-cover::covered-of expr-count)
+                                                       :expr-total (sb-cover::all-of expr-count)
+                                                       :branch-covered (sb-cover::covered-of branch-count)
+                                                       :branch-total (sb-cover::all-of branch-count)))
+                                   files-data))))))
                  (error () nil))))))
        ht)
 
-      ;; Return the data
       files-data)))
   (error (e) (format nil \"(:error . ~S)\" (princ-to-string e))))")
          (raw-result (backend-eval-internal extract-code))
