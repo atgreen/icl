@@ -188,7 +188,7 @@ Commands are prefixed with a comma. Type `,help` for a full list.
 | `,describe <symbol>` | Full description of symbol |
 | `,apropos <pattern>` | Search for matching symbols |
 | `,arglist <function>` | Show function arguments |
-| `,source <symbol>` | Show source location |
+| `,source <symbol>` | View source in Monaco editor panel |
 | `,edit <symbol>` | Open source in `$EDITOR` (alias: `,ed`) |
 
 ### Cross-Reference (Xref)
@@ -263,7 +263,23 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 
 The `,flame` command (aliases: `,flamegraph`, `,fg`) profiles the expression and opens an interactive [Speedscope](https://www.speedscope.app/) flame graph in the browser. Requires browser mode (`,browser` or `icl -b`).
 
-The `,cover-*` commands use SBCL's [sb-cover](https://www.sbcl.org/manual/#sb_002dcover) for code coverage analysis. Load code with `,cover-ql` or `,cover-load`, run your tests, then `,cover-report` to see which lines were executed. Aliases: `,cql` for `,cover-ql`, `,cl` for `,cover-load`.
+The `,cover-*` commands use SBCL's [sb-cover](https://www.sbcl.org/manual/#sb_002dcover) for code coverage analysis. Load code with `,cover-ql` or `,cover-load`, run your tests, then `,cover-report` to view coverage in a Monaco editor panel with expression-level highlighting:
+- **Green** - Executed code
+- **Red** - Not executed
+- **Yellow** - Partial branch coverage (only one branch taken)
+
+Aliases: `,cql` for `,cover-ql`, `,cl` for `,cover-load`.
+
+### Source Viewer
+
+The `,source` command opens a Monaco editor panel in the browser with:
+- **Common Lisp syntax highlighting** - Keywords, special variables, constants, and lambda list markers
+- **Hover documentation** - Hold mouse over any symbol to see its arglist and docstring
+- **Multiple definitions** - Dropdown selector when a symbol has multiple definitions (e.g., function and compiler-macro)
+- **Send to REPL** - Right-click → "Send Top-Level Form to REPL" or press Ctrl+Enter
+- **Search** - Right-click → "Find..." or Ctrl+F when editor has focus
+
+The Symbol Info panel also includes a **[Source]** link next to [Inspect] for functions, providing quick access to source code.
 
 ### Browser Visualization
 
