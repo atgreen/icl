@@ -8,6 +8,9 @@
 - Fix coverage count accessor (use `ok-of` instead of `covered-of`).
 - Improve error handling for coverage extraction failures.
 
+### Disassemble Command (`,dis`)
+- Fix `,dis` to use the current package context. Previously, disassembling a function after `,cd` to another package would fail to find the symbol.
+
 ## Improvements
 
 ### Coverage Report UX
