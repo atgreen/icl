@@ -511,9 +511,9 @@ Returns (values output-string value-strings). Does not print to the local REPL."
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
   (slynk-client:slime-eval
-   `(cl:let ((sym (cl:read-from-string ,name)))
-      (and (cl:symbolp sym)
-           (cl:documentation sym ',type)))
+   `(cl:let ((cl-user::s (cl:read-from-string ,name)))
+      (cl:and (cl:symbolp cl-user::s)
+              (cl:documentation cl-user::s ',type)))
    *slynk-connection*))
 
 (defun slynk-describe (name &key (package "CL-USER"))
