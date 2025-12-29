@@ -105,156 +105,152 @@ Uses COMPILE-FILE + LOAD to ensure coverage data is collected."
     nil))
 
 (defun backend-coverage-json ()
-  "Extract coverage data with line/column positions for Monaco display.
-Returns JSON string with file contents and coverage annotations."
+  "Extract coverage data by generating sb-cover HTML and parsing it.
+This approach works with files using custom reader macros because
+sb-cover generates HTML in the backend where the macros are available."
   (unless *slynk-connected-p*
     (error "Not connected to backend"))
-  ;; This code runs in the backend to extract detailed coverage data
+  ;; Generate HTML report in backend, parse it, extract coverage data
   (let* ((extract-code "
 (handler-case
 (progn
   (require 'sb-cover)
 
-  ;; Helper: convert file position to (line . column), 1-based
-  ;; Use labels for recursive navigate-to-subform
-  (labels ((pos-to-line-col (content pos)
-           (let ((line 1) (col 1))
-             (loop for i from 0 below (min pos (length content))
-                   for ch = (char content i)
-                   do (if (char= ch #\\Newline)
-                          (progn (incf line) (setf col 1))
-                          (incf col)))
-             (cons line col)))
+  (labels (;; Read file to string
+           (read-file-to-string (path)
+             (with-open-file (stream path :direction :input)
+               (let ((content (make-string (file-length stream))))
+                 (read-sequence content stream)
+                 content)))
 
-         ;; Navigate to subform using source path (with error handling for special forms)
-         (navigate-to-subform (form path)
-           (handler-case
-               (if (null path)
-                   form
-                   (let ((index (car path)))
-                     (cond
-                       ((and (consp form) (integerp index))
-                        (let ((len (list-length form)))  ; Returns NIL for circular/improper
-                          (when (and len (< index len))
-                            (navigate-to-subform (nth index form) (cdr path)))))
-                       (t nil))))
-             (error () nil)))
+           ;; Decode HTML entities
+           (decode-entities (str)
+             (let ((result str))
+               (setf result (cl-ppcre:regex-replace-all \"&#160;\" result \" \"))
+               (setf result (cl-ppcre:regex-replace-all \"&#40;\" result \"(\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#41;\" result \")\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#59;\" result \";\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#39;\" result \"'\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#34;\" result \"\\\"\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#35;\" result \"#\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#38;\" result \"&\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#60;\" result \"<\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#62;\" result \">\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#46;\" result \".\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#45;\" result \"-\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#58;\" result \":\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#44;\" result \",\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#47;\" result \"/\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#64;\" result \"@\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#42;\" result \"*\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#43;\" result \"+\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#91;\" result \"[\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#93;\" result \"]\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#126;\" result \"~\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#95;\" result \"_\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#36;\" result \"$\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#124;\" result \"|\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#92;\" result \"\\\\\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#123;\" result \"{\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#125;\" result \"}\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#96;\" result \"`\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#94;\" result \"^\"))
+               (setf result (cl-ppcre:regex-replace-all \"&#37;\" result \"%\"))
+               (cl-ppcre:regex-replace-all \"&#[0-9]+;\" result \"\")))
 
-         ;; Read file to string
-         (read-file-to-string (path)
-           (with-open-file (stream path :direction :input)
-             (let ((content (make-string (file-length stream))))
-               (read-sequence content stream)
-               content))))
+           ;; Parse a single HTML file, return file data
+           (parse-coverage-html (html-path source-path)
+             (let* ((html (read-file-to-string html-path))
+                    (lines nil)
+                    (line-coverages (make-hash-table))
+                    (expr-covered 0) (expr-total 0)
+                    (branch-covered 0) (branch-total 0))
+               ;; Extract summary from table
+               (cl-ppcre:register-groups-bind (ec et)
+                   (\"expression</td><td>([0-9]+)</td><td>([0-9]+)\" html)
+                 (setf expr-covered (parse-integer ec)
+                       expr-total (parse-integer et)))
+               (cl-ppcre:register-groups-bind (bc bt)
+                   (\"branch</td><td>([0-9]+)</td><td>([0-9]+)\" html)
+                 (setf branch-covered (parse-integer bc)
+                       branch-total (parse-integer bt)))
+               ;; Parse each source line
+               (cl-ppcre:do-register-groups (line-num line-content)
+                   (\"<div class='line-number'><code>([0-9]+)</code></div><code>([^<]*(?:<[^>]+>[^<]*)*)</code>\" html)
+                 (let ((ln (parse-integer line-num))
+                       (states nil))
+                   ;; Extract states from spans in this line
+                   (cl-ppcre:do-register-groups (state-num)
+                       (\"state-([0-9]+)\" line-content)
+                     (let ((s (parse-integer state-num)))
+                       (unless (member s '(0 15))  ; Skip not-instrumented and conditionalized-out
+                         (pushnew s states))))
+                   ;; Determine line state
+                   (when states
+                     (setf (gethash ln line-coverages)
+                           (cond
+                             ((member 1 states) :executed)
+                             ((member 5 states) :both-branches)
+                             ((or (member 6 states) (member 9 states)) :one-branch)
+                             ((member 2 states) :not-executed)
+                             ((member 10 states) :neither-branch)
+                             (t nil))))
+                   ;; Build source line (strip HTML)
+                   (push (cons ln (decode-entities
+                                   (cl-ppcre:regex-replace-all \"<[^>]+>\" line-content \"\")))
+                         lines)))
+               ;; Build annotations from line-coverages
+               (let ((annotations nil))
+                 (maphash (lambda (line state)
+                            (when state
+                              (push (list :start-line line :start-col 1
+                                          :end-line line :end-col 1000
+                                          :state state
+                                          :is-branch (member state '(:both-branches :one-branch :neither-branch)))
+                                    annotations)))
+                          line-coverages)
+                 ;; Reconstruct source from lines
+                 (let* ((sorted-lines (sort lines #'< :key #'car))
+                        (source (with-output-to-string (s)
+                                  (dolist (l sorted-lines)
+                                    (format s \"~A~%\" (cdr l))))))
+                   (list :path source-path
+                         :content source
+                         :annotations annotations
+                         :summary (list :expr-covered expr-covered
+                                       :expr-total expr-total
+                                       :branch-covered branch-covered
+                                       :branch-total branch-total)))))))
 
-    ;; Refresh coverage info to update records with execution state
-    (funcall (find-symbol \"REFRESH-COVERAGE-INFO\" \"SB-COVER\"))
+    ;; Generate HTML report to temp directory
+    (let* ((temp-dir (merge-pathnames
+                      (format nil \"icl-cover-~A/\" (get-universal-time))
+                      (uiop:temporary-directory)))
+           (files-data nil))
+      (ensure-directories-exist temp-dir)
+      (sb-cover:report temp-dir)
 
-    (let* ((ht (sb-cover::code-coverage-hashtable))
-           (files-data nil)
-           (file-count 0)
-           (max-files 30)        ; Limit number of files to prevent overwhelming
-           (max-file-size 200000)) ; Skip files larger than 200KB
+      ;; Read cover-index.html to get file list
+      (let* ((index-path (merge-pathnames \"cover-index.html\" temp-dir))
+             (index-html (read-file-to-string index-path)))
+        ;; Parse file links: <a href='HASH.html'>PATH</a>
+        (cl-ppcre:do-register-groups (hash path)
+            (\"<a href='([a-f0-9]+)\\.html'>([^<]+)</a>\" index-html)
+          (let ((html-path (merge-pathnames (format nil \"~A.html\" hash) temp-dir)))
+            (when (probe-file html-path)
+              (handler-case
+                  (let ((file-data (parse-coverage-html html-path path)))
+                    (when file-data
+                      (push file-data files-data)))
+                (error () nil))))))
 
-      ;; Process each covered file (with limits)
-      (maphash
-       (lambda (file records)
-         (when (and (< file-count max-files)
-                    (probe-file file))
-           ;; Check file size before processing
-           (let ((file-size (with-open-file (s file) (file-length s))))
-             (when (< file-size max-file-size)
-               ;; Wrap in handler-case to skip files with reader errors
-               (handler-case
-                   (progn
-                     (incf file-count)
-                     (let* ((content (read-file-to-string file))
-                            (annotations nil)
-                            (expr-covered 0) (expr-total 0)
-                            (branch-covered 0) (branch-total 0)
-                            (all-maps (make-hash-table :test 'eq))
-                            (forms nil)
-                            (max-records 2000)  ; Limit records per file
-                            (record-count 0))
+      ;; Clean up temp files
+      (dolist (path (directory (merge-pathnames \"*.html\" temp-dir)))
+        (ignore-errors (delete-file path)))
+      (ignore-errors (uiop:delete-directory-tree temp-dir :validate t))
 
-                       ;; Read all forms to build source map
-                       (with-open-file (stream file :direction :input)
-                         (let ((sb-cover::*current-package* *package*))
-                           (loop
-                             (multiple-value-bind (form source-map)
-                                 (funcall (find-symbol \"READ-AND-RECORD-SOURCE-MAP\" \"SB-COVER\") stream)
-                               (when (eq form sb-int:*eof-object*)
-                                 (return))
-                               (push form forms)
-                               (maphash (lambda (k v) (setf (gethash k all-maps) v)) source-map)))))
-                       (setf forms (nreverse forms))
-
-             ;; Process each coverage record (with limit)
-             (dolist (record records)
-               (when (>= record-count max-records)
-                 (return))  ; Stop processing if we hit the limit
-               (incf record-count)
-               (let* ((path (car record))
-                      (state (cdr record))
-                      (is-branch (member (car path) '(:then :else)))
-                      ;; Path is (subform-idx ... top-level-idx), reverse to navigate
-                      (reversed-path (reverse (remove-if #'keywordp path)))
-                      (form-idx (car reversed-path))
-                      (subform-path (cdr reversed-path)))
-
-                 ;; Count coverage
-                 (if is-branch
-                     (progn
-                       (incf branch-total)
-                       (when state (incf branch-covered)))
-                     (progn
-                       (incf expr-total)
-                       (when state (incf expr-covered))))
-
-                 ;; Find positions
-                 (when (and (integerp form-idx) (< form-idx (length forms)))
-                   (let* ((top-form (nth form-idx forms))
-                          (subform (navigate-to-subform top-form subform-path))
-                          (positions (when subform (gethash subform all-maps))))
-                     (when positions
-                       (let* ((pos-info (first positions))
-                              (start (first pos-info))
-                              (end (second pos-info))
-                              (start-lc (pos-to-line-col content start))
-                              (end-lc (pos-to-line-col content end)))
-                         (push (list :start-line (car start-lc)
-                                     :start-col (cdr start-lc)
-                                     :end-line (car end-lc)
-                                     :end-col (cdr end-lc)
-                                     :state (cond
-                                              ;; Branch coverage: :then/:else is in path, state is T/NIL
-                                              ((eq (car path) :then)
-                                               (if state :then-taken :then-not-taken))
-                                              ((eq (car path) :else)
-                                               (if state :else-taken :else-not-taken))
-                                              ;; Expression coverage
-                                              ((eq state t) :executed)
-                                              ((null state) :not-executed)
-                                              (t :unknown))
-                                     :is-branch is-branch)
-                               annotations)))))))
-
-                       ;; Add file data
-                       (push (list :path file
-                                   :content content
-                                   :annotations (nreverse annotations)
-                                   :summary (list :expr-covered expr-covered
-                                                 :expr-total expr-total
-                                                 :branch-covered branch-covered
-                                                 :branch-total branch-total))
-                             files-data)))
-                 ;; Skip files that cause reader errors
-                 (error () nil))))))
-       ht)
-
-      ;; Return the data
-      files-data)))
-  (error (e) (format nil \"(:error . ~S)\" (princ-to-string e))))")
+      (or files-data (list :error \"No coverage data found.\")))))
+  (error (e) (list :error (princ-to-string e))))")
          (raw-result (backend-eval-internal extract-code))
          (result-string (first raw-result))
          (result (when (and result-string (stringp result-string))
