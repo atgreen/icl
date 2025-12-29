@@ -244,8 +244,8 @@ Uses stored position data when available to avoid reader macro issues."
       ;; Return files-data, or error info if no files processed
       (if files-data
           files-data
-          (format nil \"(:error . \\\"No files with stored positions. Skipped ~D files. Try recompiling with recent SBCL.\\\")\" skipped-no-positions)))))
-  (error (e) (format nil \"(:error . ~S)\" (princ-to-string e))))")
+          (list :error (format nil \"No files with stored positions. Skipped ~D files. Try recompiling with recent SBCL.\" skipped-no-positions))))))
+  (error (e) (list :error (princ-to-string e))))")
          (raw-result (backend-eval-internal extract-code))
          (result-string (first raw-result))
          (result (when (and result-string (stringp result-string))
@@ -259,9 +259,9 @@ Uses stored position data when available to avoid reader macro issues."
             (type-of result) (if (and result (> (length (princ-to-string result)) 200))
                                  (subseq (princ-to-string result) 0 200)
                                  result))
-    ;; Check for error result (dotted pair like (:error . "message"))
-    (when (and (consp result) (eq (car result) :error))
-      (format *error-output* "~&Coverage extraction failed: ~A~%" (cdr result))
+    ;; Check for error result (list like (:error "message"))
+    (when (and (consp result) (eq (first result) :error))
+      (format *error-output* "~&Coverage extraction failed: ~A~%" (second result))
       (return-from backend-coverage-json nil))
     (if (and result (listp result))
         ;; Convert to JSON
