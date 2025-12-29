@@ -106,145 +106,162 @@ Uses COMPILE-FILE + LOAD to ensure coverage data is collected."
 
 (defun backend-coverage-json ()
   "Extract coverage data with line/column positions for Monaco display.
-Returns JSON string with file contents and coverage annotations.
-Uses stored position data when available to avoid reader macro issues."
+Returns JSON string with file contents and coverage annotations."
   (unless *slynk-connected-p*
     (error "Not connected to backend"))
   ;; This code runs in the backend to extract detailed coverage data
-  ;; Uses compute-file-states when stored positions are available (no reader needed)
   (let* ((extract-code "
 (handler-case
 (progn
   (require 'sb-cover)
 
-  (labels (;; Read file to string (plain text, no Lisp parsing)
-           (read-file-to-string (path)
-             (with-open-file (stream path :direction :input)
-               (let ((content (make-string (file-length stream))))
-                 (read-sequence content stream)
-                 content)))
+  ;; Helper: convert file position to (line . column), 1-based
+  ;; Use labels for recursive navigate-to-subform
+  (labels ((pos-to-line-col (content pos)
+           (let ((line 1) (col 1))
+             (loop for i from 0 below (min pos (length content))
+                   for ch = (char content i)
+                   do (if (char= ch #\\Newline)
+                          (progn (incf line) (setf col 1))
+                          (incf col)))
+             (cons line col)))
 
-           ;; Convert character position to (line . column), 1-based
-           (pos-to-line-col (content pos)
-             (let ((line 1) (col 1))
-               (loop for i from 0 below (min pos (length content))
-                     for ch = (char content i)
-                     do (if (char= ch #\\Newline)
-                            (progn (incf line) (setf col 1))
-                            (incf col)))
-               (cons line col)))
+         ;; Navigate to subform using source path (with error handling for special forms)
+         (navigate-to-subform (form path)
+           (handler-case
+               (if (null path)
+                   form
+                   (let ((index (car path)))
+                     (cond
+                       ((and (consp form) (integerp index))
+                        (let ((len (list-length form)))  ; Returns NIL for circular/improper
+                          (when (and len (< index len))
+                            (navigate-to-subform (nth index form) (cdr path)))))
+                       (t nil))))
+             (error () nil)))
 
-           ;; State nibble to coverage state keyword
-           (state-to-keyword (state-nibble)
-             (cond
-               ((= state-nibble 0) nil)
-               ((= state-nibble 1) :executed)
-               ((= state-nibble 2) :not-executed)
-               ((= state-nibble 5) :both-branches)
-               ((= state-nibble 6) :one-branch)
-               ((= state-nibble 9) :one-branch)
-               ((= state-nibble 10) :neither-branch)
-               ((= state-nibble 15) nil)
-               (t nil)))
+         ;; Read file to string
+         (read-file-to-string (path)
+           (with-open-file (stream path :direction :input)
+             (let ((content (make-string (file-length stream))))
+               (read-sequence content stream)
+               content))))
 
-           ;; Process file using reader-based method (fallback for old SBCL)
-           (process-file-with-reader (file)
-             (let ((compute-info-fn (find-symbol \"COMPUTE-FILE-INFO\" \"SB-COVER\")))
-               (when compute-info-fn
-                 (multiple-value-bind (counts states source)
-                     (funcall compute-info-fn file :default)
-                   (when (and counts states source)
-                     (let ((annotations nil)
-                           (ok-of-fn (find-symbol \"OK-OF\" \"SB-COVER\"))
-                           (all-of-fn (find-symbol \"ALL-OF\" \"SB-COVER\"))
-                           (expr-count (getf counts :expression))
-                           (branch-count (getf counts :branch))
-                           (current-state 0)
-                           (span-start 0))
-                       ;; Walk states array
-                       (loop for i from 0 below (length states)
-                             for state = (aref states i)
-                             do (when (/= state current-state)
-                                  (when (and (> current-state 0)
-                                             (/= current-state 15)
-                                             (> i span-start))
-                                    (let* ((start-lc (pos-to-line-col source span-start))
-                                           (end-lc (pos-to-line-col source (1- i)))
-                                           (state-kw (state-to-keyword current-state)))
-                                      (when state-kw
-                                        (push (list :start-line (car start-lc)
-                                                    :start-col (cdr start-lc)
-                                                    :end-line (car end-lc)
-                                                    :end-col (cdr end-lc)
-                                                    :state state-kw
-                                                    :is-branch (member current-state '(5 6 9 10)))
-                                              annotations))))
-                                  (setf current-state state span-start i)))
-                       ;; Final span
-                       (when (and (> current-state 0) (/= current-state 15))
-                         (let* ((start-lc (pos-to-line-col source span-start))
-                                (end-lc (pos-to-line-col source (1- (length states))))
-                                (state-kw (state-to-keyword current-state)))
-                           (when state-kw
-                             (push (list :start-line (car start-lc)
-                                         :start-col (cdr start-lc)
-                                         :end-line (car end-lc)
-                                         :end-col (cdr end-lc)
-                                         :state state-kw
-                                         :is-branch (member current-state '(5 6 9 10)))
-                                   annotations))))
-                       (list :path file
-                             :content source
-                             :annotations (nreverse annotations)
-                             :summary (list :expr-covered (funcall ok-of-fn expr-count)
-                                           :expr-total (funcall all-of-fn expr-count)
-                                           :branch-covered (funcall ok-of-fn branch-count)
-                                           :branch-total (funcall all-of-fn branch-count))))))))))
-
-    ;; Refresh coverage info
-    (let ((refresh-fn (or (find-symbol \"REFRESH-COVERAGE-BITS\" \"SB-COVER\")
-                          (find-symbol \"REFRESH-COVERAGE-INFO\" \"SB-COVER\"))))
-      (when refresh-fn (funcall refresh-fn)))
+    ;; Refresh coverage info to update records with execution state
+    (funcall (find-symbol \"REFRESH-COVERAGE-INFO\" \"SB-COVER\"))
 
     (let* ((ht (sb-cover::code-coverage-hashtable))
            (files-data nil)
            (file-count 0)
-           (max-files 30)
-           (max-file-size 200000))
+           (max-files 30)        ; Limit number of files to prevent overwhelming
+           (max-file-size 200000)) ; Skip files larger than 200KB
 
+      ;; Process each covered file (with limits)
       (maphash
-       (lambda (file file-info)
-         (declare (ignore file-info))
+       (lambda (file records)
          (when (and (< file-count max-files)
                     (probe-file file))
-           (let ((file-size (ignore-errors (with-open-file (s file) (file-length s)))))
-             (when (and file-size (< file-size max-file-size))
+           ;; Check file size before processing
+           (let ((file-size (with-open-file (s file) (file-length s))))
+             (when (< file-size max-file-size)
+               ;; Wrap in handler-case to skip files with reader errors
                (handler-case
-                   (let ((file-data (process-file-with-reader file)))
-                     (when file-data
-                       (incf file-count)
-                       (push file-data files-data)))
+                   (progn
+                     (incf file-count)
+                     (let* ((content (read-file-to-string file))
+                            (annotations nil)
+                            (expr-covered 0) (expr-total 0)
+                            (branch-covered 0) (branch-total 0)
+                            (all-maps (make-hash-table :test 'eq))
+                            (forms nil)
+                            (max-records 2000)  ; Limit records per file
+                            (record-count 0))
+
+                       ;; Read all forms to build source map
+                       (with-open-file (stream file :direction :input)
+                         (let ((sb-cover::*current-package* *package*))
+                           (loop
+                             (multiple-value-bind (form source-map)
+                                 (funcall (find-symbol \"READ-AND-RECORD-SOURCE-MAP\" \"SB-COVER\") stream)
+                               (when (eq form sb-int:*eof-object*)
+                                 (return))
+                               (push form forms)
+                               (maphash (lambda (k v) (setf (gethash k all-maps) v)) source-map)))))
+                       (setf forms (nreverse forms))
+
+             ;; Process each coverage record (with limit)
+             (dolist (record records)
+               (when (>= record-count max-records)
+                 (return))  ; Stop processing if we hit the limit
+               (incf record-count)
+               (let* ((path (car record))
+                      (state (cdr record))
+                      (is-branch (member (car path) '(:then :else)))
+                      ;; Path is (subform-idx ... top-level-idx), reverse to navigate
+                      (reversed-path (reverse (remove-if #'keywordp path)))
+                      (form-idx (car reversed-path))
+                      (subform-path (cdr reversed-path)))
+
+                 ;; Count coverage
+                 (if is-branch
+                     (progn
+                       (incf branch-total)
+                       (when state (incf branch-covered)))
+                     (progn
+                       (incf expr-total)
+                       (when state (incf expr-covered))))
+
+                 ;; Find positions
+                 (when (and (integerp form-idx) (< form-idx (length forms)))
+                   (let* ((top-form (nth form-idx forms))
+                          (subform (navigate-to-subform top-form subform-path))
+                          (positions (when subform (gethash subform all-maps))))
+                     (when positions
+                       (let* ((pos-info (first positions))
+                              (start (first pos-info))
+                              (end (second pos-info))
+                              (start-lc (pos-to-line-col content start))
+                              (end-lc (pos-to-line-col content end)))
+                         (push (list :start-line (car start-lc)
+                                     :start-col (cdr start-lc)
+                                     :end-line (car end-lc)
+                                     :end-col (cdr end-lc)
+                                     :state (cond
+                                              ;; Branch coverage: :then/:else is in path, state is T/NIL
+                                              ((eq (car path) :then)
+                                               (if state :then-taken :then-not-taken))
+                                              ((eq (car path) :else)
+                                               (if state :else-taken :else-not-taken))
+                                              ;; Expression coverage
+                                              ((eq state t) :executed)
+                                              ((null state) :not-executed)
+                                              (t :unknown))
+                                     :is-branch is-branch)
+                               annotations)))))))
+
+                       ;; Add file data
+                       (push (list :path file
+                                   :content content
+                                   :annotations (nreverse annotations)
+                                   :summary (list :expr-covered expr-covered
+                                                 :expr-total expr-total
+                                                 :branch-covered branch-covered
+                                                 :branch-total branch-total))
+                             files-data)))
+                 ;; Skip files that cause reader errors
                  (error () nil))))))
        ht)
 
-      (or files-data (list :error \"No coverage data could be extracted.\")))))
-  (error (e) (list :error (princ-to-string e))))")
+      ;; Return the data
+      files-data)))
+  (error (e) (format nil \"(:error . ~S)\" (princ-to-string e))))")
          (raw-result (backend-eval-internal extract-code))
          (result-string (first raw-result))
          (result (when (and result-string (stringp result-string))
                    (ignore-errors (read-from-string result-string)))))
-    ;; Debug output
-    (format *error-output* "~&Coverage debug: raw-result type=~A, result-string=~S~%"
-            (type-of raw-result) (if (> (length (princ-to-string result-string)) 200)
-                                     (subseq (princ-to-string result-string) 0 200)
-                                     result-string))
-    (format *error-output* "~&Coverage debug: result type=~A, result=~S~%"
-            (type-of result) (if (and result (> (length (princ-to-string result)) 200))
-                                 (subseq (princ-to-string result) 0 200)
-                                 result))
-    ;; Check for error result (list like (:error "message"))
-    (when (and (consp result) (eq (first result) :error))
-      (format *error-output* "~&Coverage extraction failed: ~A~%" (second result))
+    ;; Check for error result (dotted pair like (:error . "message"))
+    (when (and (consp result) (eq (car result) :error))
+      (format *error-output* "~&Coverage extraction failed: ~A~%" (cdr result))
       (return-from backend-coverage-json nil))
     (if (and result (listp result))
         ;; Convert to JSON
