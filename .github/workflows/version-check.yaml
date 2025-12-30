@@ -1,0 +1,65 @@
+# Check for JavaScript library updates
+#
+# Runs weekly to check if any JavaScript libraries used by ICL have newer
+# versions available. Creates a GitHub issue if updates are found.
+
+name: Version Check
+
+on:
+  schedule:
+    # Run every Monday at 9:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SBCL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl
+
+      - name: Install Quicklisp
+        run: |
+          curl -O https://beta.quicklisp.org/quicklisp.lisp
+          sbcl --non-interactive \
+               --load quicklisp.lisp \
+               --eval '(quicklisp-quickstart:install)' \
+               --eval '(ql:add-to-init-file)'
+
+      - name: Install dependencies and build version checker
+        run: |
+          sbcl --non-interactive \
+               --eval '(load "~/quicklisp/setup.lisp")' \
+               --eval '(push (truename ".") asdf:*central-registry*)' \
+               --eval '(ql:quickload :icl-version-checker)' \
+               --eval '(asdf:make :icl-version-checker)'
+
+      - name: Check for updates
+        id: check
+        continue-on-error: true
+        run: |
+          ./version-checker --quiet 2>&1 | tee version-report.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Create issue if updates available
+        if: steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./version-checker --create-issue --quiet
+
+      - name: Upload version report
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-report
+          path: version-report.txt
+          retention-days: 30
