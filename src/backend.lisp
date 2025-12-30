@@ -220,7 +220,8 @@
         ;; ASDF not built in, load bundled version
         (load ~S)~])))
   ;; Add current working directory to ASDF registry (allows loading local .asd files)
-  (push (uiop:getcwd) (symbol-value (read-from-string \"asdf:*central-registry*\")))
+  ;; Use read-from-string for uiop:getcwd since UIOP package doesn't exist until ASDF loads
+  (push (funcall (read-from-string \"uiop:getcwd\")) (symbol-value (read-from-string \"asdf:*central-registry*\")))
   (push ~S (symbol-value (read-from-string \"asdf:*central-registry*\")))
   ;; Load Slynk quietly (suppress all output including ASDF loader messages)
   (let* ((null-stream (make-broadcast-stream))
