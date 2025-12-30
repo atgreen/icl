@@ -56,18 +56,22 @@ Returns a list of plists for libraries with available updates."
     (dolist (lib *tracked-libraries*)
       (let* ((name (getf lib :name))
              (current (getf lib :current-version))
-             (npm-pkg (getf lib :npm-package))
-             (latest (fetch-npm-latest-version npm-pkg)))
-        (when verbose
-          (format t "~&Checking ~A (~A): current=~A, latest=~A~%"
-                  name npm-pkg current (or latest "unknown")))
-        (when (and latest (version< current latest))
-          (push (list :name name
-                      :npm-package npm-pkg
-                      :current-version current
-                      :latest-version latest
-                      :notes (getf lib :notes))
-                updates))))
+             (npm-pkg (getf lib :npm-package)))
+        ;; Skip libraries not on npm
+        (if (null npm-pkg)
+            (when verbose
+              (format t "~&Skipping ~A (not on npm)~%" name))
+            (let ((latest (fetch-npm-latest-version npm-pkg)))
+              (when verbose
+                (format t "~&Checking ~A (~A): current=~A, latest=~A~%"
+                        name npm-pkg current (or latest "unknown")))
+              (when (and latest (version< current latest))
+                (push (list :name name
+                            :npm-package npm-pkg
+                            :current-version current
+                            :latest-version latest
+                            :notes (getf lib :notes))
+                      updates))))))
     (nreverse updates)))
 
 (defun format-update-report (updates)
