@@ -38,14 +38,23 @@ body { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: va
 .list-item:hover { background: var(--bg-secondary); }
 .list-item.selected { background: var(--accent); color: var(--bg-primary); }
 
-.terminal-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.terminal-container .xterm { height: 100%; width: 100%; }
+/* Terminal with horizontal scrolling - outer container is the scroll viewport */
+.terminal-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: auto; }
+/* Inner wrapper sized to terminal's natural width */
+.terminal-container .terminal-inner { display: inline-block; min-width: 100%; height: 100%; }
+.terminal-container .xterm { height: 100%; }
 .terminal-container .xterm-screen { height: 100%; }
+/* Vertical scrolling handled by xterm-viewport */
 .terminal-container .xterm-viewport { height: 100%; overflow-y: auto !important; scrollbar-width: thin; scrollbar-color: var(--bg-tertiary) var(--bg-primary); }
 .terminal-container .xterm-viewport::-webkit-scrollbar { width: 10px; }
 .terminal-container .xterm-viewport::-webkit-scrollbar-track { background: var(--bg-primary); }
 .terminal-container .xterm-viewport::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
 .terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+/* Scrollbars for terminal-container (horizontal + vertical if needed) */
+.terminal-container::-webkit-scrollbar { width: 10px; height: 10px; }
+.terminal-container::-webkit-scrollbar-track { background: var(--bg-primary); }
+.terminal-container::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+.terminal-container::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
 
 .dv-content-container { position: relative; height: 100%; }
 .dv-content-container > .panel { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }

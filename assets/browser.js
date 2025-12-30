@@ -13,31 +13,34 @@ const ICL_CONFIG = {
 };
 
 // Monaco editor for syntax highlighting (colorizer only, not full editor)
-let monacoReady = false;
-let monacoReadyPromise = null;
+// Monaco loading is initiated in the HTML before regulex.js to avoid AMD conflicts
+let monacoReady = window._monacoLoaded || false;
+let monacoReadyPromise = window._monacoLoadPromise || null;
 
 function initMonaco() {
   if (monacoReadyPromise) return monacoReadyPromise;
 
+  // If Monaco wasn't pre-loaded (shouldn't happen normally), create a polling promise
   monacoReadyPromise = new Promise((resolve) => {
-    if (typeof require !== 'undefined' && require.config) {
-      require.config({ paths: { 'vs': '/assets/monaco/vs' }});
-      require(['vs/editor/editor.main'], function() {
+    const checkMonaco = () => {
+      if (window._monacoLoaded && typeof monaco !== 'undefined') {
         monacoReady = true;
         resolve();
-      });
-    } else {
-      // Monaco loader not available yet, wait a bit
-      setTimeout(() => {
-        initMonaco().then(resolve);
-      }, 100);
-    }
+      } else {
+        setTimeout(checkMonaco, 100);
+      }
+    };
+    checkMonaco();
   });
   return monacoReadyPromise;
 }
 
-// Start loading Monaco immediately
-initMonaco();
+// Wait for Monaco to finish loading (already started in HTML)
+if (monacoReadyPromise) {
+  monacoReadyPromise.then(() => {
+    monacoReady = true;
+  });
+}
 
 // Helper to setup modal close buttons (CSP-compliant - no inline handlers)
 function setupModalCloseButtons(container) {
@@ -552,7 +555,7 @@ function openClassGraphPanel(className, packageName) {
     dockviewApi.addPanel({
       id: panelId,
       component: 'graphviz',
-      title: 'Classes: ' + className,
+      title: 'viz: ' + className,
       params: { panelId, className, packageName },
       position: { referencePanel: 'terminal', direction: 'right' }
     });
@@ -1285,7 +1288,7 @@ const vennStates = new Map();  // panelId -> VennPanel instance
 function openVennPanel(setNames, setMembers, sourceExpr) {
   console.log('openVennPanel called:', setNames, setMembers?.map(m => m?.length), sourceExpr);
   const panelId = 'venn-' + (++vennCounter);
-  const title = setNames.length === 1 ? setNames[0] : 'Venn: ' + setNames.join(' ∩ ');
+  const title = 'viz: ' + (setNames.length === 1 ? setNames[0] : setNames.join(' ∩ '));
   if (dockviewApi) {
     dockviewApi.addPanel({
       id: panelId,
@@ -3794,6 +3797,10 @@ class TerminalPanel {
     this._element = document.createElement('div');
     this._element.className = 'terminal-container';
     this._element.id = 'terminal';
+    // Inner wrapper allows horizontal scrolling - it expands to terminal's natural width
+    this._inner = document.createElement('div');
+    this._inner.className = 'terminal-inner';
+    this._element.appendChild(this._inner);
   }
   get element() { return this._element; }
   init(params) {
@@ -3811,11 +3818,12 @@ class TerminalPanel {
         cursorBlink: true,
         fontFamily: "'JetBrains Mono', monospace",
         fontSize: 14,
+        cols: 500,  // Wide columns to prevent wrapping - enables horizontal scroll
         theme: initialTheme
       });
       fitAddon = new FitAddon.FitAddon();
       terminal.loadAddon(fitAddon);
-      terminal.open(this._element);
+      terminal.open(this._inner);  // Open into inner wrapper for horizontal scroll
 
       // Send all input directly to Lisp - the editor handles everything
       terminal.onData(data => {
@@ -3930,8 +3938,16 @@ class TerminalPanel {
         if (terminal) terminal.element.style.cursor = '';
       });
 
-      // Refit on resize
-      const doFit = () => { try { fitAddon.fit(); } catch(e) {} };
+      // Refit on resize - only fit rows, use wide fixed columns for horizontal scroll
+      const doFit = () => {
+        try {
+          const dims = fitAddon.proposeDimensions();
+          if (dims && dims.rows) {
+            // Keep wide columns (no wrap), only resize rows to fit container height
+            terminal.resize(500, dims.rows);
+          }
+        } catch(e) {}
+      };
       new ResizeObserver(doFit).observe(this._element);
 
       // Signal terminal ready after layout has settled

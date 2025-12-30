@@ -364,7 +364,7 @@ Define methods on `icl-runtime:visualize` to create custom visualizations for yo
 ;; Visualize metrics as Vega-Lite bar chart
 (defmethod icl-runtime:visualize ((obj my-metrics))
   (list :vega-lite
-        (format nil "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v5.json\",
+        (format nil "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",
                       \"data\":{\"values\":~A},
                       \"mark\":\"bar\",
                       \"encoding\":{\"x\":{\"field\":\"name\",\"type\":\"nominal\"},

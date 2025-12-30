@@ -34,6 +34,7 @@
                         "vega-lite.min.js"
                         "vega-embed.min.js"
                         "mermaid.min.js"
+                        "monaco-init.js"
                         "regulex.js"
                         "browser.css"
                         "browser.js"

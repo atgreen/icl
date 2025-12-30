@@ -31,7 +31,7 @@
                        for e in expenses
                        collect (format nil "{\"quarter\":\"~A\",\"type\":\"Revenue\",\"amount\":~A}" q r)
                        collect (format nil "{\"quarter\":\"~A\",\"type\":\"Expenses\",\"amount\":~A}" q e))))
-    (format nil "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v5.json\",
+    (format nil "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",
       \"description\":\"Quarterly Sales Data\",
       \"data\":{\"values\":[~{~A~^,~}]},
       \"mark\":\"bar\",

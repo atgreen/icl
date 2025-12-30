@@ -156,11 +156,11 @@
   ;; - 'unsafe-inline' needed for inline styles (Dockview, Vega, xterm.js)
   ;; - 'unsafe-eval' needed for Vega expression evaluation (sandboxed by Vega)
   ;; - blob: needed for Vega image export
-  ;; - data: needed for embedded images
+  ;; - data: needed for embedded images and Monaco's embedded codicon font
   ;; - api.github.com needed for "Check for Updates" feature
   ;; - cdn.jsdelivr.net needed for Monaco editor (coverage panel)
   (setf (hunchentoot:header-out :content-security-policy)
-        "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'; worker-src 'self' blob:;")
+        "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'; worker-src 'self' blob:;")
   ;; Allow same-origin framing (needed for flame graph panel)
   (setf (hunchentoot:header-out :x-frame-options) "SAMEORIGIN")
   ;; Prevent MIME type sniffing

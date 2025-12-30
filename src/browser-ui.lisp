@@ -44,9 +44,12 @@
   <script src='/assets/vega-lite.min.js'></script>
   <script src='/assets/vega-embed.min.js'></script>
   <script src='/assets/mermaid.min.js'></script>
-  <script src='/assets/regulex.js'></script>
-  <!-- Monaco loader MUST be after Vega/Regulex to avoid AMD conflicts -->
+
+  <!-- Monaco loader MUST be BEFORE regulex to avoid AMD conflicts.
+       Load Monaco loader, configure and START loading immediately, then regulex can override AMD globals -->
   <script src='/assets/monaco/vs/loader.js'></script>
+  <script src='/assets/monaco-init.js'></script>
+  <script src='/assets/regulex.js'></script>
 
   <!-- Main application script -->
   <script src='/assets/browser.js'></script>

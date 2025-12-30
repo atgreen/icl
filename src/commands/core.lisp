@@ -1434,59 +1434,59 @@ Examples:
            (let ((sym-name (second parsed))
                  (pkg-name (third parsed)))
              (open-class-graph-panel sym-name pkg-name)
-             (format t "~&; Visualizing class hierarchy: ~A~%" sym-name)))
+             (format t "; Visualizing class hierarchy: ~A~%" sym-name)))
           (:hash-table
            (let ((count (second parsed))
                  (entries (third parsed)))
              (open-hash-table-panel trimmed count entries trimmed)
-             (format t "~&; Visualizing hash-table (~A entries)~%" count)))
+             (format t "; Visualizing hash-table (~A entries)~%" count)))
           (:fset-map
            (let ((count (second parsed))
                  (entries (third parsed)))
              (open-hash-table-panel (format nil "FSet Map: ~A" trimmed)
                                     count entries trimmed)
-             (format t "~&; Visualizing FSet map (~A entries)~%" count)))
+             (format t "; Visualizing FSet map (~A entries)~%" count)))
           (:fset-bag
            (let ((count (second parsed))
                  (entries (third parsed)))
              (open-hash-table-panel (format nil "FSet Bag: ~A" trimmed)
                                     count entries trimmed)
-             (format t "~&; Visualizing FSet bag (~A unique elements)~%" count)))
+             (format t "; Visualizing FSet bag (~A unique elements)~%" count)))
           (:fset-set
            (let ((count (second parsed))
                  (members (third parsed)))
              (open-venn-panel (list trimmed) (list members) trimmed)
-             (format t "~&; Visualizing FSet set (~A members)~%" count)))
+             (format t "; Visualizing FSet set (~A members)~%" count)))
           (:svg
            (let ((content (second parsed)))
              (open-svg-panel trimmed content trimmed)
-             (format t "~&; Visualizing SVG content~%")))
+             (format t "; Visualizing SVG content~%")))
           (:html
            (let ((content (second parsed)))
              (open-html-panel trimmed content trimmed)
-             (format t "~&; Visualizing HTML content~%")))
+             (format t "; Visualizing HTML content~%")))
           (:json
            (let ((content (second parsed)))
              (open-json-panel trimmed content trimmed)
-             (format t "~&; Visualizing JSON content~%")))
+             (format t "; Visualizing JSON content~%")))
           (:vega-lite
            (let ((spec (second parsed)))
              (open-vega-lite-panel trimmed spec trimmed)
-             (format t "~&; Visualizing Vega-Lite chart~%")))
+             (format t "; Visualizing Vega-Lite chart~%")))
           (:mermaid
            (let ((definition (second parsed)))
              (open-mermaid-panel trimmed definition trimmed)
-             (format t "~&; Visualizing Mermaid diagram~%")))
+             (format t "; Visualizing Mermaid diagram~%")))
           (:regexp
            (let ((pattern (second parsed)))
              (open-regexp-panel trimmed pattern trimmed)
-             (format t "~&; Visualizing regexp pattern~%")))
+             (format t "; Visualizing regexp pattern~%")))
           (:image-bytes
            (let* ((mime (second parsed))
                   (base64 (third parsed))
                   (data-url (format nil "data:~A;base64,~A" mime base64)))
              (open-image-panel "Image" data-url mime trimmed)
-             (format t "~&; Visualizing image (~A, ~A bytes)~%" mime (length base64))))
+             (format t "; Visualizing image (~A, ~A bytes)~%" mime (length base64))))
           (:function
            (let* ((name (second parsed))
                   (disasm (third parsed))
@@ -1516,14 +1516,14 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
 <pre>~A</pre>
 </body></html>" name escaped)))
              (open-html-panel (format nil "Disassembly: ~A" name) html trimmed :sanitize nil)
-             (format t "~&; Visualizing disassembly of ~A~%" name)))
+             (format t "; Visualizing disassembly of ~A~%" name)))
           (:symbol
-           (format t "~&; Symbol ~A is not a class name~%" (second parsed)))
+           (format t "; Symbol ~A is not a class name~%" (second parsed)))
           (:unknown
-           (format t "~&; Don't know how to visualize ~A: ~A~%"
+           (format t "; Don't know how to visualize ~A: ~A~%"
                    (second parsed) (third parsed)))
           (otherwise
-           (format t "~&; Unexpected result: ~S~%" parsed)))))))
+           (format t "; Unexpected result: ~S~%" parsed)))))))
 
 (defun viz-fset-sets (expressions)
   "Visualize multiple FSet sets as a Venn diagram."
@@ -1558,11 +1558,11 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                      (all-members (third parsed)))
                  (open-venn-panel expressions all-members
                                   (format nil "~{~A~^ ~}" expressions))
-                 (format t "~&; Visualizing ~D FSet sets as Venn diagram~%" count)))
+                 (format t "; Visualizing ~D FSet sets as Venn diagram~%" count)))
               (:not-sets
-               (format t "~&; All expressions must be FSet sets for Venn diagram~%"))
+               (format t "; All expressions must be FSet sets for Venn diagram~%"))
               (otherwise
-               (format t "~&; Unexpected result: ~S~%" parsed))))))
+               (format t "; Unexpected result: ~S~%" parsed))))))
     (error (e)
       (format *error-output* "~&; Error: ~A~%" e))))
 
