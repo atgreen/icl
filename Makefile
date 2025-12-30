@@ -1,4 +1,4 @@
-.PHONY: all clean lint test check
+.PHONY: all clean lint test check check-versions
 
 all: icl
 
@@ -63,3 +63,10 @@ test check:
 	     --eval "(asdf:initialize-source-registry (list :source-registry :inherit-configuration (list :directory (uiop:getcwd)) (list :tree (merge-pathnames \"ocicl/\" (uiop:getcwd))) (list :tree (merge-pathnames \"3rd-party/\" (uiop:getcwd)))))" \
 	     --eval "(asdf:load-system :icl-tests :force t)" \
 	     --eval "(let ((results (fiveam:run 'icl-tests:icl-tests))) (format t \"~&~%Test Results:~%\") (fiveam:explain! results) (finish-output) (if (fiveam:results-status results) (sb-ext:exit :code 0) (sb-ext:exit :code 1)))"
+
+check-versions:
+	@sbcl --non-interactive \
+	     --eval "(require 'asdf)" \
+	     --eval "(asdf:initialize-source-registry (list :source-registry :inherit-configuration (list :directory (uiop:getcwd)) (list :tree (merge-pathnames \"ocicl/\" (uiop:getcwd)))))" \
+	     --eval "(asdf:load-system :icl-version-checker)" \
+	     --eval "(let ((updates (icl-version-checker:check-library-updates :verbose nil))) (format t \"~A~%\" (icl-version-checker:format-update-report updates)))"
