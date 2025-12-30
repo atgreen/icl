@@ -1,0 +1,281 @@
+.\" Man page for ICL - Interactive Common Lisp
+.\" Generated for ICL project
+.TH ICL 1 "December 2025" "ICL" "User Commands"
+.SH NAME
+icl \- Interactive Common Lisp REPL
+.SH SYNOPSIS
+.B icl
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B icl
+is an enhanced REPL (Read-Eval-Print Loop) for Common Lisp. It provides
+a modern command-line experience with readline-style editing, persistent
+history, tab completion, syntax highlighting, and an extensible command system.
+.PP
+ICL can use multiple Lisp implementations as backends including SBCL, CCL,
+ECL, CLISP, ABCL, and Clasp. It communicates with the backend via the
+Slynk protocol.
+.SH OPTIONS
+.TP
+.BR \-e ", " \-\-eval =\fIEXPR\fR
+Evaluate expression and print result. Can be repeated for multiple expressions.
+.TP
+.BR \-l ", " \-\-load =\fIFILE\fR
+Load a Lisp file before starting the REPL.
+.TP
+.BR \-b ", " \-\-browser
+Start with the browser interface instead of the terminal REPL. Opens a
+web-based UI with rich visualizations for data inspection.
+.TP
+.BR \-v ", " \-\-verbose
+Show verbose startup information including backend connection details.
+.TP
+.BR \-\-lisp =\fIIMPL\fR
+Select Lisp implementation to use as backend. Supported values:
+.BR sbcl ", " ccl ", " ecl ", " clisp ", " abcl ", " clasp ", " roswell .
+Default is sbcl if available.
+.TP
+.BR \-\-connect =\fIHOST:PORT\fR
+Connect to an existing Slynk server instead of starting a new backend.
+Useful for connecting to remote Lisp processes.
+.TP
+.BR \-\-mcp\-server =\fIHOST:PORT\fR
+Run as an MCP (Model Context Protocol) server, connecting to a Slynk
+server at the specified address. Used for AI assistant integration.
+.TP
+.BR \-\-no\-banner
+Don't print the startup banner.
+.TP
+.BR \-\-no\-cache
+Don't create or use cached SBCL image. Forces a fresh backend start.
+.TP
+.BR \-\-no\-config
+Don't load the user configuration file (~/.iclrc).
+.TP
+.BR \-\-no\-open
+Don't automatically open the browser when using \-b/\-\-browser mode.
+.TP
+.BR \-\-unsafe\-visualizations
+Allow JavaScript in visualizations. By default, visualizations are
+sandboxed for security.
+.TP
+.BR \-\-help
+Display usage information and exit.
+.TP
+.BR \-\-version
+Display version information and exit.
+.SH REPL COMMANDS
+ICL provides comma-prefixed commands for common operations. Type
+.B ,help
+for a complete list, or
+.B ,help \fICOMMAND\fR
+for detailed help on a specific command.
+.SS Navigation and Package Management
+.TP
+.B ,cd \fIPACKAGE\fR
+Change the current package (also: ,in-package).
+.TP
+.B ,pwd
+Show the current package.
+.TP
+.B ,ls \fI[PACKAGE]\fR
+List symbols in a package (also: ,list-symbols).
+.SS Documentation and Inspection
+.TP
+.B ,doc \fISYMBOL\fR
+Show documentation for a symbol (also: ,d).
+.TP
+.B ,describe \fISYMBOL\fR
+Describe a symbol in detail (also: ,desc).
+.TP
+.B ,arglist \fIFUNCTION\fR
+Show function argument list (also: ,args).
+.TP
+.B ,apropos \fIPATTERN\fR
+Search for symbols matching pattern (also: ,ap).
+.TP
+.B ,inspect \fIOBJECT\fR
+Interactively inspect an object (also: ,i).
+.TP
+.B ,source \fISYMBOL\fR
+Show source location of a function or macro.
+.SS Code Analysis
+.TP
+.B ,disassemble \fIFUNCTION\fR
+Disassemble a function (also: ,dis).
+.TP
+.B ,macroexpand \fIFORM\fR
+Expand a macro form once (also: ,mx).
+.TP
+.B ,macroexpand-all \fIFORM\fR
+Fully expand all macros in a form (also: ,mxa).
+.TP
+.B ,callers \fISYMBOL\fR
+Show functions that call this symbol (also: ,xc).
+.TP
+.B ,callees \fISYMBOL\fR
+Show functions called by this symbol (also: ,xe).
+.SS Debugging
+.TP
+.B ,bt
+Show backtrace from last error (also: ,backtrace).
+.TP
+.B ,trace \fIFUNCTION\fR
+Enable tracing for a function (also: ,tr).
+.TP
+.B ,untrace \fIFUNCTION\fR
+Disable tracing for a function (also: ,untr).
+.TP
+.B ,step \fIFORM\fR
+Show evaluation steps for a form.
+.SS Profiling
+.TP
+.B ,profile \fIFORM\fR
+Profile a form using the statistical profiler.
+.TP
+.B ,flame \fIFORM\fR
+Generate a flame graph for a form (also: ,flamegraph, ,fg).
+.TP
+.B ,profile-start
+Start ongoing profiling (also: ,ps).
+.TP
+.B ,profile-stop
+Stop profiling and show results (also: ,pst).
+.SS Code Coverage
+.TP
+.B ,cover-start
+Start code coverage instrumentation.
+.TP
+.B ,cover-stop
+Stop coverage and show report.
+.TP
+.B ,cover-load \fIFILE\fR
+Load a file with coverage instrumentation (also: ,cl).
+.TP
+.B ,cover-report
+Show coverage report in browser.
+.SS Loading and Compiling
+.TP
+.B ,load \fIFILE\fR
+Load a Lisp file (also: ,ld).
+.TP
+.B ,compile-file \fIFILE\fR
+Compile a Lisp file (also: ,cf).
+.TP
+.B ,load-system \fISYSTEM\fR
+Load an ASDF system (also: ,ql).
+.SS Browser Interface
+.TP
+.B ,browser
+Open/manage the browser interface.
+.TP
+.B ,viz \fIEXPR\fR
+Visualize data in the browser.
+.TP
+.B ,theme \fI[NAME]\fR
+Manage terminal and browser themes.
+.SS Miscellaneous
+.TP
+.B ,help \fI[COMMAND]\fR
+Show help (also: ,h, ,?).
+.TP
+.B ,info
+Show Lisp implementation info.
+.TP
+.B ,history
+Show command history.
+.TP
+.B ,clear
+Clear the screen.
+.TP
+.B ,quit
+Exit ICL (also: ,exit, ,q).
+.SH KEYBOARD SHORTCUTS
+.TP
+.B Tab
+Complete symbol, command, or file path.
+.TP
+.B Ctrl-R
+Reverse search through history.
+.TP
+.B Ctrl-C
+Cancel current input.
+.TP
+.B Ctrl-D
+Exit (on empty line).
+.TP
+.B Up/Down
+Navigate command history.
+.TP
+.B Ctrl-A / Ctrl-E
+Move to beginning/end of line.
+.SH FILES
+.TP
+.I ~/.iclrc
+User configuration file. Loaded at startup unless \-\-no\-config is specified.
+This is a Lisp file evaluated in the backend.
+.TP
+.I ~/.cache/icl/
+Cache directory for SBCL images and other cached data.
+.TP
+.I ~/.icl_history
+Persistent command history file.
+.SH ENVIRONMENT
+.TP
+.B COLORFGBG
+Used for terminal dark/light mode detection.
+.TP
+.B NO_COLOR
+If set, disables colored output.
+.TP
+.B TERM
+Terminal type, used for capability detection.
+.TP
+.B ICL_ASDF_PATH
+Override path to bundled ASDF.
+.SH EXAMPLES
+Start ICL with default settings:
+.PP
+.RS
+.B icl
+.RE
+.PP
+Evaluate an expression and exit:
+.PP
+.RS
+.B icl -e \(dq(+ 1 2 3)\(dq
+.RE
+.PP
+Load a file and start REPL:
+.PP
+.RS
+.B icl -l myproject.lisp
+.RE
+.PP
+Start with browser interface:
+.PP
+.RS
+.B icl --browser
+.RE
+.PP
+Use CCL instead of SBCL:
+.PP
+.RS
+.B icl --lisp ccl
+.RE
+.PP
+Connect to a running Slynk server:
+.PP
+.RS
+.B icl --connect localhost:4005
+.RE
+.SH SEE ALSO
+.BR sbcl (1),
+.BR ccl (1),
+.BR ecl (1)
+.PP
+ICL homepage: https://github.com/atgreen/icl
+.SH AUTHOR
+Anthony Green <green@moxielogic.com>
+.SH LICENSE
+MIT License

@@ -29,6 +29,9 @@ override_dh_auto_install:
 	install -m 0644 emacs/icl-autoloads.el debian/icl/usr/share/emacs/site-lisp/icl/
 	# Bash completion
 	install -m 0644 completions/icl.bash debian/icl/usr/share/bash-completion/completions/icl
+	# Man page
+	mkdir -p debian/icl/usr/share/man/man1
+	install -m 0644 man/icl.1 debian/icl/usr/share/man/man1/
 
 override_dh_auto_test:
 	# Skip tests - fiveam is not vendored in the source tarball
