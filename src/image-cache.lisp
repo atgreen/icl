@@ -126,6 +126,8 @@
       (unless port
         (format *error-output* \"Usage: sbcl --core <image> <port>~%%\")
         (sb-ext:exit :code 1))
+      ;; Add current working directory to ASDF registry (allows loading local .asd files)
+      (push (uiop:getcwd) (symbol-value (read-from-string \"asdf:*central-registry*\")))
       ;; Configure worker thread bindings
       (let ((bindings-var (find-symbol \"*DEFAULT-WORKER-THREAD-BINDINGS*\" :slynk)))
         (when bindings-var
