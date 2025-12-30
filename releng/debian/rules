@@ -13,6 +13,7 @@ override_dh_auto_install:
 	mkdir -p debian/icl/usr/share/doc/icl
 	mkdir -p debian/icl/usr/share/icl/asdf
 	mkdir -p debian/icl/usr/share/emacs/site-lisp/icl
+	mkdir -p debian/icl/usr/share/bash-completion/completions
 	mkdir -p debian/icl/etc/ld.so.conf.d
 	install -m 0755 icl debian/icl/usr/bin/
 	find ~/.cache/common-lisp -name "libosicat.so" -exec install -m 0755 {} debian/icl/usr/lib/icl/ \; 2>/dev/null || true
@@ -26,6 +27,8 @@ override_dh_auto_install:
 	# Emacs integration
 	install -m 0644 emacs/icl.el debian/icl/usr/share/emacs/site-lisp/icl/
 	install -m 0644 emacs/icl-autoloads.el debian/icl/usr/share/emacs/site-lisp/icl/
+	# Bash completion
+	install -m 0644 completions/icl.bash debian/icl/usr/share/bash-completion/completions/icl
 
 override_dh_auto_test:
 	# Skip tests - fiveam is not vendored in the source tarball

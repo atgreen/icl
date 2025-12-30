@@ -54,6 +54,10 @@ mkdir -p %{buildroot}%{_datadir}/emacs/site-lisp/icl
 install -m 0644 emacs/icl.el %{buildroot}%{_datadir}/emacs/site-lisp/icl/
 install -m 0644 emacs/icl-autoloads.el %{buildroot}%{_datadir}/emacs/site-lisp/icl/
 
+# Install bash completion
+mkdir -p %{buildroot}%{_datadir}/bash-completion/completions
+install -m 0644 completions/icl.bash %{buildroot}%{_datadir}/bash-completion/completions/icl
+
 # Note: Slynk and browser assets are now embedded in the binary
 
 # Install combined open source notices (web + Lisp licenses)
@@ -72,6 +76,7 @@ install -D -m 0644 assets/OPEN-SOURCE-NOTICES.txt %{buildroot}%{_datadir}/licens
 %{_sysconfdir}/ld.so.conf.d/icl.conf
 %{_datadir}/icl/asdf
 %{_datadir}/emacs/site-lisp/icl
+%{_datadir}/bash-completion/completions/icl
 %{_libdir}/icl
 %{_bindir}/icl
 
