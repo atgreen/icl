@@ -46,6 +46,8 @@ dexador, ghcr.io/ocicl/dexador@sha256:defc8d669790e22ac9a9eccf52fe14b10cf986402c
 dexador-test, ghcr.io/ocicl/dexador@sha256:defc8d669790e22ac9a9eccf52fe14b10cf986402c7b32c0049df45f64a039e1, dexador-20250825-4db4b93/dexador-test.asd
 dexador-usocket, ghcr.io/ocicl/dexador@sha256:defc8d669790e22ac9a9eccf52fe14b10cf986402c7b32c0049df45f64a039e1, dexador-20250825-4db4b93/dexador-usocket.asd
 documentation-utils, ghcr.io/ocicl/documentation-utils@sha256:b2a1b3f3bcd1a738af85ae2b0168d408c177661eab6d6bbebb254e394d983f54, documentation-utils-20230511-98630dd/documentation-utils.asd
+drakma, ghcr.io/ocicl/drakma@sha256:fdfae1db35254b40a3796188f065646abe6abc55a58921438ecba47e63164bfd, drakma-2.0.10/drakma.asd
+drakma-test, ghcr.io/ocicl/drakma@sha256:fdfae1db35254b40a3796188f065646abe6abc55a58921438ecba47e63164bfd, drakma-2.0.10/drakma-test.asd
 dref, ghcr.io/ocicl/mgl-pax-bootstrap@sha256:2f4da326e75413741907b8818f67dd3a7f8b783e2a8983a6f52f1e3373306be8, mgl-pax-20260112-2c726a5/dref/dref.asd
 dref-test, ghcr.io/ocicl/mgl-pax-bootstrap@sha256:2f4da326e75413741907b8818f67dd3a7f8b783e2a8983a6f52f1e3373306be8, mgl-pax-20260112-2c726a5/dref/dref-test.asd
 dref-test-package-inferred, ghcr.io/ocicl/mgl-pax-bootstrap@sha256:2f4da326e75413741907b8818f67dd3a7f8b783e2a8983a6f52f1e3373306be8, mgl-pax-20260112-2c726a5/dref/test/data/dref-test-package-inferred.asd
@@ -103,6 +105,7 @@ plump-parser, ghcr.io/ocicl/plump@sha256:1de91e37930bcaf6a3b45e992044dfdc45bcab4
 proc-parse, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse.asd
 proc-parse-test, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse-test.asd
 pure-tls, ghcr.io/ocicl/pure-tls@sha256:2f8be4e6bfb5787e7555bea1485ce9a6e7c421dc6cc64d419bdc31cf6ac6fd00, pure-tls-20260103-3797309/pure-tls.asd
+puri, ghcr.io/ocicl/puri@sha256:f6aa091a4d8eb5bdc91466daddc90dadd5b0fcf247370df237a223dc0588f29d, puri-4bbab9/puri.asd
 quri, ghcr.io/ocicl/quri@sha256:e2559f91600e4895e115b42dde88fcaac3677f051335d73431888dcf7af99f95, quri-0.7.0/quri.asd
 quri-test, ghcr.io/ocicl/quri@sha256:e2559f91600e4895e115b42dde88fcaac3677f051335d73431888dcf7af99f95, quri-0.7.0/quri-test.asd
 rfc2388, ghcr.io/ocicl/rfc2388@sha256:4190f6eb36b3b2f53def6eff56b44e76edf4086ada2feb6d88bb671a40fc9f70, rfc2388-20240503-591bcf7/rfc2388.asd
