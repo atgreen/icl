@@ -4,6 +4,11 @@
 ;;;
 ;;; Copyright (C) 2025  Anthony Green <green@moxielogic.com>
 
+;;; Load pure-tls compatibility layer before any cl+ssl-dependent systems
+(eval-when (:load-toplevel :execute)
+  (asdf:load-system :pure-tls/cl+ssl-compat)
+  (asdf:register-immutable-system "cl+ssl"))
+
 (asdf:defsystem "icl"
   :description "Interactive Common Lisp: An enhanced REPL"
   :author      "Anthony Green <green@moxielogic.com>"
@@ -34,6 +39,8 @@
                ;; ZIP extraction for embedded slynk
                :zip
                :flexi-streams
+               ;; Self-update from GitHub releases
+               :cl-selfupdate/drakma
                ;; POSIX-only dependencies
                (:feature (:not :windows) :osicat))
   :serial t

@@ -303,6 +303,48 @@ jobs:
           }
 
   # ========================================
+  # Build Linux tarball (for self-update)
+  # ========================================
+  build-linux-tarball:
+    needs: fetch-deps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download ocicl dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: ocicl-deps
+          path: ocicl
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl libfixposix-dev gcc make
+
+      - name: Build
+        run: make
+
+      - name: Package Linux binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp icl dist/
+          cp README.md LICENSE assets/OPEN-SOURCE-NOTICES.txt dist/
+          # Include slynk for backend support
+          cp -r ocicl/sly-*/slynk dist/
+          # Include bundled ASDF (for Lisps that don't bundle it)
+          cp -r 3rd-party dist/
+          cd dist && tar czf ../icl-${VERSION}-linux-amd64.tar.gz *
+
+      - name: Upload Linux tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tarball
+          path: ./*.tar.gz
+
+  # ========================================
   # Build macOS executables
   # ========================================
   build-macos-arm64:
@@ -335,17 +377,17 @@ jobs:
           cp -r ocicl/sly-*/slynk dist/
           # Include bundled ASDF (for Lisps that don't bundle it)
           cp -r 3rd-party dist/
-          cd dist && tar czf ../icl-${VERSION}-macos-arm64.tar.gz *
+          cd dist && tar czf ../icl-${VERSION}-darwin-arm64.tar.gz *
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-arm64-package
+          name: darwin-arm64-package
           path: ./*.tar.gz
 
-  build-macos-x64:
+  build-macos-amd64:
     needs: fetch-deps
-    runs-on: macos-15
+    runs-on: macos-13
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -373,19 +415,19 @@ jobs:
           cp -r ocicl/sly-*/slynk dist/
           # Include bundled ASDF (for Lisps that don't bundle it)
           cp -r 3rd-party dist/
-          cd dist && tar czf ../icl-${VERSION}-macos-x64.tar.gz *
+          cd dist && tar czf ../icl-${VERSION}-darwin-amd64.tar.gz *
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-x64-package
+          name: darwin-amd64-package
           path: ./*.tar.gz
 
   # ========================================
   # Create GitHub Release
   # ========================================
   release:
-    needs: [build-rpm, build-deb, build-windows, build-chocolatey, build-macos-arm64, build-macos-x64]
+    needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-chocolatey, build-macos-arm64, build-macos-amd64]
     permissions: write-all
     runs-on: ubuntu-latest
     steps:
@@ -416,10 +458,11 @@ jobs:
             artifacts/deb-packages/*.tar.*
             artifacts/deb-packages/*.buildinfo
             artifacts/deb-packages/*.changes
+            artifacts/linux-tarball/*.tar.gz
             artifacts/windows-package/icl-*-windows-*.zip
             artifacts/windows-package/*-setup.exe
             artifacts/windows-package/*.msi
             artifacts/chocolatey-package/*.nupkg
-            artifacts/macos-arm64-package/*.tar.gz
-            artifacts/macos-x64-package/*.tar.gz
+            artifacts/darwin-arm64-package/*.tar.gz
+            artifacts/darwin-amd64-package/*.tar.gz
           allowUpdates: true

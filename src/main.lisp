@@ -113,6 +113,82 @@
    :description "Don't automatically open browser (use with -b)"))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Update Subcommand
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun handle-update-cli (cmd)
+  "Handle the 'icl update' subcommand."
+  (let ((check-only (clingon:getopt cmd :check))
+        (dry-run (clingon:getopt cmd :dry-run)))
+    (handler-case
+        (progn
+          (setf cl-selfupdate:*current-version* +version+)
+          (cond
+            ;; --check: Just check if update is available
+            (check-only
+             (multiple-value-bind (release newer-p)
+                 (cl-selfupdate:update-available-p "atgreen" "icl")
+               (if newer-p
+                   (progn
+                     (format t "Update available: ~A -> ~A~%"
+                             +version+ (cl-selfupdate:release-tag release))
+                     (uiop:quit 0))
+                   (progn
+                     (format t "ICL is up to date (version ~A).~%" +version+)
+                     (uiop:quit 0)))))
+            ;; --dry-run: Download but don't install
+            (dry-run
+             (multiple-value-bind (release newer-p)
+                 (cl-selfupdate:update-available-p "atgreen" "icl")
+               (if newer-p
+                   (progn
+                     (format t "Would update: ~A -> ~A~%"
+                             +version+ (cl-selfupdate:release-tag release))
+                     (format t "Downloading (dry run)...~%")
+                     (let ((new-exe (cl-selfupdate:download-update
+                                     "atgreen" "icl"
+                                     :executable-name "icl")))
+                       (format t "Downloaded to: ~A~%" new-exe)
+                       (format t "Dry run complete. No changes made.~%")))
+                   (format t "ICL is already up to date (version ~A).~%" +version+))))
+            ;; Default: Apply update
+            (t
+             (multiple-value-bind (updated-p new-version old-version notes)
+                 (cl-selfupdate:update-self "atgreen" "icl"
+                                            :executable-name "icl")
+               (if updated-p
+                   (progn
+                     (format t "Updated ICL from ~A to ~A~%" old-version new-version)
+                     (when notes
+                       (format t "~%Release notes:~%~A~%" notes)))
+                   (format t "ICL is already up to date (version ~A).~%" +version+))))))
+      (error (e)
+        (format *error-output* "Update failed: ~A~%" e)
+        (uiop:quit 1))))
+  (uiop:quit 0))
+
+(defun make-update-command ()
+  "Create the 'update' subcommand."
+  (clingon:make-command
+   :name "update"
+   :description "Update ICL to the latest version"
+   :usage "[options]"
+   :options (list
+             (clingon:make-option
+              :flag
+              :long-name "check"
+              :short-name #\c
+              :key :check
+              :description "Check if an update is available without installing")
+             (clingon:make-option
+              :flag
+              :long-name "dry-run"
+              :short-name #\n
+              :key :dry-run
+              :description "Download update but don't install it"))
+   :handler #'handle-update-cli))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; CLI Handler
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
@@ -253,7 +329,7 @@
   (clingon:make-command
    :name "icl"
    :version +version+
-   :description "Interactive Common Lisp - An enhanced REPL"
+   :description (format nil "Interactive Common Lisp - An enhanced REPL (v~A)" +version+)
    :long-description "ICL provides a modern, feature-rich REPL for Common Lisp
 with readline-style editing, persistent history, tab completion,
 and an extensible command system."
@@ -272,6 +348,7 @@ and an extensible command system."
                   (make-browser-option)
                   (make-no-open-option)
                   (make-unsafe-visualizations-option))
+   :sub-commands (list (make-update-command))
    :handler #'handle-cli))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
