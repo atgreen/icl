@@ -36,7 +36,7 @@
 
     ;; Vega-Lite - high-level Vega grammar
     (:name "vega-lite"
-     :current-version "6.4.1"
+     :current-version "6.4.2"
      :npm-package "vega-lite"
      :notes "Simplified Vega for common chart types")
 
