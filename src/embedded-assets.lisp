@@ -76,28 +76,36 @@
         (when (probe-file path)
           (setf (gethash filename *embedded-binary-assets*)
                 (alexandria:read-file-into-byte-vector path)))))
-    ;; Monaco editor assets (text files)
+    ;; Monaco editor assets - recursively embed all files
+    ;; Monaco Editor is pre-built with vite, generating ~120+ hashed .js/.css files
+    ;; Rather than manually listing each file, we recursively discover all Monaco files
     (let ((monaco-dir (merge-pathnames "monaco/" assets-dir)))
-      (dolist (filename '("editor.html"
-                          "editor-init.js"
-                          "init.js"
-                          "loader.html"
-                          "LICENSE"
-                          "vs/loader.js"
-                          "vs/editor/editor.main.js"
-                          "vs/editor/editor.main.css"
-                          "vs/base/worker/workerMain.js"
-                          "vs/basic-languages/scheme/scheme.js"))
-        (let ((path (merge-pathnames filename monaco-dir)))
-          (when (probe-file path)
-            (setf (gethash (concatenate 'string "monaco/" filename) *embedded-assets*)
-                  (alexandria:read-file-into-string path)))))
-      ;; Monaco binary assets (fonts)
-      (dolist (filename '("vs/base/browser/ui/codicons/codicon/codicon.ttf"))
-        (let ((path (merge-pathnames filename monaco-dir)))
-          (when (probe-file path)
-            (setf (gethash (concatenate 'string "monaco/" filename) *embedded-binary-assets*)
-                  (alexandria:read-file-into-byte-vector path))))))))
+      (when (probe-file monaco-dir)
+        (labels ((collect-files (dir)
+                   "Recursively collect all files in DIR"
+                   (let ((files nil))
+                     (dolist (entry (uiop:directory-files dir))
+                       (push entry files))
+                     (dolist (subdir (uiop:subdirectories dir))
+                       (setf files (nconc files (collect-files subdir))))
+                     files)))
+          (let ((all-files (collect-files monaco-dir)))
+            (dolist (file all-files)
+              (let* ((relative-path (enough-namestring file monaco-dir))
+                     (key (concatenate 'string "monaco/" relative-path))
+                     (extension (pathname-type file)))
+                ;; Binary assets (fonts)
+                (cond ((string= extension "ttf")
+                       (setf (gethash key *embedded-binary-assets*)
+                             (alexandria:read-file-into-byte-vector file)))
+                      ;; Text assets (js, css, html, txt)
+                      ((member extension '("js" "css" "html" "txt" "LICENSE") :test #'string=)
+                       (setf (gethash key *embedded-assets*)
+                             (alexandria:read-file-into-string file)))
+                      ;; Also handle LICENSE files without extension
+                      ((and (null extension) (search "LICENSE" (pathname-name file)))
+                       (setf (gethash key *embedded-assets*)
+                             (alexandria:read-file-into-string file))))))))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Asset Access
