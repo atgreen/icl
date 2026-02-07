@@ -2009,9 +2009,14 @@ class PackagesPanel {
     this._element.className = 'panel';
     this._element.innerHTML = `
       <div class='panel-header'>
-        <input id='package-filter' placeholder='Filter packages...' oninput='renderPackages(this.value)'>
+        <input id='package-filter' placeholder='Filter packages...'>
       </div>
       <div class='panel-content' id='package-list'></div>`;
+    // Add event listener for filter input (CSP-compliant)
+    const filterInput = this._element.querySelector('#package-filter');
+    if (filterInput) {
+      filterInput.addEventListener('input', (e) => renderPackages(e.target.value));
+    }
   }
   get element() { return this._element; }
   init(params) { setTimeout(renderPackages, 100); }
@@ -2023,9 +2028,14 @@ class SymbolsPanel {
     this._element.className = 'panel';
     this._element.innerHTML = `
       <div class='panel-header'>
-        <input id='symbol-filter' placeholder='Filter symbols...' oninput='renderSymbols(this.value)'>
+        <input id='symbol-filter' placeholder='Filter symbols...'>
       </div>
       <div class='panel-content' id='symbol-list'></div>`;
+    // Add event listener for filter input (CSP-compliant)
+    const filterInput = this._element.querySelector('#symbol-filter');
+    if (filterInput) {
+      filterInput.addEventListener('input', (e) => renderSymbols(e.target.value));
+    }
   }
   get element() { return this._element; }
   init(params) {}
