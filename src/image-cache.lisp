@@ -92,22 +92,18 @@
 ;;; Image Creation
 ;;; -------------------------------------------------------------------------
 
-(defun generate-image-creation-code (output-path slynk-dir asdf-file)
+(defun generate-image-creation-code (output-path slynk-dir)
   "Generate Lisp code that creates the cached SBCL+Slynk image.
-   The image will have Slynk loaded and configured, ready to start a server."
+   The image will have Slynk loaded and configured, ready to start a server.
+   Assumes ASDF is already loaded (via a prior --eval)."
   (format nil "(progn
-  ;; Ensure ASDF is available
-  (require :asdf)
-  ~@[;; Load bundled ASDF if needed
-  (load ~S)~]
-
   ;; Add Slynk to ASDF registry and load it
-  (push ~S (symbol-value (read-from-string \"asdf:*central-registry*\")))
+  (push ~S asdf:*central-registry*)
   (let ((*debug-io* (make-broadcast-stream))
         (*error-output* (make-broadcast-stream))
         (*standard-output* (make-broadcast-stream)))
     (handler-bind ((warning #'muffle-warning))
-      (funcall (read-from-string \"asdf:load-system\") :slynk)))
+      (asdf:load-system :slynk)))
 
   ;; Pre-configure Slynk (disable auth/secret)
   (let ((secret (find-symbol \"SLY-SECRET\" :slynk)))
@@ -127,7 +123,7 @@
         (format *error-output* \"Usage: sbcl --core <image> <port>~%%\")
         (sb-ext:exit :code 1))
       ;; Add current working directory to ASDF registry (allows loading local .asd files)
-      (push (uiop:getcwd) (symbol-value (read-from-string \"asdf:*central-registry*\")))
+      (push (uiop:getcwd) asdf:*central-registry*)
       ;; Configure worker thread bindings
       (let ((bindings-var (find-symbol \"*DEFAULT-WORKER-THREAD-BINDINGS*\" :slynk)))
         (when bindings-var
@@ -141,8 +137,7 @@
       (let* ((null-stream (make-broadcast-stream))
              (*standard-output* null-stream)
              (*error-output* null-stream))
-        (funcall (read-from-string \"slynk:create-server\")
-                 :port port :dont-close t))
+        (slynk:create-server :port port :dont-close t))
       ;; Keep process alive
       (loop (sleep 60))))
 
@@ -152,7 +147,6 @@
     :toplevel #'icl-cached-slynk-main
     :executable nil
     :compression t))"
-          (when asdf-file (uiop:unix-namestring asdf-file))
           (uiop:unix-namestring slynk-dir)
           (namestring output-path)
           (namestring output-path)))
@@ -161,9 +155,7 @@
   "Create a cached SBCL image with Slynk pre-loaded.
    Returns the path to the created image, or NIL on failure."
   (let* ((output-path (cached-sbcl-image-path))
-         (slynk-dir (find-slynk-asd))
-         ;; Don't load bundled ASDF - SBCL always has ASDF built-in
-         (asdf-file nil))
+         (slynk-dir (find-slynk-asd)))
     (unless slynk-dir
       (warn "Cannot find Slynk directory for image caching")
       (return-from create-cached-sbcl-image nil))
@@ -171,9 +163,11 @@
     (format t "~&; Creating cached SBCL+Slynk image (one-time setup)...~%")
     (force-output)
 
-    (let* ((init-code (generate-image-creation-code output-path slynk-dir asdf-file))
+    (let* ((init-code (generate-image-creation-code output-path slynk-dir))
            (process (sb-ext:run-program "sbcl"
-                                        (list "--noinform" "--eval" init-code)
+                                        (list "--noinform"
+                                              "--eval" "(require :asdf)"
+                                              "--eval" init-code)
                                         :search t
                                         :wait t
                                         :output *standard-output*
