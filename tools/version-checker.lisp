@@ -51,8 +51,10 @@ Returns the version string or NIL on error."
 
 (defun check-library-updates (&key (verbose t))
   "Check all tracked libraries for updates.
-Returns a list of plists for libraries with available updates."
-  (let ((updates nil))
+Returns two values: a list of plists for libraries with available updates,
+and a list of library names that failed to fetch."
+  (let ((updates nil)
+        (failures nil))
     (dolist (lib *tracked-libraries*)
       (let* ((name (getf lib :name))
              (current (getf lib :current-version))
@@ -64,15 +66,18 @@ Returns a list of plists for libraries with available updates."
             (let ((latest (fetch-npm-latest-version npm-pkg)))
               (when verbose
                 (format t "~&Checking ~A (~A): current=~A, latest=~A~%"
-                        name npm-pkg current (or latest "unknown")))
-              (when (and latest (version< current latest))
-                (push (list :name name
-                            :npm-package npm-pkg
-                            :current-version current
-                            :latest-version latest
-                            :notes (getf lib :notes))
-                      updates))))))
-    (nreverse updates)))
+                        name npm-pkg current (or latest "FAILED")))
+              (cond
+                ((null latest)
+                 (push name failures))
+                ((version< current latest)
+                 (push (list :name name
+                             :npm-package npm-pkg
+                             :current-version current
+                             :latest-version latest
+                             :notes (getf lib :notes))
+                       updates)))))))
+    (values (nreverse updates) (nreverse failures))))
 
 (defun format-update-report (updates)
   "Format a human-readable report of available updates."
@@ -148,10 +153,22 @@ Checks for updates and optionally creates a GitHub issue."
     (format t "~&ICL JavaScript Library Version Checker~%")
     (format t "~&======================================~%~%")
 
-    (let ((updates (check-library-updates :verbose (not quiet-p))))
+    (multiple-value-bind (updates failures)
+        (check-library-updates :verbose (not quiet-p))
       (format t "~%~A~%" (format-update-report updates))
 
+      (when failures
+        (format t "~&WARNING: Failed to check ~D librar~:@P: ~{~A~^, ~}~%"
+                (length failures) failures))
+
       (cond
+        (failures
+         ;; Exit with error if any fetches failed
+         (format *error-output* "~&Error: ~D of ~D npm fetches failed.~%"
+                 (length failures)
+                 (length (remove-if-not (lambda (lib) (getf lib :npm-package))
+                                        *tracked-libraries*)))
+         (uiop:quit 2))
         ((null updates)
          (format t "~&No updates needed.~%")
          (uiop:quit 0))

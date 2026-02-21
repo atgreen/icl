@@ -37,7 +37,7 @@ jobs:
 
       - name: Install dependencies and build version checker
         run: |
-          ocicl install pure-tls dexador yason split-sequence
+          ocicl install dexador yason split-sequence
           sbcl --non-interactive \
                --eval '(require :asdf)' \
                --eval '(asdf:initialize-source-registry (list :source-registry :inherit-configuration (list :directory (truename ".")) (list :tree (truename "ocicl/"))))' \
