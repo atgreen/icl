@@ -79,7 +79,7 @@ jobs:
             echo ""
             echo "### Lisp Dependencies"
             echo ""
-            echo "Libyear freshness metric: ${{ steps.lisp-check.outputs.libyear }}"
+            cat lisp-report.txt
             echo ""
             if [ "${{ steps.lisp-check.outputs.lisp_updates }}" == "true" ]; then
               echo "Run \`ocicl latest\` to update Lisp dependencies."
