@@ -12,7 +12,7 @@
 (defparameter *tracked-libraries*
   '(;; Dockview - panel layout system
     (:name "dockview-core"
-     :current-version "4.13.1"
+     :current-version "5.0.0"
      :npm-package "dockview-core"
      :notes "Dockable panel layout manager")
 
@@ -48,7 +48,7 @@
 
     ;; Mermaid - diagram rendering
     (:name "mermaid"
-     :current-version "11.12.2"
+     :current-version "11.12.3"
      :npm-package "mermaid"
      :notes "Flowcharts, sequence diagrams, etc.")
 

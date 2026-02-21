@@ -31,7 +31,7 @@ All components are distributed under the MIT License.
 
 dockview-core
 -------------
-Version: 4.12.0
+Version: 5.0.0
 Homepage: https://dockview.dev/
 Repository: https://github.com/mathuo/dockview
 
@@ -203,7 +203,7 @@ Copyright (c) 2016-2023, University of Washington Interactive Data Lab
 
 Mermaid
 -------
-Version: 11
+Version: 11.12.3
 Homepage: https://mermaid.js.org/
 Repository: https://github.com/mermaid-js/mermaid
 

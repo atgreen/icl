@@ -137,7 +137,7 @@
       (let* ((null-stream (make-broadcast-stream))
              (*standard-output* null-stream)
              (*error-output* null-stream))
-        (slynk:create-server :port port :dont-close t))
+        (funcall (find-symbol \"CREATE-SERVER\" :slynk) :port port :dont-close t))
       ;; Keep process alive
       (loop (sleep 60))))
 
