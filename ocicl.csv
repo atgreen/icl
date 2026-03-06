@@ -2,6 +2,8 @@ alexandria, ghcr.io/ocicl/alexandria@sha256:e433c2e076ed3bcf8641b97b00192680db22
 archive, ghcr.io/ocicl/archive@sha256:05385cccdaaedddb9bfc2195c6aa81b7df6c36261c6d202bcc8d0094e6466ac1, archive-20240503-631271c/archive.asd
 array-utils, ghcr.io/ocicl/array-utils@sha256:a74a7050591fc003ec9c35f1de8f41a5c8ac1a6157ced767ed6e5a73c2596cbf, array-utils-20260218-16e108a/array-utils.asd
 array-utils-test, ghcr.io/ocicl/array-utils@sha256:a74a7050591fc003ec9c35f1de8f41a5c8ac1a6157ced767ed6e5a73c2596cbf, array-utils-20260218-16e108a/array-utils-test.asd
+atomics, ghcr.io/ocicl/atomics@sha256:47645f75191931211547cdcf578a40b24019d58f48c83d93e9055aec79c877fd, atomics-20260218-ce398c4/atomics.asd
+atomics-test, ghcr.io/ocicl/atomics@sha256:47645f75191931211547cdcf578a40b24019d58f48c83d93e9055aec79c877fd, atomics-20260218-ce398c4/atomics-test.asd
 autoload, ghcr.io/ocicl/mgl-pax-bootstrap@sha256:c30c3001293e65f6173828ed5c48d8ae9b13aadc27e3654f38e3a933caadf8cb, mgl-pax-20260305-cfd1936/autoload/autoload.asd
 babel, ghcr.io/ocicl/babel@sha256:9d9fcde71acc2b5c39572de4f11756a08c1d8801caa86c581b85dabaa35928b3, babel-20250905-4eaf3f2/babel.asd
 babel-streams, ghcr.io/ocicl/babel@sha256:9d9fcde71acc2b5c39572de4f11756a08c1d8801caa86c581b85dabaa35928b3, babel-20250905-4eaf3f2/babel-streams.asd
@@ -20,6 +22,7 @@ chipz, ghcr.io/ocicl/chipz@sha256:fae0fae0c93199ba57c92d9102245a55c8a2c12af4442e
 chunga, ghcr.io/ocicl/chunga@sha256:a2558d54ac5d4ccdbf49d7b51fcb074762d77e263ec67245f6d2928477b6d19a, chunga-20250814-1310e96/chunga.asd
 cl-base64, ghcr.io/ocicl/cl-base64@sha256:702412dbc1ed825e275fb23e22c29527eb786bf644e47c7621bf0dbb34e17c7e, cl-base64-20240503-80496b7/cl-base64.asd
 cl-base64-tests, ghcr.io/ocicl/cl-base64@sha256:702412dbc1ed825e275fb23e22c29527eb786bf644e47c7621bf0dbb34e17c7e, cl-base64-20240503-80496b7/cl-base64-tests.asd
+cl-cancel, ghcr.io/ocicl/cl-cancel@sha256:b6e6387eed5027d5becb5fa18b370c1c3a755daf26bca037007018a611bcd353, cl-cancel-20260206-bec34fb/cl-cancel.asd
 cl-cookie, ghcr.io/ocicl/cl-cookie@sha256:85cd8aa7f1379d041fae9530609cd68d5214fb978bc87faa7fd9ad5ad7e08a83, cl-cookie-20240703-6bcb74a/cl-cookie.asd
 cl-cookie-test, ghcr.io/ocicl/cl-cookie@sha256:85cd8aa7f1379d041fae9530609cd68d5214fb978bc87faa7fd9ad5ad7e08a83, cl-cookie-20240703-6bcb74a/cl-cookie-test.asd
 cl-fad, ghcr.io/ocicl/cl-fad@sha256:c0aaffc859e419e0a94cedb08f48c2484da404363fb0fe4ffd6e09a80aadafe1, cl-fad-0.7.6/cl-fad.asd
@@ -102,6 +105,7 @@ plump, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e94399
 plump-dom, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump-dom.asd
 plump-lexer, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump-lexer.asd
 plump-parser, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump-parser.asd
+precise-time, ghcr.io/ocicl/precise-time@sha256:0fa8039008f0635013d25c14d50c5743c64d6a1ef64bd0e62d1785a4b9d3a873, precise-time-20260218-93ea6ae/precise-time.asd
 proc-parse, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse.asd
 proc-parse-test, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse-test.asd
 pure-tls, ghcr.io/ocicl/pure-tls@sha256:23e5e7af9526be260d9912762dd4c33a8c1d28df303141578f5af0147e81eeb5, pure-tls-20260215-d78526b/pure-tls.asd
