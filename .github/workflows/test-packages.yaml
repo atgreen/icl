@@ -179,6 +179,9 @@ jobs:
         shell: powershell
         run: |
           choco install -y sbcl make nsis
+          # Add SBCL to PATH for subsequent bash steps
+          $sbclPath = (Get-Command sbcl).Source | Split-Path
+          echo "$sbclPath" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
 
       - name: Build ICL
         run: make
