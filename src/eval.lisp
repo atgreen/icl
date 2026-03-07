@@ -185,7 +185,7 @@
         (sync-package-context-from-backend)
         ;; Hint about backtrace if available
         (when *last-error-backtrace*
-          (format *error-output* "~&~A~%" (colorize "  Use ,bt for backtrace" *color-dim*)))
+          (format *error-output* "~&~A~%" (colorize "  Use ,bt for backtrace, ,debug for interactive debugger" *color-dim*)))
         ;; Optionally invoke error hook
         (when *error-hook*
           (funcall *error-hook* e)))))

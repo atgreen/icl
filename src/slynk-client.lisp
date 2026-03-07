@@ -317,41 +317,201 @@ Respects *viz-package-exclusions* for filtering packages by regex."
 
 (setf slynk-client:*write-string-hook* #'write-slynk-string-to-active-repl)
 
+(setf slynk-client:*debug-hook*
+      (lambda (thread level condition restarts frames conts)
+        (declare (ignore conts))
+        (setf *pending-debug-event*
+              (list :thread thread :level level
+                    :condition condition :restarts restarts
+                    :frames frames))))
+
+(setf slynk-client:*debug-return-hook*
+      (lambda (thread level stepping)
+        (declare (ignore thread level stepping))
+        (setf *debug-return-received* t)))
+
+(defvar *interactive-debugger-enabled* t
+  "When T, REPL evaluation uses the interactive debugger for errors.
+   When NIL, falls back to the handler-case wrapper.")
+
+(defun debugger-eval-in-thread (sexp thread)
+  "Synchronously evaluate SEXP on debug THREAD via slynk."
+  (with-slynk-connection
+    (slynk-client:slime-eval-in-thread sexp *slynk-connection* thread)))
+
+(defun send-debugger-restart (event choice)
+  "Send restart CHOICE for debug EVENT to the backend.
+   CHOICE is :abort, a restart index (integer), or (index . value-string)
+   for restarts that require a value (e.g. USE-VALUE)."
+  (let ((thread (getf event :thread))
+        (level (getf event :level)))
+    (with-slynk-connection
+      (cond
+        ((eq choice :abort)
+         (slynk-client:slime-eval-async-in-thread
+          '(slynk:throw-to-toplevel) *slynk-connection* thread))
+        ((consp choice)
+         ;; Interactive restart with value: (index . value-string)
+         ;; Bypass invoke-nth-restart-for-emacs because it rebinds *query-io*
+         ;; to a stream that calls read-from-minibuffer-in-emacs (no Emacs here).
+         ;; Instead, directly invoke the restart with the evaluated value.
+         (let ((index (car choice))
+               (value-string (cdr choice)))
+           (slynk-client:slime-eval-async-in-thread
+            `(cl:when (cl:= ,level slynk::*sly-db-level*)
+               (cl:let ((cl-user::r (slynk::nth-restart ,index)))
+                 (cl:when cl-user::r
+                   (cl:invoke-restart cl-user::r
+                     (cl:eval (cl:read-from-string ,value-string))))))
+            *slynk-connection* thread)))
+        (t
+         (slynk-client:slime-eval-async-in-thread
+          `(slynk:invoke-nth-restart-for-emacs ,level ,choice)
+          *slynk-connection* thread))))))
+
+(defun slynk-eval-form-with-debugger (string)
+  "Evaluate STRING via Slynk without handler-case wrapping.
+   Errors propagate to Slynk's debugger, allowing interactive restart invocation.
+   The dispatcher thread receives :debug events and sets *pending-debug-event*.
+   This function polls for debug events and shows the TUI."
+  (let* ((eval-code (format nil "(cl:let ((cl:*package* (cl:find-package \"CL-USER\")))
+  (cl:let ((cl-user::vals (cl:multiple-value-list (cl:eval (cl:read-from-string ~S)))))
+    (cl:setf cl:*** cl:**
+              cl:** cl:*
+              cl:* (cl:first cl-user::vals))
+    (cl:force-output)
+    (cl:list :ok cl:nil (cl:mapcar (cl:lambda (cl-user::v) (cl:write-to-string cl-user::v :readably cl:nil :pretty cl:nil)) cl-user::vals))))" string))
+         (result-lock (bt:make-lock "debugger-eval"))
+         (result-cv (bt:make-condition-variable))
+         (result-available nil)
+         (result nil))
+    ;; Clear debug event state
+    (setf *pending-debug-event* nil
+          *debug-return-received* nil)
+    ;; Send eval asynchronously - errors will trigger :debug events
+    (with-slynk-connection
+      (slynk-client:slime-eval-async
+       `(cl:eval (cl:read-from-string ,eval-code))
+       *slynk-connection*
+       (lambda (x)
+         (bt:with-lock-held (result-lock)
+           (setf result x
+                 result-available t)
+           (bt:condition-notify result-cv)))))
+    ;; Poll loop: wait for result or debug events
+    (loop
+      ;; Check for result
+      (bt:with-lock-held (result-lock)
+        (when result-available
+          (return-from slynk-eval-form-with-debugger
+            (process-debugger-eval-result result))))
+      ;; Check for debug event from dispatcher thread
+      (let ((debug-event *pending-debug-event*))
+        (when debug-event
+          (setf *pending-debug-event* nil)
+          ;; Store debug info for post-mortem ,debug / ,bt
+          (let ((condition (getf debug-event :condition)))
+            (setf *last-debug-info*
+                  (list :condition-type
+                        (if (and (listp condition) (second condition))
+                            (second condition)
+                            "ERROR")
+                        :condition-message
+                        (if (listp condition) (first condition) "")
+                        :restarts (getf debug-event :restarts)
+                        :frames (getf debug-event :frames))))
+          ;; Show interactive debugger TUI
+          (let ((choice (run-debugger-interactive debug-event)))
+            ;; Send the user's choice back to Slynk
+            (send-debugger-restart debug-event choice)
+            ;; Reset for potential re-entry (nested errors)
+            (setf *debug-return-received* nil))))
+      ;; Brief sleep to avoid busy-waiting
+      (sleep 0.05))))
+
+(defun process-debugger-eval-result (result)
+  "Process the result from a debugger-enabled eval.
+   Returns value strings on success, signals error on abort."
+  (cond
+    ;; Aborted evaluation (restart that aborted, or error in debug command)
+    ((and (consp result) (eq (car result) slynk-client::+abort+))
+     (setf *last-was-error* t
+           *last-error-condition* (cdr result)
+           *last-error-backtrace* nil)
+     (error "~A" (or (cdr result) "Evaluation aborted")))
+    ;; Successful structured result
+    ((and (consp result) (eq (first result) :ok))
+     (setf *last-error-backtrace* nil
+           *last-error-condition* nil
+           *last-was-error* nil)
+     (let ((output (second result))
+           (vals (third result)))
+       (when (and output (stringp output) (> (length output) 0))
+         (write-string output)
+         (force-output))
+       vals))
+    ;; Plain value (e.g. from a restart that returns a value)
+    (t
+     (setf *last-error-backtrace* nil
+           *last-error-condition* nil
+           *last-was-error* nil)
+     (if result
+         (list (princ-to-string result))
+         nil))))
+
 (defun slynk-eval-form (string &key (package "CL-USER"))
   "Evaluate STRING and return result values.
-   Output is captured and printed before results.
-   Errors are caught on the remote side to avoid Slynk debugger issues.
-   Backtraces are captured and stored in *last-error-backtrace*."
+   When *interactive-debugger-enabled* is T, errors trigger the interactive
+   debugger TUI with live restart invocation.
+   Otherwise, uses handler-case wrapper for error catching."
   (declare (ignore package))
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
+  (if *interactive-debugger-enabled*
+      (slynk-eval-form-with-debugger string)
+      (slynk-eval-form-wrapped string)))
+
+(defun slynk-eval-form-wrapped (string)
+  "Evaluate STRING with handler-case wrapping (original error handling).
+   Used as fallback when interactive debugger is disabled."
   ;; Don't redirect output streams - let output go to the inferior process's stdout
   ;; which is picked up by the output reader thread. This ensures libraries like llog
   ;; that capture *standard-output* at initialization time continue to work.
-  (let ((wrapper-code (format nil "(handler-case
-  (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
-    ;; Update standard REPL history variables so ,i works
-    (setf *** **
-          ** *
-          * (first vals))
-    (force-output)
-    (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
-  (error (err)
-    (list :error
-          ;; Clean error message: strip Stream: lines from reader errors
-          (let ((msg (princ-to-string err)))
-            (string-right-trim '(#\\Newline #\\Space)
-              (with-output-to-string (s)
-                (with-input-from-string (in msg)
-                  (loop for line = (read-line in nil nil)
-                        while line
-                        unless (and (> (length line) 2)
-                                    (char= (char line 0) #\\Space)
-                                    (char= (char line 1) #\\Space)
-                                    (search \"Stream:\" line))
-                        do (write-line line s))))))
-          (ignore-errors
-            (slynk:backtrace 0 30)))))" string)))
+  (let ((wrapper-code (format nil "(let ((captured-restarts nil) (captured-ctype nil))
+  (handler-case
+    (handler-bind
+      ((error (lambda (c)
+                (setf captured-ctype (princ-to-string (type-of c)))
+                (setf captured-restarts
+                      (mapcar (lambda (r)
+                                (list (princ-to-string (restart-name r))
+                                      (handler-case (princ-to-string r) (error () \"\"))))
+                              (compute-restarts c))))))
+      (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
+        ;; Update standard REPL history variables so ,i works
+        (setf *** **
+              ** *
+              * (first vals))
+        (force-output)
+        (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals))))
+    (error (err)
+      (list :error
+            ;; Clean error message: strip Stream: lines from reader errors
+            (let ((msg (princ-to-string err)))
+              (string-right-trim '(#\\Newline #\\Space)
+                (with-output-to-string (s)
+                  (with-input-from-string (in msg)
+                    (loop for line = (read-line in nil nil)
+                          while line
+                          unless (and (> (length line) 2)
+                                      (char= (char line 0) #\\Space)
+                                      (char= (char line 1) #\\Space)
+                                      (search \"Stream:\" line))
+                          do (write-line line s))))))
+            (ignore-errors
+              (slynk:backtrace 0 30))
+            captured-ctype
+            captured-restarts))))" string)))
     (handler-case
         (let ((result (with-slynk-connection
                         (slynk-client:slime-eval
@@ -372,7 +532,8 @@ Respects *viz-package-exclusions* for filtering packages by regex."
                (:ok
                 (setf *last-error-backtrace* nil
                       *last-error-condition* nil
-                      *last-was-error* nil)
+                      *last-was-error* nil
+                      *last-debug-info* nil)
                 ;; Print captured output first
                 (let ((output (second result))
                       (vals (third result)))
@@ -383,7 +544,11 @@ Respects *viz-package-exclusions* for filtering packages by regex."
                (:error
                 (setf *last-error-condition* (second result)
                       *last-error-backtrace* (third result)
-                      *last-was-error* t)
+                      *last-was-error* t
+                      *last-debug-info* (list :condition-type (or (fourth result) "ERROR")
+                                              :condition-message (second result)
+                                              :restarts (fifth result)
+                                              :frames (third result)))
                 (error "~A" (second result)))
                (otherwise result)))))
       (slynk-client:slime-network-error (e)
@@ -397,25 +562,36 @@ Respects *viz-package-exclusions* for filtering packages by regex."
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
   ;; Same wrapper as slynk-eval-form but WITHOUT the setf for history variables
-  (let ((wrapper-code (format nil "(handler-case
-  (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
-    (force-output)
-    (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
-  (error (err)
-    (list :error
-          (let ((msg (princ-to-string err)))
-            (string-right-trim '(#\\Newline #\\Space)
-              (with-output-to-string (s)
-                (with-input-from-string (in msg)
-                  (loop for line = (read-line in nil nil)
-                        while line
-                        unless (and (> (length line) 2)
-                                    (char= (char line 0) #\\Space)
-                                    (char= (char line 1) #\\Space)
-                                    (search \"Stream:\" line))
-                        do (write-line line s))))))
-          (ignore-errors
-            (slynk:backtrace 0 30)))))" string)))
+  (let ((wrapper-code (format nil "(let ((captured-restarts nil) (captured-ctype nil))
+  (handler-case
+    (handler-bind
+      ((error (lambda (c)
+                (setf captured-ctype (princ-to-string (type-of c)))
+                (setf captured-restarts
+                      (mapcar (lambda (r)
+                                (list (princ-to-string (restart-name r))
+                                      (handler-case (princ-to-string r) (error () \"\"))))
+                              (compute-restarts c))))))
+      (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
+        (force-output)
+        (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals))))
+    (error (err)
+      (list :error
+            (let ((msg (princ-to-string err)))
+              (string-right-trim '(#\\Newline #\\Space)
+                (with-output-to-string (s)
+                  (with-input-from-string (in msg)
+                    (loop for line = (read-line in nil nil)
+                          while line
+                          unless (and (> (length line) 2)
+                                      (char= (char line 0) #\\Space)
+                                      (char= (char line 1) #\\Space)
+                                      (search \"Stream:\" line))
+                          do (write-line line s))))))
+            (ignore-errors
+              (slynk:backtrace 0 30))
+            captured-ctype
+            captured-restarts))))" string)))
     (handler-case
         (let ((result (with-slynk-connection
                         (slynk-client:slime-eval

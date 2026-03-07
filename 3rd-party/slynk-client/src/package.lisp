@@ -13,4 +13,9 @@
            #:slime-pending-evals-p
            #:with-slime-connection
            #:*write-string-hook*
-           #:*slynk-client-debug*))
+           #:*slynk-client-debug*
+           #:*debug-hook*
+           #:*debug-activate-hook*
+           #:*debug-return-hook*
+           #:slime-eval-async-in-thread
+           #:slime-eval-in-thread))

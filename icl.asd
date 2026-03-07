@@ -57,6 +57,7 @@
                  (:file "completion")
                  (:file "inspector-nav")
                  (:file "inspector")
+                 (:file "debugger")
                  (:file "editor")
                  (:file "input")
                  (:file "slynk-client")

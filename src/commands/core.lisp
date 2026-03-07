@@ -842,7 +842,17 @@ Use this command to view it after seeing an error message."
      (format *error-output* "~&No backtrace available (non-SBCL backend?)~%"))
     (t
      (format t "~&No error backtrace recorded.~%")
-     (format t "~&Backtraces are captured when evaluation errors occur.~%"))))
+     (format t "~&Backtraces are captured when evaluation errors occur.~%")))
+  (when *last-error-backtrace*
+    (format t "~&~A~%" (colorize "  Use ,debug for interactive debugger" *color-dim*))))
+
+(define-command (debug dbg) ()
+  "Launch interactive debugger TUI for the last error.
+Shows condition, backtrace frames, and available restarts in a
+navigable TUI. Use Tab to switch views, arrow keys to navigate."
+  (if *last-debug-info*
+      (run-debugger)
+      (format t "~&No debug info recorded.~%Use ,debug after an error occurs.~%")))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Time Command

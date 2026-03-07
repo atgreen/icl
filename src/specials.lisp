@@ -326,6 +326,15 @@
 (defvar *last-was-error* nil
   "T if the last REPL action resulted in an error.")
 
+(defvar *last-debug-info* nil
+  "Structured debug info plist from last error:
+   :condition-type, :condition-message, :restarts, :frames.")
+
+(defvar *pending-debug-event* nil
+  "Debug event from Slynk dispatcher thread, waiting for TUI handling.")
+(defvar *debug-return-received* nil
+  "T when :debug-return event received, signaling debugger session ended.")
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Extended REPL History (for MCP access)
 ;;; ─────────────────────────────────────────────────────────────────────────────

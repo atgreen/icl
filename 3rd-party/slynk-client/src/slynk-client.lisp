@@ -25,6 +25,13 @@ When non-nil, can be either a function of one argument STRING or a stream.
 If a function, it is called with STRING. If a stream, STRING is written to it.
 Otherwise, output goes to *STANDARD-OUTPUT*.")
 
+(defvar *debug-hook* nil
+  "Called with (thread level condition restarts frames conts) on :debug events.")
+(defvar *debug-activate-hook* nil
+  "Called with (thread level select) on :debug-activate events.")
+(defvar *debug-return-hook* nil
+  "Called with (thread level stepping) on :debug-return events.")
+
 (defclass slynk-connection ()
   ((host-name :reader host-name
               :type string
@@ -255,16 +262,18 @@ are communications problems."
     ;; Debug events from remote Lisp - suppress raw output since we don't have Emacs.
     ;; Errors are handled through the eval wrapper's error catching.
     ((:debug-activate thread level &optional select)
-     (declare (ignore thread level select)))
+     (if *debug-activate-hook*
+         (funcall *debug-activate-hook* thread level select)
+         nil))
     ((:debug thread level condition restarts frames continuations)
-     (declare (ignore thread level restarts frames continuations))
-     ;; Just extract the condition message for potential use
-     (when (and condition (listp condition) (first condition))
-       ;; condition is (message type-string annotations)
-       ;; Don't print here - let the eval wrapper handle errors
-       nil))
+     (if *debug-hook*
+         (funcall *debug-hook* thread level condition restarts frames continuations)
+         (when (and condition (listp condition) (first condition))
+           nil)))
     ((:debug-return thread level stepping)
-     (declare (ignore thread level stepping)))
+     (if *debug-return-hook*
+         (funcall *debug-return-hook* thread level stepping)
+         nil))
 
     ((:emacs-interrupt thread)
      (slime-send `(:emacs-interrupt ,thread) connection))
@@ -467,6 +476,41 @@ network problems sending SEXP."
      (when continuation
        (funcall continuation (cons +abort+ condition)))))
   (values))
+
+(defun slime-eval-async-in-thread (sexp connection thread &optional continuation)
+  "Like SLIME-EVAL-ASYNC but targets a specific THREAD on the server."
+  (slime-dispatch-event
+   (list :emacs-rex sexp "COMMON-LISP-USER" thread
+         (lambda (result)
+           (when continuation
+             (destructure-case result
+               ((:ok value) (funcall continuation value))
+               ((:abort condition)
+                (funcall continuation (cons +abort+ condition)))))))
+   connection))
+
+(defun slime-eval-in-thread (sexp connection thread)
+  "Like SLIME-EVAL but targets a specific THREAD on the server."
+  (let* ((done-lock (bordeaux-threads:make-lock "slime eval in thread"))
+         (done (bordeaux-threads:make-condition-variable))
+         (result-available nil)
+         (result nil))
+    (slime-eval-async-in-thread sexp
+                                connection
+                                thread
+                                (lambda (x)
+                                  (bordeaux-threads:with-lock-held (done-lock)
+                                    (setf result x
+                                          result-available t)
+                                    (bordeaux-threads:condition-notify done))))
+    (bordeaux-threads:with-lock-held (done-lock)
+      (loop until result-available
+            do (bordeaux-threads:condition-wait done done-lock :timeout 1)
+               (when (eq (state connection) :dead)
+                 (error 'slime-network-error))))
+    (when (and (consp result) (eq (car result) +abort+))
+      (error "Evaluation aborted on ~s." (cdr result)))
+    result))
 
 (defun slime-eval (sexp connection)
   "Sends SEXP over CONNECTION to a Slynk server for evaluation and waits for the
