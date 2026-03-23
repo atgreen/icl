@@ -125,4 +125,6 @@
         (read-from-string string)
         t)
     (end-of-file () nil)
-    (reader-error () t)))  ; Syntax errors count as "complete" (will error on eval)
+    ;; Reader errors (e.g. unknown package) - only complete if parens are balanced
+    (reader-error ()
+      (zerop (count-unmatched-delimiters string)))))

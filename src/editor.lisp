@@ -662,7 +662,9 @@
           (read-from-string trimmed)
           t)
       (end-of-file () nil)
-      (reader-error () t)))) ; Syntax errors are "complete" (will error on eval)
+      ;; Reader errors (e.g. unknown package) - only complete if parens are balanced
+      (reader-error ()
+        (zerop (count-unmatched-delimiters trimmed))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Completion Menu Handling
