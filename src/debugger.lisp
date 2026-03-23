@@ -523,6 +523,11 @@
                                             nil)))
          (*debugger-lines-drawn* 0)
          (first-render t))
+    ;; Non-interactive (stdin is a pipe): auto-abort instead of showing TUI
+    (unless (or *browser-terminal-active*
+                #-windows (plusp (osicat-posix:isatty 0))
+                #+windows t)
+      (return-from run-debugger-interactive :abort))
     (with-raw-mode
       (loop
         (render-debugger first-render)
