@@ -334,6 +334,18 @@ Respects *viz-package-exclusions* for filtering packages by regex."
   "When T, REPL evaluation uses the interactive debugger for errors.
    When NIL, falls back to the handler-case wrapper.")
 
+(defvar *eval-in-progress* nil
+  "T when backend evaluation is in progress.
+   Used by the websocket handler to detect Ctrl-C during evaluation.")
+
+(defun interrupt-backend-eval ()
+  "Send an interrupt to the backend Slynk server.
+   Interrupts the current evaluation thread."
+  (when (and *slynk-connected-p* *slynk-connection*)
+    (ignore-errors
+      (with-slynk-connection
+        (slynk-client::slime-send `(:emacs-interrupt t) *slynk-connection*)))))
+
 (defun debugger-eval-in-thread (sexp thread)
   "Synchronously evaluate SEXP on debug THREAD via slynk."
   (with-slynk-connection
@@ -387,7 +399,8 @@ Respects *viz-package-exclusions* for filtering packages by regex."
          (result nil))
     ;; Clear debug event state
     (setf *pending-debug-event* nil
-          *debug-return-received* nil)
+          *debug-return-received* nil
+          *eval-in-progress* t)
     ;; Send eval asynchronously - errors will trigger :debug events
     (with-slynk-connection
       (slynk-client:slime-eval-async
@@ -399,35 +412,37 @@ Respects *viz-package-exclusions* for filtering packages by regex."
                  result-available t)
            (bt:condition-notify result-cv)))))
     ;; Poll loop: wait for result or debug events
-    (loop
-      ;; Check for result
-      (bt:with-lock-held (result-lock)
-        (when result-available
-          (return-from slynk-eval-form-with-debugger
-            (process-debugger-eval-result result))))
-      ;; Check for debug event from dispatcher thread
-      (let ((debug-event *pending-debug-event*))
-        (when debug-event
-          (setf *pending-debug-event* nil)
-          ;; Store debug info for post-mortem ,debug / ,bt
-          (let ((condition (getf debug-event :condition)))
-            (setf *last-debug-info*
-                  (list :condition-type
-                        (if (and (listp condition) (second condition))
-                            (second condition)
-                            "ERROR")
-                        :condition-message
-                        (if (listp condition) (first condition) "")
-                        :restarts (getf debug-event :restarts)
-                        :frames (getf debug-event :frames))))
-          ;; Show interactive debugger TUI
-          (let ((choice (run-debugger-interactive debug-event)))
-            ;; Send the user's choice back to Slynk
-            (send-debugger-restart debug-event choice)
-            ;; Reset for potential re-entry (nested errors)
-            (setf *debug-return-received* nil))))
-      ;; Brief sleep to avoid busy-waiting
-      (sleep 0.05))))
+    (unwind-protect
+        (loop
+          ;; Check for result
+          (bt:with-lock-held (result-lock)
+            (when result-available
+              (return-from slynk-eval-form-with-debugger
+                (process-debugger-eval-result result))))
+          ;; Check for debug event from dispatcher thread
+          (let ((debug-event *pending-debug-event*))
+            (when debug-event
+              (setf *pending-debug-event* nil)
+              ;; Store debug info for post-mortem ,debug / ,bt
+              (let ((condition (getf debug-event :condition)))
+                (setf *last-debug-info*
+                      (list :condition-type
+                            (if (and (listp condition) (second condition))
+                                (second condition)
+                                "ERROR")
+                            :condition-message
+                            (if (listp condition) (first condition) "")
+                            :restarts (getf debug-event :restarts)
+                            :frames (getf debug-event :frames))))
+              ;; Show interactive debugger TUI
+              (let ((choice (run-debugger-interactive debug-event)))
+                ;; Send the user's choice back to Slynk
+                (send-debugger-restart debug-event choice)
+                ;; Reset for potential re-entry (nested errors)
+                (setf *debug-return-received* nil))))
+          ;; Brief sleep to avoid busy-waiting
+          (sleep 0.05))
+      (setf *eval-in-progress* nil))))
 
 (defun process-debugger-eval-result (result)
   "Process the result from a debugger-enabled eval.
@@ -477,6 +492,7 @@ Respects *viz-package-exclusions* for filtering packages by regex."
   ;; Don't redirect output streams - let output go to the inferior process's stdout
   ;; which is picked up by the output reader thread. This ensures libraries like llog
   ;; that capture *standard-output* at initialization time continue to work.
+  (setf *eval-in-progress* t)
   (let ((wrapper-code (format nil "(let ((captured-restarts nil) (captured-ctype nil))
   (handler-case
     (handler-bind
@@ -512,48 +528,50 @@ Respects *viz-package-exclusions* for filtering packages by regex."
               (slynk:backtrace 0 30))
             captured-ctype
             captured-restarts))))" string)))
-    (handler-case
-        (let ((result (with-slynk-connection
-                        (slynk-client:slime-eval
-                         `(cl:eval
-                           (cl:let ((cl:*package* (cl:find-package "CL-USER")))
-                             (cl:read-from-string ,wrapper-code)))
-                         *slynk-connection*))))
-          (cond
-            ;; Unexpected non-list result: treat as plain output with no values.
-            ((not (consp result))
-             (let ((output (princ-to-string result)))
-               (when (and output (> (length output) 0))
-                 (write-string output)
-                 (force-output))
-               nil))
-            (t
-             (case (first result)
-               (:ok
-                (setf *last-error-backtrace* nil
-                      *last-error-condition* nil
-                      *last-was-error* nil
-                      *last-debug-info* nil)
-                ;; Print captured output first
-                (let ((output (second result))
-                      (vals (third result)))
-                  (when (and output (> (length output) 0))
-                    (write-string output)
-                    (force-output))
-                  vals))
-               (:error
-                (setf *last-error-condition* (second result)
-                      *last-error-backtrace* (third result)
-                      *last-was-error* t
-                      *last-debug-info* (list :condition-type (or (fourth result) "ERROR")
-                                              :condition-message (second result)
-                                              :restarts (fifth result)
-                                              :frames (third result)))
-                (error "~A" (second result)))
-               (otherwise result)))))
-      (slynk-client:slime-network-error (e)
-        (setf *slynk-connected-p* nil)
-        (error "Backend connection lost: ~A" e)))))
+    (unwind-protect
+        (handler-case
+            (let ((result (with-slynk-connection
+                            (slynk-client:slime-eval
+                             `(cl:eval
+                               (cl:let ((cl:*package* (cl:find-package "CL-USER")))
+                                 (cl:read-from-string ,wrapper-code)))
+                             *slynk-connection*))))
+              (cond
+                ;; Unexpected non-list result: treat as plain output with no values.
+                ((not (consp result))
+                 (let ((output (princ-to-string result)))
+                   (when (and output (> (length output) 0))
+                     (write-string output)
+                     (force-output))
+                   nil))
+                (t
+                 (case (first result)
+                   (:ok
+                    (setf *last-error-backtrace* nil
+                          *last-error-condition* nil
+                          *last-was-error* nil
+                          *last-debug-info* nil)
+                    ;; Print captured output first
+                    (let ((output (second result))
+                          (vals (third result)))
+                      (when (and output (> (length output) 0))
+                        (write-string output)
+                        (force-output))
+                      vals))
+                   (:error
+                    (setf *last-error-condition* (second result)
+                          *last-error-backtrace* (third result)
+                          *last-was-error* t
+                          *last-debug-info* (list :condition-type (or (fourth result) "ERROR")
+                                                  :condition-message (second result)
+                                                  :restarts (fifth result)
+                                                  :frames (third result)))
+                    (error "~A" (second result)))
+                   (otherwise result)))))
+          (slynk-client:slime-network-error (e)
+            (setf *slynk-connected-p* nil)
+            (error "Backend connection lost: ~A" e)))
+      (setf *eval-in-progress* nil))))
 
 (defun slynk-eval-form-internal (string &key (package "CL-USER"))
   "Evaluate STRING for internal ICL operations without updating REPL history.

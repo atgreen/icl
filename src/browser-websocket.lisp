@@ -129,6 +129,10 @@
           ((string= type "input")
            (let ((data (gethash "data" json)))
              (when data
+               ;; Check for Ctrl-C (char code 3) during evaluation
+               (when (and *eval-in-progress*
+                          (find (code-char 3) data))
+                 (interrupt-backend-eval))
                ;; Send each character to the input queue
                (loop for char across data
                      do (chanl:send (input-queue resource) char)))))
