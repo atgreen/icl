@@ -523,6 +523,8 @@
                 (clear-spinner)
                 ;; Start background thread to stream inferior Lisp output
                 (start-output-reader)
+                ;; Interactive debugger only works reliably on SBCL
+                (setf *interactive-debugger-enabled* (eq lisp :sbcl))
                 (return t)))
             (when (>= elapsed max-seconds)
               (clear-spinner)
