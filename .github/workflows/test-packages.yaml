@@ -3,6 +3,9 @@ name: Test Package Building
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # ========================================
   # Fetch dependencies on Linux using ocicl
@@ -194,8 +197,10 @@ jobs:
 
       - name: Create ZIP package
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item icl.exe, README.md, LICENSE, THIRD-PARTY-LICENSES.txt -Destination dist/
           # Include slynk for backend support
@@ -211,8 +216,10 @@ jobs:
 
       - name: Build NSIS installer (EXE)
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           # NSIS script expects THIRD-PARTY-LICENSES.txt in repo root
           & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$VERSION releng\installer\nsis\icl.nsi
           echo "NSIS installer created:"
@@ -226,8 +233,10 @@ jobs:
 
       - name: Build MSI installer
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           Copy-Item "icl.exe" "releng\installer\wix\"
           Copy-Item "LICENSE" "releng\installer\wix\"
@@ -242,8 +251,9 @@ jobs:
           Get-ChildItem *.msi
 
       - name: Calculate checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           sha256sum icl-${VERSION}-windows-amd64.zip > checksums-windows.txt
           sha256sum releng/installer/nsis/icl-${VERSION}-setup.exe >> checksums-windows.txt
           sha256sum releng/installer/wix/icl-${VERSION}.msi >> checksums-windows.txt
@@ -251,8 +261,10 @@ jobs:
 
       - name: Build Chocolatey package
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           # Get checksum from file
           $checksumLine = Get-Content checksums-windows.txt | Where-Object { $_ -match "windows-amd64.zip" }
           $CHECKSUM = ($checksumLine -split '\s+')[0]

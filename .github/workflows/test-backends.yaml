@@ -7,6 +7,9 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # ========================================
   # Fetch dependencies on Linux using ocicl
@@ -106,25 +109,33 @@ jobs:
         run: chmod +x ./icl
 
       - name: Install ${{ matrix.backend }}
+        env:
+          INSTALL_CMD: ${{ matrix.install }}
         run: |
           sudo apt-get update
-          ${{ matrix.install }}
+          eval "$INSTALL_CMD"
 
       - name: Verify ${{ matrix.backend }} is installed
-        run: which ${{ matrix.backend }} && ${{ matrix.backend }} --version || ${{ matrix.backend }} --help || true
+        env:
+          BACKEND: ${{ matrix.backend }}
+        run: which "$BACKEND" && "$BACKEND" --version || "$BACKEND" --help || true
 
       - name: Test basic evaluation
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf '(+ 1 2)\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf '(+ 1 2)\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           echo "$output" | grep -q "3" || (echo "FAIL: Expected result 3 not found" && exit 1)
 
       - name: Test ,info command
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',info\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',info\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Check that the implementation name appears in output
-          case "${{ matrix.backend }}" in
+          case "$BACKEND" in
             sbcl) echo "$output" | grep -qi "sbcl" ;;
             ccl)  echo "$output" | grep -qi "ccl\|clozure" ;;
             ecl)  echo "$output" | grep -qi "ecl\|embeddable" ;;
@@ -132,83 +143,107 @@ jobs:
           esac || (echo "FAIL: Expected implementation name not found" && exit 1)
 
       - name: Test ,pwd command
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',pwd\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',pwd\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Just verify command runs - package name format varies by implementation
           echo ",pwd command completed successfully"
 
       - name: Test ,ls command
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',ls\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',ls\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Should list some symbols or show empty package message
           echo ",ls command completed successfully"
 
       - name: Test multiple values
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf '(values 1 2 3)\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf '(values 1 2 3)\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           echo "$output" | grep -q "1" || (echo "FAIL: Expected first value 1" && exit 1)
           echo "$output" | grep -q "2" || (echo "FAIL: Expected second value 2" && exit 1)
           echo "$output" | grep -q "3" || (echo "FAIL: Expected third value 3" && exit 1)
 
       - name: Test defun and function call
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf '(defun square (x) (* x x))\n(square 7)\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf '(defun square (x) (* x x))\n(square 7)\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           echo "$output" | grep -q "49" || (echo "FAIL: Expected result 49 from (square 7)" && exit 1)
 
       - name: Test string output
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf '(format t "Hello from ~A" (lisp-implementation-type))\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf '(format t "Hello from ~A" (lisp-implementation-type))\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           echo "$output" | grep -qi "Hello from" || (echo "FAIL: Expected format output" && exit 1)
 
       - name: Test ,help command
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',help\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',help\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Help should list available commands
           echo "$output" | grep -qi "quit\|help\|info" || (echo "FAIL: Expected help to list commands" && exit 1)
 
       - name: Test ,doc command
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',doc car\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',doc car\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Should show documentation for CAR function (mentions "car", "list", "cons", etc.)
           echo "$output" | grep -qi "car\|list\|cons\|first\|pair" || (echo "FAIL: Expected documentation for CAR" && exit 1)
 
       - name: Test ,apropos command
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',apropos print\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',apropos print\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Should find print-related symbols
           echo "$output" | grep -qi "print" || (echo "FAIL: Expected apropos to find print symbols" && exit 1)
 
       - name: Test package change with ,in
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf ',in cl\n,pwd\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf ',in cl\n,pwd\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Should show COMMON-LISP package
           echo "$output" | grep -qi "COMMON-LISP\|CL" || (echo "FAIL: Expected CL package after ,in cl" && exit 1)
 
       - name: Test --eval flag
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(timeout 120s ./icl --lisp ${{ matrix.backend }} --eval "(* 6 7)" 2>&1) || true
+          output=$(timeout 120s ./icl --lisp "$BACKEND" --eval "(* 6 7)" 2>&1) || true
           echo "$output"
           echo "$output" | grep -q "42" || (echo "FAIL: Expected --eval result 42" && exit 1)
 
       - name: Test error handling
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf '(/ 1 0)\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf '(/ 1 0)\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           # Should report division by zero error, not crash
           echo "$output" | grep -qi "error\|division\|zero\|condition" || (echo "FAIL: Expected error message for division by zero" && exit 1)
 
       - name: Test loop and collect
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
-          output=$(printf '(loop for i from 1 to 5 collect (* i i))\n,quit\n' | timeout 120s ./icl --lisp ${{ matrix.backend }} 2>&1) || true
+          output=$(printf '(loop for i from 1 to 5 collect (* i i))\n,quit\n' | timeout 120s ./icl --lisp "$BACKEND" 2>&1) || true
           echo "$output"
           echo "$output" | grep -q "1" || (echo "FAIL: Expected 1 in loop result" && exit 1)
           echo "$output" | grep -q "25" || (echo "FAIL: Expected 25 in loop result" && exit 1)

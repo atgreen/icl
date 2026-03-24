@@ -7,6 +7,9 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # ========================================
   # Fetch dependencies on Linux using ocicl
@@ -77,11 +80,15 @@ jobs:
 
       - name: Install deps (Linux)
         if: runner.os == 'Linux'
-        run: ${{ matrix.deps }}
+        env:
+          DEPS_CMD: ${{ matrix.deps }}
+        run: eval "$DEPS_CMD"
 
       - name: Install deps (macOS)
         if: runner.os == 'macOS'
-        run: ${{ matrix.deps }}
+        env:
+          DEPS_CMD: ${{ matrix.deps }}
+        run: eval "$DEPS_CMD"
 
       - name: Install deps (Windows)
         if: runner.os == 'Windows'
@@ -99,23 +106,31 @@ jobs:
         run: make test
 
       - name: Test version
-        run: ./${{ matrix.binary }} --version
+        env:
+          BINARY: ${{ matrix.binary }}
+        run: ./"$BINARY" --version
 
       - name: Test help
-        run: ./${{ matrix.binary }} --help
+        env:
+          BINARY: ${{ matrix.binary }}
+        run: ./"$BINARY" --help
 
       - name: Test basic evaluation (Linux)
         if: runner.os == 'Linux'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf '(+ 1 2)\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf '(+ 1 2)\n,quit\n' | timeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "3" || (echo "FAIL: Expected result 3 not found" && exit 1)
 
       - name: Test basic evaluation (macOS)
         if: runner.os == 'macOS'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
           brew install coreutils
-          output=$(printf '(+ 1 2)\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf '(+ 1 2)\n,quit\n' | gtimeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "3" || (echo "FAIL: Expected result 3 not found" && exit 1)
 
@@ -124,15 +139,19 @@ jobs:
 
       - name: Test ,info command (Linux)
         if: runner.os == 'Linux'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',info\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',info\n,quit\n' | timeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "SBCL" || (echo "FAIL: Expected SBCL info not found" && exit 1)
 
       - name: Test ,info command (macOS)
         if: runner.os == 'macOS'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',info\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',info\n,quit\n' | gtimeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "SBCL" || (echo "FAIL: Expected SBCL info not found" && exit 1)
 
@@ -141,42 +160,54 @@ jobs:
 
       - name: Test browser server (Linux)
         if: runner.os == 'Linux'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',browser test\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',browser test\n,quit\n' | timeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "Browser test passed" || (echo "FAIL: Browser test did not pass" && exit 1)
 
       - name: Test browser server (macOS)
         if: runner.os == 'macOS'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',browser test\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',browser test\n,quit\n' | gtimeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "Browser test passed" || (echo "FAIL: Browser test did not pass" && exit 1)
 
       - name: Test ,dis command (Linux)
         if: runner.os == 'Linux'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',dis car\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',dis car\n,quit\n' | timeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "disassembly for CAR" || (echo "FAIL: ,dis car did not produce disassembly" && exit 1)
 
       - name: Test ,dis command (macOS)
         if: runner.os == 'macOS'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',dis car\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',dis car\n,quit\n' | gtimeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "disassembly for CAR" || (echo "FAIL: ,dis car did not produce disassembly" && exit 1)
 
       - name: Test ,dis with package context (Linux)
         if: runner.os == 'Linux'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',cd cl\n,dis length\n,quit\n' | timeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',cd cl\n,dis length\n,quit\n' | timeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "disassembly for LENGTH" || (echo "FAIL: ,dis length after ,cd cl did not work" && exit 1)
 
       - name: Test ,dis with package context (macOS)
         if: runner.os == 'macOS'
+        env:
+          BINARY: ${{ matrix.binary }}
         run: |
-          output=$(printf ',cd cl\n,dis length\n,quit\n' | gtimeout 30s ./${{ matrix.binary }} 2>&1)
+          output=$(printf ',cd cl\n,dis length\n,quit\n' | gtimeout 30s ./"$BINARY" 2>&1)
           echo "$output"
           echo "$output" | grep -q "disassembly for LENGTH" || (echo "FAIL: ,dis length after ,cd cl did not work" && exit 1)

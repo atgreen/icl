@@ -178,8 +178,10 @@ jobs:
 
       - name: Package Windows binary (ZIP)
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item icl.exe, README.md, LICENSE -Destination dist/
           Copy-Item "assets/OPEN-SOURCE-NOTICES.txt" -Destination dist/
@@ -194,8 +196,10 @@ jobs:
 
       - name: Build NSIS installer (EXE)
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$VERSION releng\installer\nsis\icl.nsi
           Move-Item "releng\installer\nsis\icl-$VERSION-setup.exe" "."
 
@@ -207,8 +211,10 @@ jobs:
 
       - name: Build MSI installer
         shell: powershell
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $VERSION = "${{ steps.version.outputs.version }}"
+          $VERSION = $env:VERSION
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           # Copy files to wix directory for building
           Copy-Item "icl.exe" "releng\installer\wix\"
@@ -222,8 +228,9 @@ jobs:
           wix build icl.wxs -o "..\..\..\icl-$VERSION.msi" -d VERSION=$VERSION -d SourceDir=. -ext WixToolset.UI.wixext
 
       - name: Calculate checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           sha256sum icl-${VERSION}-windows-amd64.zip > checksums-windows.txt
           sha256sum icl-${VERSION}-setup.exe >> checksums-windows.txt
           sha256sum icl-${VERSION}.msi >> checksums-windows.txt
@@ -266,9 +273,10 @@ jobs:
 
       - name: Update Chocolatey package
         shell: bash
+        env:
+          VERSION: ${{ steps.info.outputs.version }}
+          CHECKSUM: ${{ steps.info.outputs.checksum }}
         run: |
-          VERSION="${{ steps.info.outputs.version }}"
-          CHECKSUM="${{ steps.info.outputs.checksum }}"
 
           # Update nuspec version
           sed -i "s/<version>.*<\/version>/<version>${VERSION}<\/version>/" releng/chocolatey/icl.nuspec
