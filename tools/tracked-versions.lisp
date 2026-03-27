@@ -48,7 +48,7 @@
 
     ;; Mermaid - diagram rendering
     (:name "mermaid"
-     :current-version "11.12.3"
+     :current-version "11.13.0"
      :npm-package "mermaid"
      :notes "Flowcharts, sequence diagrams, etc.")
 
