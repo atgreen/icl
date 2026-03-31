@@ -12,7 +12,7 @@
 (defparameter *tracked-libraries*
   '(;; Dockview - panel layout system
     (:name "dockview-core"
-     :current-version "5.1.0"
+     :current-version "5.2.0"
      :npm-package "dockview-core"
      :notes "Dockable panel layout manager")
 
