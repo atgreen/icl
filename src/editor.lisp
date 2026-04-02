@@ -134,6 +134,45 @@
   "Cons of (line . col) at start of completion for tracking changes.")
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Inline Hints (Ghost Text)
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defvar *inline-hint* nil
+  "Current inline hint string to display as ghost text, or NIL if no hint.")
+
+(defun dismiss-inline-hint ()
+  "Clear the current inline hint."
+  (setf *inline-hint* nil))
+
+(defun compute-inline-hint (buf &optional (session *current-session*))
+  "Compute an inline hint for the current cursor position.
+   Shows the common prefix extension of all completions as ghost text.
+   When there is exactly one match, shows the full remaining suffix."
+  (setf *inline-hint* nil)
+  (when (and *inline-hints-enabled*
+             (not (completion-menu-active-p))
+             (not (if session
+                      (repl-session-search-mode session)
+                      *search-mode*)))
+    (let* ((col (edit-buffer-col buf))
+           (line (buffer-current-line buf)))
+      ;; Only show hints when cursor is at end of line
+      (when (= col (length line))
+        (multiple-value-bind (prefix start type) (extract-completion-prefix line col)
+          (declare (ignore start))
+          (when (and (plusp (length prefix))
+                     (not (eql type :none)))
+            (handler-case
+                (let ((candidates (compute-completions prefix type)))
+                  (when candidates
+                    (let* ((common (find-common-prefix candidates))
+                           (suffix (when (> (length common) (length prefix))
+                                     (subseq common (length prefix)))))
+                      (when (and suffix (plusp (length suffix)))
+                        (setf *inline-hint* suffix)))))
+              (error () nil))))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Rendering
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
@@ -206,6 +245,11 @@
                             "")))
           (clear-line)
           (format t "~A~A" prompt hl-line)
+          ;; Show inline hint as ghost text on the cursor line
+          (when (and *inline-hint*
+                     (= i cursor-row)
+                     (= cursor-col (length (buffer-line buf i))))
+            (format t "~A~A~A" *ansi-dim* *inline-hint* *ansi-reset*))
           (when (< i (1- line-count))
             (format t "~%")))))
     ;; Clear any lines below (from previous longer input)
@@ -280,6 +324,9 @@
           (cursor-to-column 1)
           (clear-line)
           (format t "~A~A" prompt hl-line)
+          ;; Show inline hint as ghost text after the line
+          (when (and *inline-hint* (= col (length line)))
+            (format t "~A~A~A" *ansi-dim* *inline-hint* *ansi-reset*))
           (cursor-to-column (+ prompt-len col 1))
           (force-output)))))
 
@@ -794,8 +841,15 @@
      (buffer-move-left buf)
      (if (> (buffer-line-count buf) 1) :redraw :continue))
     ((eql key :right)
-     (buffer-move-right buf)
-     (if (> (buffer-line-count buf) 1) :redraw :continue))
+     (if *inline-hint*
+         ;; Accept the inline hint
+         (progn
+           (loop for c across *inline-hint* do (buffer-insert-char buf c))
+           (dismiss-inline-hint)
+           :redraw)
+         (progn
+           (buffer-move-right buf)
+           (if (> (buffer-line-count buf) 1) :redraw :continue))))
     ((eql key :up)
      (if (zerop (edit-buffer-row buf))
          ;; At first line - try history
@@ -826,8 +880,15 @@
      (buffer-move-to-line-start buf)
      (if (> (buffer-line-count buf) 1) :redraw :continue))
     ((eql key :end)
-     (buffer-move-to-line-end buf)
-     (if (> (buffer-line-count buf) 1) :redraw :continue))
+     (if *inline-hint*
+         ;; Accept the inline hint
+         (progn
+           (loop for c across *inline-hint* do (buffer-insert-char buf c))
+           (dismiss-inline-hint)
+           :redraw)
+         (progn
+           (buffer-move-to-line-end buf)
+           (if (> (buffer-line-count buf) 1) :redraw :continue))))
     ;; Deletion (with paredit support)
     ((eql key :backspace)
      (reset-prefix-search session)
@@ -956,7 +1017,8 @@
     ;; Reset global editor state (non-session-specific)
     (setf *screen-row* 0
           *last-key-was-tab* nil
-          *completion-line-col* nil)
+          *completion-line-col* nil
+          *inline-hint* nil)
     ;; Reset session-local state
     (if session
         (setf (repl-session-history-index session) nil
@@ -1024,6 +1086,11 @@
                                      :redraw)
                                     (menu-result menu-result)
                                     (t (handle-key buf key session)))))
+                     ;; Compute inline hint after key processing
+                     (dismiss-inline-hint)
+                     (when (and (member result '(:continue :redraw :newline))
+                                (not (completion-menu-active-p)))
+                       (compute-inline-hint buf session))
                      ;; Handle result
                      (cond
                        ;; Search mode entered
@@ -1043,6 +1110,7 @@
                         (render-buffer buf))
                        ;; Standard cases
                        ((eql result :done)
+                        (dismiss-inline-hint)
                         ;; Close menu if open
                         (when (completion-menu-active-p)
                           (clear-completion-menu 12)

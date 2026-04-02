@@ -23,6 +23,7 @@
    #:*history-size*
    #:*config-file*
    #:*use-multiline-editor*
+   #:*inline-hints-enabled*
    #:*colors-enabled*
    #:*syntax-highlighting-enabled*
    #:*paredit-mode*
