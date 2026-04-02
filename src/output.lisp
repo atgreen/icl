@@ -20,9 +20,8 @@
 
 (defvar *color-reset* (format nil "~C[0m" #\Escape))
 (defvar *color-bold* (format nil "~C[1m" #\Escape))
-(defvar *color-dim* (format nil "~C[2m" #\Escape))
 
-;; Basic colors
+;; Basic colors (always available, used for simple output)
 (defvar *color-red* (format nil "~C[31m" #\Escape))
 (defvar *color-green* (format nil "~C[32m" #\Escape))
 (defvar *color-yellow* (format nil "~C[33m" #\Escape))
@@ -30,16 +29,41 @@
 (defvar *color-magenta* (format nil "~C[35m" #\Escape))
 (defvar *color-cyan* (format nil "~C[36m" #\Escape))
 
-;; Bright colors (256-color mode for better visibility)
-(defvar *color-number* (format nil "~C[38;5;33m" #\Escape))    ; Blue
-(defvar *color-string* (format nil "~C[38;5;178m" #\Escape))   ; Gold/Yellow
-(defvar *color-symbol* (format nil "~C[38;5;141m" #\Escape))   ; Purple
-(defvar *color-keyword* (format nil "~C[38;5;37m" #\Escape))   ; Cyan
-(defvar *color-nil* (format nil "~C[38;5;245m" #\Escape))      ; Gray
-(defvar *color-t* (format nil "~C[38;5;40m" #\Escape))         ; Green
-(defvar *color-list* (format nil "~C[38;5;252m" #\Escape))     ; Light gray
-(defvar *color-error* (format nil "~C[38;5;196m" #\Escape))    ; Bright red
-(defvar *color-prefix* (format nil "~C[38;5;244m" #\Escape))   ; Gray for =>
+;; Value formatting colors — resolved from theme by refresh-value-colors
+(defvar *color-number* nil)    ; Numbers
+(defvar *color-string* nil)    ; Strings
+(defvar *color-symbol* nil)    ; Symbols
+(defvar *color-keyword* nil)   ; Keywords
+(defvar *color-nil* nil)       ; NIL
+(defvar *color-t* nil)         ; T
+(defvar *color-list* nil)      ; Lists
+(defvar *color-prefix* nil)    ; Result prefix (=>)
+
+;; Default value colors (used before theme is loaded and for non-theme elements)
+(defvar *default-nil-color* (tuition:make-complete-color :truecolor "#8A8A8A"))
+(defvar *default-t-color* (tuition:make-complete-color :truecolor "#00D700"))
+(defvar *default-list-color* (tuition:make-complete-color :truecolor "#D0D0D0"))
+(defvar *default-prefix-color* (tuition:make-complete-color :truecolor "#808080"))
+
+(defun refresh-value-colors ()
+  "Regenerate value formatting colors from current theme.
+   Called by refresh-ansi-codes after theme application."
+  (setf *color-number* (if *hl-number-color*
+                            (tuition:resolve-color-foreground *hl-number-color*)
+                            (tuition:resolve-color-foreground *default-nil-color*))
+        *color-string* (if *hl-string-color*
+                            (tuition:resolve-color-foreground *hl-string-color*)
+                            (tuition:resolve-color-foreground *default-nil-color*))
+        *color-symbol* (if *hl-special-color*
+                            (tuition:resolve-color-foreground *hl-special-color*)
+                            (tuition:resolve-color-foreground *default-nil-color*))
+        *color-keyword* (if *hl-keyword-color*
+                             (tuition:resolve-color-foreground *hl-keyword-color*)
+                             (tuition:resolve-color-foreground *default-nil-color*))
+        *color-nil* (tuition:resolve-color-foreground *default-nil-color*)
+        *color-t* (tuition:resolve-color-foreground *default-t-color*)
+        *color-list* (tuition:resolve-color-foreground *default-list-color*)
+        *color-prefix* (tuition:resolve-color-foreground *default-prefix-color*)))
 
 (defun colors-enabled-p ()
   "Return T if colors should be used.
@@ -50,12 +74,24 @@
 
 (defun colorize (text color)
   "Wrap TEXT with COLOR codes if colors are enabled.
-   COLOR can be an ANSI escape string or a 256-color code number."
+   COLOR can be a tuition:complete-color, hex string (#RRGGBB),
+   ANSI escape string, or a 256-color code integer."
   (if (colors-enabled-p)
-      (let ((color-seq (if (integerp color)
-                           (format nil "~C[38;5;~Dm" #\Escape color)
-                           color)))
-        (format nil "~A~A~A" color-seq text *color-reset*))
+      (let ((color-seq (cond
+                         ((typep color 'tuition:complete-color)
+                          (tuition:resolve-color-foreground color))
+                         ((and (stringp color)
+                               (plusp (length color))
+                               (char= (char color 0) #\#))
+                          (tuition:resolve-color-foreground
+                           (tuition:make-complete-color :truecolor color)))
+                         ((integerp color)
+                          (format nil "~C[38;5;~Dm" #\Escape color))
+                         ((stringp color) color)
+                         (t nil))))
+        (if color-seq
+            (format nil "~A~A~A" color-seq text *color-reset*)
+            text))
       text))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────

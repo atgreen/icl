@@ -12,25 +12,33 @@
 
 (defstruct terminal-theme
   "Theme definition for terminal/TUI interface.
-   Colors are 256-color ANSI codes (0-255)."
+   Colors are hex strings (e.g. \"#FF79C6\") or legacy 256-color integers."
   (name nil :type (or keyword null))
   (display-name "" :type string)
   (dark-p t :type boolean)
-  ;; Syntax highlighting colors (256-color codes)
-  (hl-keyword 205 :type fixnum)      ; Keywords like DEFUN, LET
-  (hl-string 114 :type fixnum)       ; String literals
-  (hl-comment 245 :type fixnum)      ; Comments
-  (hl-number 209 :type fixnum)       ; Numeric literals
-  (hl-symbol 252 :type fixnum)       ; Regular symbols
-  (hl-package 81 :type fixnum)       ; Package prefixes
-  (hl-special 141 :type fixnum)      ; Special forms
+  ;; Syntax highlighting colors (hex strings)
+  (hl-keyword "#FF79C6" :type (or string fixnum))  ; Keywords like DEFUN, LET
+  (hl-string "#50FA7B" :type (or string fixnum))    ; String literals
+  (hl-comment "#6272A4" :type (or string fixnum))   ; Comments
+  (hl-number "#FFB86C" :type (or string fixnum))    ; Numeric literals
+  (hl-symbol "#F8F8F2" :type (or string fixnum))    ; Regular symbols
+  (hl-package "#8BE9FD" :type (or string fixnum))   ; Package prefixes
+  (hl-special "#BD93F9" :type (or string fixnum))   ; Special forms
+  (hl-paren "#A8A8A8" :type (or string fixnum))     ; Parentheses
+  ;; Paren matching background colors
+  (hl-paren-match-bg nil :type (or string fixnum null))    ; Matching paren background
+  (hl-paren-mismatch-bg nil :type (or string fixnum null)) ; Mismatched paren background
+  ;; Text style flags for syntax elements
+  (comment-italic t :type boolean)                  ; Render comments in italic
+  (special-bold t :type boolean)                    ; Render special forms in bold
+  (keyword-bold nil :type boolean)                  ; Render keywords in bold
   ;; UI colors
-  (prompt-primary 75 :type fixnum)   ; Main prompt color
-  (prompt-package 243 :type fixnum)  ; Package name in prompt
-  (error 196 :type fixnum)           ; Error messages
-  (warning 214 :type fixnum)         ; Warnings
-  (info 75 :type fixnum)             ; Info messages
-  (dim 243 :type fixnum))            ; Dimmed/secondary text
+  (prompt-primary "#BD93F9" :type (or string fixnum))  ; Main prompt color
+  (prompt-package "#6272A4" :type (or string fixnum))  ; Package name in prompt
+  (error "#FF5555" :type (or string fixnum))           ; Error messages
+  (warning "#FFB86C" :type (or string fixnum))         ; Warnings
+  (info "#8BE9FD" :type (or string fixnum))            ; Info messages
+  (dim "#6272A4" :type (or string fixnum)))             ; Dimmed/secondary text
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Browser Theme Structure
@@ -194,6 +202,18 @@
 ;;; Theme Application
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
+(defun %ensure-hex (val)
+  "If VAL is an integer (legacy 256-color index), convert to hex string.
+   If already a string, return as-is."
+  (if (integerp val)
+      (tuition:ansi256-to-hex val)
+      val))
+
+(defun %make-theme-color (val)
+  "Create a tuition:complete-color from a theme value.
+   Accepts hex strings or legacy 256-color integers."
+  (tuition:make-complete-color :truecolor (%ensure-hex val)))
+
 (defun apply-terminal-theme (theme)
   "Apply a terminal theme, updating all color variables."
   (when (keywordp theme)
@@ -201,21 +221,33 @@
   (unless theme
     (error "Terminal theme not found"))
   (setf *current-terminal-theme* theme)
-  ;; Update syntax highlighting colors
-  (setf *hl-keyword-color* (terminal-theme-hl-keyword theme)
-        *hl-string-color* (terminal-theme-hl-string theme)
-        *hl-comment-color* (terminal-theme-hl-comment theme)
-        *hl-number-color* (terminal-theme-hl-number theme)
-        *hl-symbol-color* (terminal-theme-hl-symbol theme)
-        *hl-package-color* (terminal-theme-hl-package theme)
-        *hl-special-color* (terminal-theme-hl-special theme))
-  ;; Update UI colors
-  (setf *color-prompt* (terminal-theme-prompt-primary theme)
-        *color-package* (terminal-theme-prompt-package theme)
-        *color-error* (terminal-theme-error theme)
-        *color-warning* (terminal-theme-warning theme)
-        *color-info* (terminal-theme-info theme)
-        *color-dim* (terminal-theme-dim theme))
+  ;; Invalidate cached markdown style
+  (setf *current-markdown-style* nil)
+  ;; Update syntax highlighting colors (as complete-color objects)
+  (setf *hl-keyword-color* (%make-theme-color (terminal-theme-hl-keyword theme))
+        *hl-string-color* (%make-theme-color (terminal-theme-hl-string theme))
+        *hl-comment-color* (%make-theme-color (terminal-theme-hl-comment theme))
+        *hl-number-color* (%make-theme-color (terminal-theme-hl-number theme))
+        *hl-symbol-color* (%make-theme-color (terminal-theme-hl-symbol theme))
+        *hl-package-color* (%make-theme-color (terminal-theme-hl-package theme))
+        *hl-special-color* (%make-theme-color (terminal-theme-hl-special theme))
+        *hl-paren-color* (%make-theme-color (terminal-theme-hl-paren theme)))
+  ;; Update paren-match background colors
+  (let ((match-bg (terminal-theme-hl-paren-match-bg theme))
+        (mismatch-bg (terminal-theme-hl-paren-mismatch-bg theme)))
+    (setf *hl-paren-match-bg-color* (when match-bg (%make-theme-color match-bg))
+          *hl-paren-mismatch-bg-color* (when mismatch-bg (%make-theme-color mismatch-bg))))
+  ;; Update text style flags
+  (setf *comment-italic* (terminal-theme-comment-italic theme)
+        *special-bold* (terminal-theme-special-bold theme)
+        *keyword-bold* (terminal-theme-keyword-bold theme))
+  ;; Update UI colors (as complete-color objects)
+  (setf *color-prompt* (%make-theme-color (terminal-theme-prompt-primary theme))
+        *color-package* (%make-theme-color (terminal-theme-prompt-package theme))
+        *color-error* (%make-theme-color (terminal-theme-error theme))
+        *color-warning* (%make-theme-color (terminal-theme-warning theme))
+        *color-info* (%make-theme-color (terminal-theme-info theme))
+        *color-dim* (%make-theme-color (terminal-theme-dim theme)))
   ;; Regenerate ANSI escape sequences
   (refresh-ansi-codes)
   theme)
@@ -232,16 +264,20 @@
   theme)
 
 (defun refresh-ansi-codes ()
-  "Regenerate ANSI escape code strings from current colors."
-  (setf *ansi-prompt* (format nil "~C[38;5;~Dm" #\Escape *color-prompt*)
-        *ansi-package* (format nil "~C[38;5;~Dm" #\Escape *color-package*)
-        *ansi-error* (format nil "~C[38;5;~Dm" #\Escape *color-error*)
-        *ansi-warning* (format nil "~C[38;5;~Dm" #\Escape *color-warning*)
-        *ansi-info* (format nil "~C[38;5;~Dm" #\Escape *color-info*)
-        *ansi-fg-gray* (format nil "~C[38;5;~Dm" #\Escape *color-dim*))
-  ;; Also refresh syntax highlighting colors if that function is defined
+  "Regenerate ANSI escape code strings from current colors.
+   Uses tuition's color resolution for capability-aware output."
+  (setf *ansi-prompt* (tuition:resolve-color-foreground *color-prompt*)
+        *ansi-package* (tuition:resolve-color-foreground *color-package*)
+        *ansi-error* (tuition:resolve-color-foreground *color-error*)
+        *ansi-warning* (tuition:resolve-color-foreground *color-warning*)
+        *ansi-info* (tuition:resolve-color-foreground *color-info*)
+        *ansi-fg-gray* (tuition:resolve-color-foreground *color-dim*))
+  ;; Refresh syntax highlighting colors
   (when (fboundp 'refresh-highlight-colors)
-    (funcall 'refresh-highlight-colors)))
+    (funcall 'refresh-highlight-colors))
+  ;; Refresh value formatting colors (output.lisp)
+  (when (fboundp 'refresh-value-colors)
+    (funcall 'refresh-value-colors)))
 
 (defun broadcast-browser-theme (theme)
   "Broadcast theme to all connected browser clients.
@@ -464,19 +500,22 @@
   :name :dracula
   :display-name "Dracula"
   :dark-p t
-  :hl-keyword 212    ; Pink
-  :hl-string 84      ; Green
-  :hl-comment 103    ; Comment gray
-  :hl-number 215     ; Orange
-  :hl-symbol 231     ; Foreground
-  :hl-package 117    ; Cyan
-  :hl-special 141    ; Purple
-  :prompt-primary 141
-  :prompt-package 103
-  :error 210
-  :warning 215
-  :info 117
-  :dim 103))
+  :hl-keyword "#FF79C6"
+  :hl-string "#50FA7B"
+  :hl-comment "#6272A4"
+  :hl-number "#FFB86C"
+  :hl-symbol "#F8F8F2"
+  :hl-package "#8BE9FD"
+  :hl-special "#BD93F9"
+  :hl-paren "#6272A4"
+  :hl-paren-match-bg "#44475A"
+  :hl-paren-mismatch-bg "#FF5555"
+  :prompt-primary "#BD93F9"
+  :prompt-package "#6272A4"
+  :error "#FF5555"
+  :warning "#FFB86C"
+  :info "#8BE9FD"
+  :dim "#6272A4"))
 
 (register-browser-theme
  (make-browser-theme
@@ -526,19 +565,22 @@
   :name :nord
   :display-name "Nord"
   :dark-p t
-  :hl-keyword 176    ; Purple
-  :hl-string 150     ; Green
-  :hl-comment 60     ; Comment
-  :hl-number 215     ; Orange
-  :hl-symbol 255     ; Snow
-  :hl-package 110    ; Frost
-  :hl-special 176    ; Purple
-  :prompt-primary 110
-  :prompt-package 60
-  :error 174
-  :warning 215
-  :info 110
-  :dim 60))
+  :hl-keyword "#B48EAD"
+  :hl-string "#A3BE8C"
+  :hl-comment "#616E88"
+  :hl-number "#D08770"
+  :hl-symbol "#ECEFF4"
+  :hl-package "#88C0D0"
+  :hl-special "#B48EAD"
+  :hl-paren "#4C566A"
+  :hl-paren-match-bg "#434C5E"
+  :hl-paren-mismatch-bg "#BF616A"
+  :prompt-primary "#88C0D0"
+  :prompt-package "#616E88"
+  :error "#BF616A"
+  :warning "#D08770"
+  :info "#88C0D0"
+  :dim "#616E88"))
 
 (register-browser-theme
  (make-browser-theme
@@ -588,19 +630,22 @@
   :name :one-dark
   :display-name "One Dark"
   :dark-p t
-  :hl-keyword 176    ; Purple
-  :hl-string 114     ; Green
-  :hl-comment 102    ; Comment
-  :hl-number 173     ; Orange
-  :hl-symbol 252     ; Foreground
-  :hl-package 39     ; Cyan
-  :hl-special 176    ; Purple
-  :prompt-primary 39
-  :prompt-package 102
-  :error 204
-  :warning 173
-  :info 39
-  :dim 102))
+  :hl-keyword "#C678DD"
+  :hl-string "#98C379"
+  :hl-comment "#5C6370"
+  :hl-number "#D19A66"
+  :hl-symbol "#ABB2BF"
+  :hl-package "#56B6C2"
+  :hl-special "#C678DD"
+  :hl-paren "#5C6370"
+  :hl-paren-match-bg "#2C313A"
+  :hl-paren-mismatch-bg "#E06C75"
+  :prompt-primary "#56B6C2"
+  :prompt-package "#5C6370"
+  :error "#E06C75"
+  :warning "#D19A66"
+  :info "#56B6C2"
+  :dim "#5C6370"))
 
 (register-browser-theme
  (make-browser-theme
@@ -650,19 +695,22 @@
   :name :gruvbox-dark
   :display-name "Gruvbox Dark"
   :dark-p t
-  :hl-keyword 175    ; Purple
-  :hl-string 142     ; Green
-  :hl-comment 102    ; Gray
-  :hl-number 208     ; Orange
-  :hl-symbol 223     ; Fg
-  :hl-package 109    ; Blue
-  :hl-special 175    ; Purple
-  :prompt-primary 214
-  :prompt-package 102
-  :error 167
-  :warning 214
-  :info 109
-  :dim 102))
+  :hl-keyword "#D3869B"
+  :hl-string "#B8BB26"
+  :hl-comment "#928374"
+  :hl-number "#FE8019"
+  :hl-symbol "#EBDBB2"
+  :hl-package "#83A598"
+  :hl-special "#D3869B"
+  :hl-paren "#A89984"
+  :hl-paren-match-bg "#504945"
+  :hl-paren-mismatch-bg "#FB4934"
+  :prompt-primary "#FE8019"
+  :prompt-package "#928374"
+  :error "#FB4934"
+  :warning "#FE8019"
+  :info "#83A598"
+  :dim "#928374"))
 
 (register-browser-theme
  (make-browser-theme
@@ -712,19 +760,22 @@
   :name :tokyo-night
   :display-name "Tokyo Night"
   :dark-p t
-  :hl-keyword 177    ; Magenta
-  :hl-string 150     ; Green
-  :hl-comment 60     ; Comment
-  :hl-number 215     ; Orange
-  :hl-symbol 189     ; Foreground
-  :hl-package 117    ; Cyan
-  :hl-special 177    ; Magenta
-  :prompt-primary 75
-  :prompt-package 60
-  :error 204
-  :warning 215
-  :info 117
-  :dim 60))
+  :hl-keyword "#BB9AF7"
+  :hl-string "#9ECE6A"
+  :hl-comment "#565F89"
+  :hl-number "#FF9E64"
+  :hl-symbol "#C0CAF5"
+  :hl-package "#7DCFFF"
+  :hl-special "#BB9AF7"
+  :hl-paren "#414868"
+  :hl-paren-match-bg "#24283B"
+  :hl-paren-mismatch-bg "#F7768E"
+  :prompt-primary "#7AA2F7"
+  :prompt-package "#565F89"
+  :error "#F7768E"
+  :warning "#FF9E64"
+  :info "#7DCFFF"
+  :dim "#565F89"))
 
 (register-browser-theme
  (make-browser-theme
@@ -774,19 +825,22 @@
   :name :catppuccin-mocha
   :display-name "Catppuccin Mocha"
   :dark-p t
-  :hl-keyword 183    ; Mauve
-  :hl-string 114     ; Green
-  :hl-comment 60     ; Overlay0
-  :hl-number 215     ; Peach
-  :hl-symbol 189     ; Text
-  :hl-package 117    ; Sky
-  :hl-special 218    ; Pink
-  :prompt-primary 111
-  :prompt-package 60
-  :error 210
-  :warning 215
-  :info 117
-  :dim 60))
+  :hl-keyword "#CBA6F7"
+  :hl-string "#A6E3A1"
+  :hl-comment "#6C7086"
+  :hl-number "#FAB387"
+  :hl-symbol "#CDD6F4"
+  :hl-package "#89DCEB"
+  :hl-special "#F5C2E7"
+  :hl-paren "#585B70"
+  :hl-paren-match-bg "#313244"
+  :hl-paren-mismatch-bg "#F38BA8"
+  :prompt-primary "#89B4FA"
+  :prompt-package "#6C7086"
+  :error "#F38BA8"
+  :warning "#FAB387"
+  :info "#89DCEB"
+  :dim "#6C7086"))
 
 (register-browser-theme
  (make-browser-theme
@@ -836,19 +890,22 @@
   :name :monokai
   :display-name "Monokai"
   :dark-p t
-  :hl-keyword 197    ; Pink
-  :hl-string 186     ; Yellow
-  :hl-comment 242    ; Comment
-  :hl-number 141    ; Purple
-  :hl-symbol 231     ; White
-  :hl-package 81     ; Blue
-  :hl-special 197    ; Pink
-  :prompt-primary 148
-  :prompt-package 242
-  :error 197
-  :warning 186
-  :info 81
-  :dim 242))
+  :hl-keyword "#F92672"
+  :hl-string "#E6DB74"
+  :hl-comment "#75715E"
+  :hl-number "#AE81FF"
+  :hl-symbol "#F8F8F2"
+  :hl-package "#66D9EF"
+  :hl-special "#F92672"
+  :hl-paren "#75715E"
+  :hl-paren-match-bg "#49483E"
+  :hl-paren-mismatch-bg "#F92672"
+  :prompt-primary "#A6E22E"
+  :prompt-package "#75715E"
+  :error "#F92672"
+  :warning "#E6DB74"
+  :info "#66D9EF"
+  :dim "#75715E"))
 
 (register-browser-theme
  (make-browser-theme
@@ -898,19 +955,22 @@
   :name :solarized-dark
   :display-name "Solarized Dark"
   :dark-p t
-  :hl-keyword 136    ; Yellow
-  :hl-string 37      ; Cyan
-  :hl-comment 245    ; Base01
-  :hl-number 166     ; Orange
-  :hl-symbol 244     ; Base0
-  :hl-package 33     ; Blue
-  :hl-special 125    ; Magenta
-  :prompt-primary 33
-  :prompt-package 245
-  :error 160
-  :warning 136
-  :info 37
-  :dim 245))
+  :hl-keyword "#B58900"
+  :hl-string "#2AA198"
+  :hl-comment "#586E75"
+  :hl-number "#CB4B16"
+  :hl-symbol "#839496"
+  :hl-package "#268BD2"
+  :hl-special "#D33682"
+  :hl-paren "#657B83"
+  :hl-paren-match-bg "#073642"
+  :hl-paren-mismatch-bg "#DC322F"
+  :prompt-primary "#268BD2"
+  :prompt-package "#586E75"
+  :error "#DC322F"
+  :warning "#B58900"
+  :info "#2AA198"
+  :dim "#586E75"))
 
 (register-browser-theme
  (make-browser-theme
@@ -960,19 +1020,22 @@
   :name :github-light
   :display-name "GitHub Light"
   :dark-p nil
-  :hl-keyword 127    ; Purple
-  :hl-string 22      ; Green
-  :hl-comment 244    ; Gray
-  :hl-number 166     ; Orange
-  :hl-symbol 16      ; Black
-  :hl-package 25     ; Blue
-  :hl-special 127    ; Purple
-  :prompt-primary 25
-  :prompt-package 244
-  :error 160
-  :warning 166
-  :info 25
-  :dim 244))
+  :hl-keyword "#D73A49"
+  :hl-string "#032F62"
+  :hl-comment "#6A737D"
+  :hl-number "#005CC5"
+  :hl-symbol "#24292E"
+  :hl-package "#6F42C1"
+  :hl-special "#D73A49"
+  :hl-paren "#959DA5"
+  :hl-paren-match-bg "#E1E4E8"
+  :hl-paren-mismatch-bg "#FDAEB7"
+  :prompt-primary "#0366D6"
+  :prompt-package "#6A737D"
+  :error "#CB2431"
+  :warning "#B08800"
+  :info "#0366D6"
+  :dim "#6A737D"))
 
 (register-browser-theme
  (make-browser-theme
@@ -1022,19 +1085,22 @@
   :name :solarized-light
   :display-name "Solarized Light"
   :dark-p nil
-  :hl-keyword 136    ; Yellow
-  :hl-string 37      ; Cyan
-  :hl-comment 245    ; Base1
-  :hl-number 166     ; Orange
-  :hl-symbol 240     ; Base00
-  :hl-package 33     ; Blue
-  :hl-special 125    ; Magenta
-  :prompt-primary 33
-  :prompt-package 245
-  :error 160
-  :warning 136
-  :info 37
-  :dim 245))
+  :hl-keyword "#B58900"
+  :hl-string "#2AA198"
+  :hl-comment "#93A1A1"
+  :hl-number "#CB4B16"
+  :hl-symbol "#657B83"
+  :hl-package "#268BD2"
+  :hl-special "#D33682"
+  :hl-paren "#93A1A1"
+  :hl-paren-match-bg "#EEE8D5"
+  :hl-paren-mismatch-bg "#DC322F"
+  :prompt-primary "#268BD2"
+  :prompt-package "#93A1A1"
+  :error "#DC322F"
+  :warning "#B58900"
+  :info "#2AA198"
+  :dim "#93A1A1"))
 
 (register-browser-theme
  (make-browser-theme
@@ -1084,19 +1150,22 @@
   :name :gruvbox-light
   :display-name "Gruvbox Light"
   :dark-p nil
-  :hl-keyword 132    ; Purple
-  :hl-string 100     ; Green
-  :hl-comment 244    ; Gray
-  :hl-number 166     ; Orange
-  :hl-symbol 237     ; Fg
-  :hl-package 66     ; Blue
-  :hl-special 132    ; Purple
-  :prompt-primary 136
-  :prompt-package 244
-  :error 124
-  :warning 136
-  :info 66
-  :dim 244))
+  :hl-keyword "#8F3F71"
+  :hl-string "#79740E"
+  :hl-comment "#928374"
+  :hl-number "#D65D0E"
+  :hl-symbol "#3C3836"
+  :hl-package "#076678"
+  :hl-special "#8F3F71"
+  :hl-paren "#A89984"
+  :hl-paren-match-bg "#EBDBB2"
+  :hl-paren-mismatch-bg "#9D0006"
+  :prompt-primary "#D65D0E"
+  :prompt-package "#928374"
+  :error "#9D0006"
+  :warning "#D65D0E"
+  :info "#076678"
+  :dim "#928374"))
 
 (register-browser-theme
  (make-browser-theme
@@ -1146,19 +1215,22 @@
   :name :one-light
   :display-name "One Light"
   :dark-p nil
-  :hl-keyword 128    ; Purple
-  :hl-string 22      ; Green
-  :hl-comment 244    ; Gray
-  :hl-number 166     ; Orange
-  :hl-symbol 236     ; Fg
-  :hl-package 31     ; Cyan
-  :hl-special 128    ; Purple
-  :prompt-primary 31
-  :prompt-package 244
-  :error 160
-  :warning 166
-  :info 31
-  :dim 244))
+  :hl-keyword "#A626A4"
+  :hl-string "#50A14F"
+  :hl-comment "#A0A1A7"
+  :hl-number "#986801"
+  :hl-symbol "#383A42"
+  :hl-package "#0184BC"
+  :hl-special "#A626A4"
+  :hl-paren "#A0A1A7"
+  :hl-paren-match-bg "#EAEAEB"
+  :hl-paren-mismatch-bg "#E45649"
+  :prompt-primary "#0184BC"
+  :prompt-package "#A0A1A7"
+  :error "#E45649"
+  :warning "#986801"
+  :info "#0184BC"
+  :dim "#A0A1A7"))
 
 (register-browser-theme
  (make-browser-theme
@@ -1224,6 +1296,28 @@
   "Get the name of the current browser theme."
   (when *current-browser-theme*
     (browser-theme-name *current-browser-theme*)))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Markdown Style from Theme
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defvar *current-markdown-style* nil
+  "Cached markdown style derived from the current terminal theme.")
+
+(defun current-markdown-style ()
+  "Get a markdown style matching the current terminal theme.
+   Caches the result in *current-markdown-style*."
+  (or *current-markdown-style*
+      (if *current-terminal-theme*
+          (let ((theme *current-terminal-theme*))
+            (setf *current-markdown-style*
+                  (tuition:make-markdown-style-from-colors
+                   :accent (%ensure-hex (terminal-theme-info theme))
+                   :secondary (%ensure-hex (terminal-theme-hl-special theme))
+                   :string (%ensure-hex (terminal-theme-hl-string theme))
+                   :comment (%ensure-hex (terminal-theme-hl-comment theme))
+                   :muted (%ensure-hex (terminal-theme-dim theme)))))
+          (tuition:make-style-dark))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Initialization

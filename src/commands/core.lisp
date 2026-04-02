@@ -2105,6 +2105,7 @@ Example: ,theme                    - Show current themes
                          '(#\Newline #\Space)
                          (tuition:render-markdown
                           (coerce output-buffer 'string)
+                          :style (current-markdown-style)
                           :width 78))))
               (return))
             ;; Main dispatch

@@ -255,9 +255,13 @@
     ;; Header: condition in a border
     (let* ((header-text (format nil "~A~%~A"
                                 (tui:colored (tui:bold (debugger-state-condition-type state))
-                                             :fg tui:*fg-bright-red*)
+                                             :fg (if *color-error*
+                                                     (tuition:resolve-color *color-error*)
+                                                     tui:*fg-bright-red*))
                                 (tui:colored (debugger-state-condition-message state)
-                                             :fg tui:*fg-yellow*)))
+                                             :fg (if *color-warning*
+                                                     (tuition:resolve-color *color-warning*)
+                                                     tui:*fg-yellow*))))
            (header (tui:render-border header-text tui:*border-rounded*
                                       :title "Debugger"
                                       :title-position :center))

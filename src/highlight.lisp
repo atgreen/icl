@@ -30,41 +30,61 @@
 (defvar *hl-builtin* nil)
 (defvar *hl-reset* nil)
 
+(defun %color-with-attr (color-obj attr-prefix)
+  "Resolve COLOR-OBJ to a foreground escape sequence, prepending ATTR-PREFIX if non-nil.
+   ATTR-PREFIX is an SGR code like \"1;\" for bold or \"3;\" for italic."
+  (let ((base (tuition:resolve-color-foreground color-obj)))
+    (if (and attr-prefix base)
+        ;; Insert the attribute after the ESC[ prefix
+        (concatenate 'string
+                     (subseq base 0 2)  ; "ESC["
+                     attr-prefix
+                     (subseq base 2))   ; "38;5;Nm" or "38;2;R;G;Bm"
+        base)))
+
 (defun refresh-highlight-colors ()
-  "Regenerate ANSI escape sequences from color code variables.
+  "Regenerate ANSI escape sequences from complete-color objects.
    Called by the theme system when a theme is applied."
-  (setf *hl-string* (format nil "~C[38;5;~Dm" #\Escape *hl-string-color*)
-        *hl-comment* (format nil "~C[38;5;~Dm" #\Escape *hl-comment-color*)
-        *hl-keyword* (format nil "~C[38;5;~Dm" #\Escape *hl-keyword-color*)
-        *hl-number* (format nil "~C[38;5;~Dm" #\Escape *hl-number-color*)
-        *hl-special* (format nil "~C[38;5;~Dm" #\Escape *hl-special-color*)
-        *hl-paren* (format nil "~C[38;5;248m" #\Escape)  ; Always light gray
-        *hl-quote* (format nil "~C[38;5;~Dm" #\Escape *hl-number-color*)  ; Same as number
-        *hl-builtin* (format nil "~C[38;5;~Dm" #\Escape *hl-package-color*)
+  (setf *hl-string* (tuition:resolve-color-foreground *hl-string-color*)
+        *hl-comment* (%color-with-attr *hl-comment-color*
+                                       (when *comment-italic* "3;"))
+        *hl-keyword* (%color-with-attr *hl-keyword-color*
+                                       (when *keyword-bold* "1;"))
+        *hl-number* (tuition:resolve-color-foreground *hl-number-color*)
+        *hl-special* (%color-with-attr *hl-special-color*
+                                       (when *special-bold* "1;"))
+        *hl-paren* (tuition:resolve-color-foreground *hl-paren-color*)
+        *hl-quote* (tuition:resolve-color-foreground *hl-number-color*)  ; Same as number
+        *hl-builtin* (tuition:resolve-color-foreground *hl-package-color*)
         *hl-reset* *ansi-reset*))
 
-;; Initialize with defaults
-(refresh-highlight-colors)
+;; Fallback paren-match colors (used when theme doesn't specify)
+(defvar *hl-paren-match-dark-fallback*
+  (tuition:make-complete-color :truecolor "#4C4C4C"))
+(defvar *hl-paren-mismatch-dark-fallback*
+  (tuition:make-complete-color :truecolor "#5F0000"))
+(defvar *hl-paren-match-light-fallback*
+  (tuition:make-complete-color :truecolor "#DADADA"))
+(defvar *hl-paren-mismatch-light-fallback*
+  (tuition:make-complete-color :truecolor "#FFAFAF"))
 
-;; Colors for dark backgrounds
-(defvar *hl-paren-match-dark* (format nil "~C[48;5;239m" #\Escape))      ; Dark gray background
-(defvar *hl-paren-mismatch-dark* (format nil "~C[48;5;52m" #\Escape))    ; Dark red background
-
-;; Colors for light backgrounds
-(defvar *hl-paren-match-light* (format nil "~C[48;5;253m" #\Escape))     ; Light gray background
-(defvar *hl-paren-mismatch-light* (format nil "~C[48;5;217m" #\Escape))  ; Light red/pink background
-
-;; Paren matching colors (background highlighting) - default to dark, updated by setup-highlight-colors
-(defvar *hl-paren-match* *hl-paren-match-dark*)
-(defvar *hl-paren-mismatch* *hl-paren-mismatch-dark*)
+;; Resolved paren match escape sequences
+(defvar *hl-paren-match* nil)
+(defvar *hl-paren-mismatch* nil)
 
 (defun setup-highlight-colors ()
-  "Set up highlight colors based on terminal background."
-  (if (terminal-light-p)
-      (setf *hl-paren-match* *hl-paren-match-light*
-            *hl-paren-mismatch* *hl-paren-mismatch-light*)
-      (setf *hl-paren-match* *hl-paren-match-dark*
-            *hl-paren-mismatch* *hl-paren-mismatch-dark*)))
+  "Set up highlight colors based on terminal theme and background.
+   Uses theme-specific paren-match colors if available, else dark/light fallbacks."
+  (let ((match-color (or *hl-paren-match-bg-color*
+                         (if (terminal-light-p)
+                             *hl-paren-match-light-fallback*
+                             *hl-paren-match-dark-fallback*)))
+        (mismatch-color (or *hl-paren-mismatch-bg-color*
+                            (if (terminal-light-p)
+                                *hl-paren-mismatch-light-fallback*
+                                *hl-paren-mismatch-dark-fallback*))))
+    (setf *hl-paren-match* (tuition:resolve-color-background match-color)
+          *hl-paren-mismatch* (tuition:resolve-color-background mismatch-color))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Special Forms and Common Macros
