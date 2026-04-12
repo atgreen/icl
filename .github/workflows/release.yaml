@@ -97,12 +97,11 @@ jobs:
           # Configure rpm macros — only set key name, use default sign command
           echo "%_signature gpg" > ~/.rpmmacros
           echo "%_gpg_name ${GPG_NAME}" >> ~/.rpmmacros
-          # Debug: show what rpm will use
-          rpm --eval '%__gpg_sign_cmd'
           # Sign packages
           rpmsign --addsign ~/rpmbuild/RPMS/x86_64/*.rpm
           rpmsign --addsign ~/rpmbuild/SRPMS/*.src.rpm || true
-          echo "Verifying signatures:"
+          # Import public key into rpm db and verify
+          gpg --export --armor "${GPG_NAME}" | rpm --import -
           rpm --checksig ~/rpmbuild/RPMS/x86_64/*.rpm
 
       - name: Copy RPM and SRPM to workspace
