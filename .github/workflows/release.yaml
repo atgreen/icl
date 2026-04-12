@@ -85,16 +85,24 @@ jobs:
           RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
         if: ${{ env.RPM_GPG_PRIVATE_KEY != '' }}
         run: |
+          # Configure gpg for non-interactive use BEFORE first gpg invocation
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          # Import signing key
           echo "${RPM_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
           GPG_NAME=$(gpg --list-secret-keys --with-colons | awk -F: '/^uid/{print $10; exit}')
-          # Configure gpg-agent for non-interactive use
-          mkdir -p ~/.gnupg
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          gpgconf --kill gpg-agent
-          # Configure rpm to use our key
-          echo "%_signature gpg" > ~/.rpmmacros
-          echo "%_gpg_name ${GPG_NAME}" >> ~/.rpmmacros
+          echo "Signing as: ${GPG_NAME}"
+          # Configure rpm macros
+          cat > ~/.rpmmacros << RPMMACROS
+          %_signature gpg
+          %_gpg_name ${GPG_NAME}
+          %__gpg_sign_cmd %{__gpg} --batch --pinentry-mode loopback --no-armor -u "%{_gpg_name}" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}
+          RPMMACROS
+          sed -i 's/^          //' ~/.rpmmacros
+          cat ~/.rpmmacros
+          # Sign packages
           rpmsign --addsign ~/rpmbuild/RPMS/x86_64/*.rpm
           rpmsign --addsign ~/rpmbuild/SRPMS/*.src.rpm || true
           echo "Verifying signatures:"
