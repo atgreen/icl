@@ -68,14 +68,25 @@ Profile any expression with `,flame` and explore the results in an interactive [
 
 ## Installation
 
+### Fedora / RPM-based Systems
+
+Add the ICL repository and install:
+```sh
+sudo dnf config-manager addrepo --from-repofile=https://atgreen.github.io/icl/rpm-repo/icl.repo
+sudo dnf install icl
+```
+
+The RPM packages are GPG-signed. The signing key is imported automatically by dnf on first install.
+
 ### Pre-built Binaries
 
 Download from [GitHub Releases](https://github.com/atgreen/icl/releases):
 
 | Platform | Formats |
 |----------|---------|
-| Linux | RPM, DEB |
-| Windows | ZIP, EXE installer, MSI installer |
+| Linux | RPM, DEB, tarball |
+| macOS | tarball (arm64, amd64) |
+| Windows | ZIP, EXE installer, MSI installer, Chocolatey |
 
 [Roswell](https://roswell.github.io/) users can also install with `ros install atgreen/icl`.
 
@@ -553,7 +564,10 @@ Use `configure-lisp` to customize how ICL invokes a Lisp implementation:
 | `Alt+Backspace` | Kill word backward |
 | `Ctrl+L` | Clear screen |
 | `Ctrl+D` | Delete character at cursor, or EOF if line empty (Emacs-style) |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` | Redo |
 | `Ctrl+C` | Cancel current input |
+| `Ctrl+\` | Suspend process |
 | `Ctrl+R` | Reverse history search (substring match) |
 | `Ctrl+G` | Cancel search |
 | `Up/Down` | Navigate history (on first/last line) or move cursor |
