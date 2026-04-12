@@ -87,9 +87,14 @@ jobs:
         run: |
           echo "${RPM_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
           GPG_NAME=$(gpg --list-secret-keys --with-colons | awk -F: '/^uid/{print $10; exit}')
-          printf '%%_signature gpg\n' > ~/.rpmmacros
-          printf '%%_gpg_name %s\n' "${GPG_NAME}" >> ~/.rpmmacros
-          printf '%%__gpg_sign_cmd %%{__gpg} --batch --pinentry-mode loopback --no-armor %%{?_gpg_digest_algo:--digest-algo %%{_gpg_digest_algo}} -u "%%{_gpg_name}" -sbo %%{__signature_filename} %%{__plaintext_filename}\n' >> ~/.rpmmacros
+          # Configure gpg-agent for non-interactive use
+          mkdir -p ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          gpgconf --kill gpg-agent
+          # Configure rpm to use our key
+          echo "%_signature gpg" > ~/.rpmmacros
+          echo "%_gpg_name ${GPG_NAME}" >> ~/.rpmmacros
           rpmsign --addsign ~/rpmbuild/RPMS/x86_64/*.rpm
           rpmsign --addsign ~/rpmbuild/SRPMS/*.src.rpm || true
           echo "Verifying signatures:"
@@ -454,6 +459,8 @@ jobs:
     needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-chocolatey, build-macos-arm64, build-macos-amd64]
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -491,3 +498,16 @@ jobs:
             artifacts/darwin-arm64-package/*.tar.gz
             artifacts/darwin-amd64-package/*.tar.gz
           allowUpdates: true
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/rpm-packages/*.rpm
+            artifacts/deb-packages/*.deb
+            artifacts/linux-tarball/*.tar.gz
+            artifacts/windows-package/icl-*-windows-*.zip
+            artifacts/windows-package/*-setup.exe
+            artifacts/windows-package/*.msi
+            artifacts/darwin-arm64-package/*.tar.gz
+            artifacts/darwin-amd64-package/*.tar.gz
