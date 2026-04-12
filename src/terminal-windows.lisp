@@ -390,7 +390,9 @@
       ((char= c (code-char 21)) :clear-line) ; Ctrl-U
       ((char= c (code-char 12)) :clear-screen) ; Ctrl-L
       ((char= c (code-char 3)) :interrupt) ; Ctrl-C
-      ((char= c (code-char 26)) :suspend)  ; Ctrl-Z
+      ((char= c (code-char 26)) :undo)     ; Ctrl-Z
+      ((char= c (code-char 25)) :redo)     ; Ctrl-Y
+      ((char= c (code-char 28)) :suspend)  ; Ctrl-\
       ((char= c (code-char 18)) :reverse-search) ; Ctrl-R
       ((char= c (code-char 7)) :cancel-search)  ; Ctrl-G
       ((char= c #\Tab) :tab)

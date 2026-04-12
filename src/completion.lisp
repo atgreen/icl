@@ -280,6 +280,12 @@
       ;; ,libyear takes no arguments
       ((string-prefix-p ",libyear " trimmed)
        :none)
+      ;; ,theme subcommands and theme names
+      ((or (string-prefix-p ",theme terminal " trimmed)
+           (string-prefix-p ",theme browser " trimmed))
+       :theme-name)
+      ((string-prefix-p ",theme " trimmed)
+       :theme-subcommand)
       (t nil))))
 
 (defun string-prefix-p (prefix string)
@@ -477,14 +483,35 @@
     (sort results #'string<)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Theme Completion
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun complete-theme-subcommand (prefix)
+  "Complete ,theme subcommand PREFIX."
+  (let ((up-prefix (string-upcase prefix))
+        (subcommands '("list" "terminal" "browser" "auto")))
+    (remove-if-not (lambda (s) (prefix-match-p up-prefix (string-upcase s)))
+                   subcommands)))
+
+(defun complete-theme-name (prefix)
+  "Complete theme name PREFIX (for ,theme terminal/browser)."
+  (let ((up-prefix (string-upcase prefix))
+        (results nil))
+    (dolist (theme (list-terminal-themes))
+      (let ((name (string-downcase (symbol-name (terminal-theme-name theme)))))
+        (when (prefix-match-p up-prefix (string-upcase name))
+          (push name results))))
+    (sort (remove-duplicates results :test #'string-equal) #'string<)))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Main Completion Interface
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
 (defun compute-completions (prefix type)
   "Compute completion candidates for PREFIX of TYPE using Slynk backend."
-  ;; Don't complete empty prefix (except for paths in pathname context)
+  ;; Don't complete empty prefix (except for paths and theme contexts)
   (when (and (zerop (length prefix))
-             (not (eql type :path)))
+             (not (member type '(:path :theme-subcommand :theme-name))))
     (return-from compute-completions nil))
   (case type
     (:none nil)  ; No completion in this context
@@ -496,6 +523,8 @@
     (:keyword (complete-keyword-via-slynk prefix))
     (:qualified (complete-qualified-via-slynk prefix))
     (:path (complete-path prefix))  ; Paths are always local
+    (:theme-subcommand (complete-theme-subcommand prefix))
+    (:theme-name (complete-theme-name prefix))
     (otherwise (complete-symbol-via-slynk prefix))))
 
 (defun complete-command (prefix)

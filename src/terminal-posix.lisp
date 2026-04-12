@@ -280,7 +280,9 @@
       ((char= c (code-char 21)) :clear-line) ; Ctrl-U
       ((char= c (code-char 12)) :clear-screen) ; Ctrl-L
       ((char= c (code-char 3)) :interrupt) ; Ctrl-C
-      ((char= c (code-char 26)) :suspend)  ; Ctrl-Z
+      ((char= c (code-char 26)) :undo)     ; Ctrl-Z
+      ((char= c (code-char 25)) :redo)     ; Ctrl-Y
+      ((char= c (code-char 28)) :suspend)  ; Ctrl-\
       ((char= c (code-char 18)) :reverse-search) ; Ctrl-R
       ((char= c (code-char 7)) :cancel-search)  ; Ctrl-G
       ((char= c #\Tab) :tab)
@@ -429,11 +431,12 @@
    Returns (values r g b) as integers 0-65535, or NIL if query fails."
   (handler-case
       (with-raw-mode
-        ;; Send OSC 11 query: ESC ] 11 ; ? BEL
-        (format t "~C]11;?~C" +esc+ (code-char 7))
+        ;; Send OSC 11 query: ESC ] 11 ; ? ST (ST = ESC \)
+        ;; Use ST terminator for broader compatibility (Ghostty, etc.)
+        (format t "~C]11;?~C\\" +esc+ +esc+)
         (force-output)
         ;; Give terminal time to respond
-        (sleep 0.05)
+        (sleep 0.1)
         ;; Check if response available
         (unless (char-available-p)
           (return-from query-terminal-background nil))
@@ -446,14 +449,20 @@
             (return-from query-terminal-background nil))
           ;; Skip "11;"
           (dotimes (i 3) (read-char-raw))
-          ;; Read until we find "rgb:" or similar
-          (let ((buf (make-array 64 :element-type 'character :fill-pointer 0)))
+          ;; Read until we find terminator (ESC \ or BEL)
+          (let ((buf (make-array 64 :element-type 'character :fill-pointer 0))
+                (last-char nil))
             (loop for ch = (read-char-raw)
                   while (and ch
                              (not (char= ch +esc+))
                              (not (char= ch (code-char 7)))
                              (< (length buf) 64))
-                  do (vector-push ch buf))
+                  do (vector-push ch buf)
+                  finally (setf last-char ch))
+            ;; If terminated by ESC, consume the trailing '\' (ST = ESC \)
+            (when (and last-char (char= last-char +esc+)
+                       (char-available-p))
+              (read-char-raw))
             ;; Parse rgb:RRRR/GGGG/BBBB format
             (let ((str (coerce buf 'string)))
               (when (and (>= (length str) 4)
@@ -466,6 +475,11 @@
                                 (parse-integer (second parts) :radix 16)
                                 (parse-integer (third parts) :radix 16))
                       (error () nil)))))))))
+    (error () nil))
+  ;; Drain any leftover response bytes to prevent leaking into prompt
+  (handler-case
+      (with-raw-mode
+        (loop while (char-available-p) do (read-char-raw)))
     (error () nil)))
 
 (defun compute-luminance (r g b)

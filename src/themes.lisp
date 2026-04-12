@@ -157,7 +157,7 @@
 ;;; Dark Mode Detection
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(defvar *terminal-dark-mode-override* nil
+(defvar *terminal-dark-mode-override* :auto
   "User override for terminal dark mode detection.
    Set to T for dark, NIL for light, or :auto for auto-detection.")
 
@@ -180,23 +180,19 @@
           (let ((bg (ignore-errors (parse-integer (second parts)))))
             (when bg
               (return-from detect-terminal-dark-mode (< bg 8))))))))
-  ;; Check for known dark-default terminals
-  (let ((term-program (uiop:getenv "TERM_PROGRAM")))
-    (when (and term-program (plusp (length term-program)))
-      (when (member term-program '("iTerm.app" "Hyper" "Alacritty" "kitty" "WezTerm")
-                    :test #'string-equal)
-        (return-from detect-terminal-dark-mode t))))
-  ;; Try to query terminal directly (works in xterm, gnome-terminal, etc.)
-  (let ((queried (query-terminal-background)))
-    (when queried
-      (return-from detect-terminal-dark-mode (eq queried :dark))))
+  ;; Try OSC 11 query via raw mode (enter/exit raw mode briefly)
+  (handler-case
+      (multiple-value-bind (r g b) (query-terminal-background)
+        (when (and r g b)
+          (let ((luminance (compute-luminance r g b)))
+            (return-from detect-terminal-dark-mode (< luminance 0.5)))))
+    (error () nil))
   ;; Check GNOME/GTK dark mode preference
   (let ((gtk-theme (uiop:getenv "GTK_THEME")))
     (when (and gtk-theme (search "dark" gtk-theme :test #'char-equal))
       (return-from detect-terminal-dark-mode t)))
-  ;; Default to light mode when we can't detect
-  ;; (safer since dark text on white is more common than expected)
-  nil)
+  ;; Default to dark mode — most terminal users have dark backgrounds
+  t)
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Theme Application
@@ -293,10 +289,15 @@
       (apply-terminal-theme *default-light-terminal-theme*)))
 
 (defun auto-select-browser-theme (&optional dark-p)
-  "Auto-select browser theme. If DARK-P is provided, use that preference."
-  (let ((dark (if (null dark-p)
-                  (detect-terminal-dark-mode)  ; Fallback to terminal detection
-                  dark-p)))
+  "Auto-select browser theme. DARK-P is T for dark, NIL for light,
+   or :unknown if not provided (uses current terminal theme as fallback)."
+  (let ((dark (cond
+                ((eq dark-p :unknown)
+                 ;; Use current terminal theme's dark-p instead of re-querying
+                 (if *current-terminal-theme*
+                     (terminal-theme-dark-p *current-terminal-theme*)
+                     t))
+                (t dark-p))))
     (if dark
         (apply-browser-theme *default-dark-browser-theme*)
         (apply-browser-theme *default-light-browser-theme*))))

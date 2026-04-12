@@ -275,9 +275,10 @@
 
           ;; Client reports dark mode preference
           ((string= type "dark-mode-preference")
-           (let ((dark-p (gethash "dark" json)))
+           (multiple-value-bind (dark-p present-p) (gethash "dark" json)
              ;; Auto-select browser theme based on client preference
-             (auto-select-browser-theme dark-p)))
+             ;; Pass :unknown if field missing, so we don't query the terminal
+             (auto-select-browser-theme (if present-p dark-p :unknown))))
 
           ;; Request current theme
           ((string= type "get-theme")

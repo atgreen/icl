@@ -185,8 +185,10 @@
 
 (defun safe-term-width ()
   "Return a non-zero terminal width for wrapping calculations."
-  (let ((w (or (get-terminal-size) 80)))
-    (if (and (integerp w) (> w 0)) w 80)))
+  (if *browser-terminal-active*
+      500  ; Browser terminal uses 500 cols for horizontal scrolling
+      (let ((w (or (get-terminal-size) 80)))
+        (if (and (integerp w) (> w 0)) w 80))))
 
 (defun calculate-cursor-visual-position (prompt-len col term-width)
   "Calculate the visual row offset and column for cursor at logical COL.
@@ -803,8 +805,21 @@
 ;;; Key Handling
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
+(defun mutating-key-p (key)
+  "Return T if KEY will mutate the buffer contents."
+  (or (characterp key)
+      (member key '(:enter :shift-enter :backspace :delete :ctrl-d
+                    :kill-line :clear-line :transpose :open-line :tab))
+      (and (consp key) (eql (car key) :paste))
+      (and (consp key) (eql (first key) :alt)
+           (member (rest key) '(#\q #\d) :test #'char-equal))
+      (and (consp key) (eql (first key) :alt) (eql (rest key) #\Rubout))))
+
 (defun handle-key (buf key &optional (session *current-session*))
   "Handle KEY input, updating BUF for SESSION. Returns :done, :cancel, :continue, or :redraw."
+  ;; Push undo snapshot before mutating operations
+  (when (mutating-key-p key)
+    (buffer-push-undo buf))
   (cond
     ;; EOF
     ((eql key :eof)
@@ -814,10 +829,18 @@
     ;; Interrupt
     ((eql key :interrupt)
      :cancel)
-    ;; Suspend (Ctrl-Z)
+    ;; Suspend (Ctrl-\)
     ((eql key :suspend)
      (suspend-process)
      :redraw)
+    ;; Undo (Ctrl-Z)
+    ((eql key :undo)
+     (when (buffer-undo buf)
+       :redraw))
+    ;; Redo (Ctrl-Y)
+    ((eql key :redo)
+     (when (buffer-redo buf)
+       :redraw))
     ;; Enter - check if form is complete
     ;; In paredit mode, also require cursor at end (since forms are always balanced)
     ((eql key :enter)
@@ -1034,6 +1057,8 @@
         (return-from run-editor :not-a-tty))
       (unwind-protect
            (progn
+             ;; Drain any stale input (e.g. late OSC 11 responses)
+             (loop while (char-available-p) do (read-char-raw))
              ;; Initial render
              (format t "~A" prompt)
              (force-output)

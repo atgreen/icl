@@ -16,7 +16,9 @@
   (row 0 :type fixnum)              ; Current line (0-indexed)
   (col 0 :type fixnum)              ; Current column (0-indexed)
   (prompt "" :type string)          ; Primary prompt
-  (continuation-prompt "" :type string)) ; Continuation line prompt
+  (continuation-prompt "" :type string) ; Continuation line prompt
+  (undo-stack nil :type list)       ; List of (lines row col) snapshots
+  (redo-stack nil :type list))      ; Redo snapshots
 
 (defun make-edit-buffer (&key (prompt "") (continuation-prompt ""))
   "Create a new edit buffer with a single empty line."
@@ -26,6 +28,56 @@
    :col 0
    :prompt prompt
    :continuation-prompt continuation-prompt))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Undo/Redo
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun %copy-lines (lines)
+  "Deep-copy a lines vector."
+  (let ((copy (make-array (length lines) :adjustable t :fill-pointer (length lines))))
+    (dotimes (i (length lines))
+      (setf (aref copy i) (copy-seq (aref lines i))))
+    copy))
+
+(defun buffer-push-undo (buf)
+  "Push current state onto the undo stack. Call BEFORE mutating."
+  (push (list (%copy-lines (edit-buffer-lines buf))
+              (edit-buffer-row buf)
+              (edit-buffer-col buf))
+        (edit-buffer-undo-stack buf))
+  ;; Limit stack depth
+  (when (> (length (edit-buffer-undo-stack buf)) 100)
+    (setf (edit-buffer-undo-stack buf)
+          (subseq (edit-buffer-undo-stack buf) 0 100)))
+  ;; New edit clears redo
+  (setf (edit-buffer-redo-stack buf) nil))
+
+(defun buffer-undo (buf)
+  "Undo the last edit. Returns T if performed."
+  (when (edit-buffer-undo-stack buf)
+    (push (list (%copy-lines (edit-buffer-lines buf))
+                (edit-buffer-row buf)
+                (edit-buffer-col buf))
+          (edit-buffer-redo-stack buf))
+    (destructuring-bind (lines row col) (pop (edit-buffer-undo-stack buf))
+      (setf (edit-buffer-lines buf) (%copy-lines lines)
+            (edit-buffer-row buf) row
+            (edit-buffer-col buf) col))
+    t))
+
+(defun buffer-redo (buf)
+  "Redo the last undone edit. Returns T if performed."
+  (when (edit-buffer-redo-stack buf)
+    (push (list (%copy-lines (edit-buffer-lines buf))
+                (edit-buffer-row buf)
+                (edit-buffer-col buf))
+          (edit-buffer-undo-stack buf))
+    (destructuring-bind (lines row col) (pop (edit-buffer-redo-stack buf))
+      (setf (edit-buffer-lines buf) (%copy-lines lines)
+            (edit-buffer-row buf) row
+            (edit-buffer-col buf) col))
+    t))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Buffer Accessors
