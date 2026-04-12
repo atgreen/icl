@@ -90,10 +90,23 @@ jobs:
           # Clean up indentation from heredoc
           sed -i 's/^          //' "${REPODATA}/repomd.xml"
 
+      - name: Sign repomd.xml and export public key
+        if: ${{ secrets.RPM_GPG_PRIVATE_KEY != '' }}
+        env:
+          RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
+        run: |
+          echo "${RPM_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
+          gpg --batch --detach-sign --armor /tmp/rpms/repodata/repomd.xml
+          gpg --batch --export --armor > /tmp/rpms/RPM-GPG-KEY-icl
+
       - name: Publish repodata to docs/
         run: |
           mkdir -p docs/rpm-repo/repodata
           cp /tmp/rpms/repodata/* docs/rpm-repo/repodata/
+          # Publish public key if present
+          if [ -f /tmp/rpms/RPM-GPG-KEY-icl ]; then
+            cp /tmp/rpms/RPM-GPG-KEY-icl docs/rpm-repo/
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

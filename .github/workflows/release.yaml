@@ -80,6 +80,24 @@ jobs:
           cd ~/rpmbuild/SPECS
           rpmbuild -ba icl.spec
 
+      - name: Sign RPMs
+        if: ${{ secrets.RPM_GPG_PRIVATE_KEY != '' }}
+        env:
+          RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
+        run: |
+          echo "${RPM_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
+          GPG_NAME=$(gpg --list-secret-keys --with-colons | awk -F: '/^uid/{print $10; exit}')
+          cat > ~/.rpmmacros <<EOF
+          %_signature gpg
+          %_gpg_name ${GPG_NAME}
+          %__gpg_sign_cmd %{__gpg} gpg --batch --pinentry-mode loopback --no-armor %{?_gpg_digest_algo:--digest-algo %{_gpg_digest_algo}} -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
+          EOF
+          sed -i 's/^          //' ~/.rpmmacros
+          rpmsign --addsign ~/rpmbuild/RPMS/x86_64/*.rpm
+          rpmsign --addsign ~/rpmbuild/SRPMS/*.src.rpm || true
+          echo "Verifying signatures:"
+          rpm --checksig ~/rpmbuild/RPMS/x86_64/*.rpm
+
       - name: Copy RPM and SRPM to workspace
         run: |
           cp ~/rpmbuild/RPMS/x86_64/*.rpm ${GITHUB_WORKSPACE}/ || true
