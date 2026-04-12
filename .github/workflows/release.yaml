@@ -87,12 +87,9 @@ jobs:
         run: |
           echo "${RPM_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
           GPG_NAME=$(gpg --list-secret-keys --with-colons | awk -F: '/^uid/{print $10; exit}')
-          cat > ~/.rpmmacros <<EOF
-          %_signature gpg
-          %_gpg_name ${GPG_NAME}
-          %__gpg_sign_cmd %{__gpg} gpg --batch --pinentry-mode loopback --no-armor %{?_gpg_digest_algo:--digest-algo %{_gpg_digest_algo}} -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
-          EOF
-          sed -i 's/^          //' ~/.rpmmacros
+          printf '%%_signature gpg\n' > ~/.rpmmacros
+          printf '%%_gpg_name %s\n' "${GPG_NAME}" >> ~/.rpmmacros
+          printf '%%__gpg_sign_cmd %%{__gpg} gpg --batch --pinentry-mode loopback --no-armor %%{?_gpg_digest_algo:--digest-algo %%{_gpg_digest_algo}} -u "%%{_gpg_name}" -sbo %%{__signature_filename} %%{__plaintext_filename}\n' >> ~/.rpmmacros
           rpmsign --addsign ~/rpmbuild/RPMS/x86_64/*.rpm
           rpmsign --addsign ~/rpmbuild/SRPMS/*.src.rpm || true
           echo "Verifying signatures:"
