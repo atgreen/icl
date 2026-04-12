@@ -136,5 +136,5 @@ icl setup
 - [ ] Add macOS packages
 - [ ] Add Windows packages
 - [ ] Automate homebrew formula updates
-- [ ] Sign RPM packages with GPG
-- [ ] Sign DEB packages with GPG
+- [x] Sign RPM packages with GPG
+- [x] Sign DEB packages with GPG

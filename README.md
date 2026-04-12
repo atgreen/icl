@@ -78,6 +78,18 @@ sudo dnf install icl
 
 The RPM packages are GPG-signed. The signing key is imported automatically by dnf on first install.
 
+### Debian / Ubuntu
+
+Add the ICL repository and install:
+```sh
+curl -fsSL https://atgreen.github.io/icl/deb-repo/icl-archive-keyring.gpg | sudo tee /usr/share/keyrings/icl-archive-keyring.asc > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/icl-archive-keyring.asc] https://atgreen.github.io/icl/deb-repo stable main" | sudo tee /etc/apt/sources.list.d/icl.list
+sudo apt update
+sudo apt install icl
+```
+
+The DEB packages are GPG-signed. The signing key is imported in the first step above.
+
 ### Pre-built Binaries
 
 Download from [GitHub Releases](https://github.com/atgreen/icl/releases):

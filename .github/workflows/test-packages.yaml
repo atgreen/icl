@@ -79,6 +79,9 @@ jobs:
       - name: Setup rpmbuild directory
         run: rpmdev-setuptree
 
+      - name: Remove .git to prevent dirty version detection
+        run: rm -rf .git
+
       - name: Create source tarball
         run: |
           VERSION=$(grep ':version' icl.asd | head -1 | sed 's/.*:version[[:space:]]*"\([^"]*\)".*/\1/')
@@ -103,6 +106,16 @@ jobs:
           ls -lh ~/rpmbuild/RPMS/x86_64/ || true
           echo "Source RPMs:"
           ls -lh ~/rpmbuild/SRPMS/ || true
+
+      - name: Verify version is not dirty
+        run: |
+          ICL_BIN=$(find ~/rpmbuild/BUILD -name icl -type f -executable | head -1)
+          VERSION=$("$ICL_BIN" --version 2>&1 || true)
+          echo "icl version: $VERSION"
+          if echo "$VERSION" | grep -qi dirty; then
+            echo "::error::Version string contains 'dirty': $VERSION"
+            exit 1
+          fi
 
       - name: Test installation
         run: |
@@ -132,6 +145,9 @@ jobs:
         with:
           name: licenses
 
+      - name: Remove .git to prevent dirty version detection
+        run: rm -rf .git
+
       - name: Install build dependencies
         run: |
           apt-get update
@@ -141,6 +157,15 @@ jobs:
         run: |
           ln -s releng/debian debian
           dpkg-buildpackage -uc -us
+
+      - name: Verify version is not dirty
+        run: |
+          VERSION=$(./icl --version 2>&1 || true)
+          echo "icl version: $VERSION"
+          if echo "$VERSION" | grep -qi dirty; then
+            echo "::error::Version string contains 'dirty': $VERSION"
+            exit 1
+          fi
 
       - name: List built packages
         run: |
@@ -178,6 +203,9 @@ jobs:
         with:
           name: licenses
 
+      - name: Remove .git to prevent dirty version detection
+        run: rm -rf .git
+
       - name: Install SBCL and build tools
         shell: powershell
         run: |
@@ -188,6 +216,15 @@ jobs:
 
       - name: Build ICL
         run: make
+
+      - name: Verify version is not dirty
+        run: |
+          VERSION=$(./icl.exe --version 2>&1 || true)
+          echo "icl version: $VERSION"
+          if echo "$VERSION" | grep -qi dirty; then
+            echo "::error::Version string contains 'dirty': $VERSION"
+            exit 1
+          fi
 
       - name: Get version
         id: version
