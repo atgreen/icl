@@ -31,7 +31,7 @@ cl-ppcre, ghcr.io/ocicl/cl-ppcre@sha256:bf073924cf4fd5957a4fd961a95d446ed0e53fa3
 cl-ppcre-unicode, ghcr.io/ocicl/cl-ppcre@sha256:bf073924cf4fd5957a4fd961a95d446ed0e53fa32a5002cbd2d52182874f45e5, cl-ppcre-20250606-a2ea581/cl-ppcre-unicode.asd
 cl-reexport, ghcr.io/ocicl/cl-reexport@sha256:c795feb3e3727a19e61797187eb31bac1e855b1332335d26752200a28e9b9da8, cl-reexport-20240503-03ad7a0/cl-reexport.asd
 cl-reexport-test, ghcr.io/ocicl/cl-reexport@sha256:c795feb3e3727a19e61797187eb31bac1e855b1332335d26752200a28e9b9da8, cl-reexport-20240503-03ad7a0/cl-reexport-test.asd
-cl-selfupdate, ghcr.io/ocicl/cl-selfupdate@sha256:0b5b93f9721fd681dfc98825e79578900ec1f619b7235543e02f9ad882b38022, cl-selfupdate-20260401-e4f32f0/cl-selfupdate.asd
+cl-selfupdate, ghcr.io/ocicl/cl-selfupdate@sha256:d4c4cfb0aecde5f811e6614cc16b3c80587416f3a6e07858d85c891eee7c4f0e, cl-selfupdate-20260412-ee7dcdc/cl-selfupdate.asd
 cl-semver, ghcr.io/ocicl/cl-semver@sha256:519cd56427e124fddf732c284f391dfd22da99e1b01d1f2512cbf2e3465bad1f, cl-semver-20240503-b125d2c/cl-semver.asd
 cl-semver-test, ghcr.io/ocicl/cl-semver@sha256:519cd56427e124fddf732c284f391dfd22da99e1b01d1f2512cbf2e3465bad1f, cl-semver-20240503-b125d2c/cl-semver-test.asd
 cl-utilities, ghcr.io/ocicl/cl-utilities@sha256:e5e0676a4e0627332a0fe64d56ed4f1890f0466d715a11e8d95561b4c2baa38f, cl-utilities-20240503-6b4de39/cl-utilities.asd
