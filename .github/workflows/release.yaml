@@ -81,9 +81,9 @@ jobs:
           rpmbuild -ba icl.spec
 
       - name: Sign RPMs
-        if: ${{ secrets.RPM_GPG_PRIVATE_KEY != '' }}
         env:
           RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
+        if: ${{ env.RPM_GPG_PRIVATE_KEY != '' }}
         run: |
           echo "${RPM_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
           GPG_NAME=$(gpg --list-secret-keys --with-colons | awk -F: '/^uid/{print $10; exit}')
