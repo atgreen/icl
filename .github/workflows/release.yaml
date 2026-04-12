@@ -57,7 +57,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          dnf install -y rpm-build rpmdevtools sbcl libfixposix-devel gcc make
+          dnf install -y rpm-build rpmdevtools rpm-sign sbcl libfixposix-devel gcc make
 
       - name: Setup rpmbuild directory
         run: |
