@@ -862,6 +862,7 @@ jobs:
           Label: icl
           Suite: stable
           Codename: stable
+          Date: $(date -Ru)
           Architectures: amd64
           Components: main
           Description: ICL APT repository
