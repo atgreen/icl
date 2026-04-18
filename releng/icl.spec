@@ -67,6 +67,9 @@ install -m 0644 man/icl.1 %{buildroot}%{_mandir}/man1/
 # Install combined open source notices (web + Lisp licenses)
 install -D -m 0644 assets/OPEN-SOURCE-NOTICES.txt %{buildroot}%{_datadir}/licenses/%{name}/OPEN-SOURCE-NOTICES.txt
 
+# Install SBOM
+install -D -m 0644 icl-sbom.spdx.json %{buildroot}%{_datadir}/sbom/icl-%{version}.spdx.json
+
 %post
 /sbin/ldconfig
 
@@ -84,6 +87,7 @@ install -D -m 0644 assets/OPEN-SOURCE-NOTICES.txt %{buildroot}%{_datadir}/licens
 %{_mandir}/man1/icl.1*
 %{_libdir}/icl
 %{_bindir}/icl
+%{_datadir}/sbom/icl-%{version}.spdx.json
 
 %changelog
 * Thu Dec 26 2025 Anthony Green <green@moxielogic.com> - 0.1.0-3
