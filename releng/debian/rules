@@ -32,6 +32,9 @@ override_dh_auto_install:
 	# Man page
 	mkdir -p debian/icl/usr/share/man/man1
 	install -m 0644 man/icl.1 debian/icl/usr/share/man/man1/
+	# SBOM
+	mkdir -p debian/icl/usr/share/sbom
+	install -m 0644 icl-sbom.spdx.json debian/icl/usr/share/sbom/icl-$(shell dpkg-parsechangelog -S Version | sed 's/-.*//' ).spdx.json
 
 override_dh_auto_test:
 	# Skip tests - fiveam is not vendored in the source tarball
