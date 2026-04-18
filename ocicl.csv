@@ -101,10 +101,10 @@ net.didierverna.asdf-flv, ghcr.io/ocicl/net.didierverna.asdf-flv@sha256:e5cd087d
 osicat, ghcr.io/ocicl/osicat@sha256:48af110420f02e99c37370e48bee10d7c7aada7e563483e1f47e3bc1173545f9, osicat-20251007-68732bd/osicat.asd
 parse-declarations-1.0, ghcr.io/ocicl/parse-declarations-1.0@sha256:9305fa9624205b16fd1fc51cb1cc4282a18e50eee9ac75b66a14f6f2c5df9518, parse-declarations-20240503-549aebb/parse-declarations-1.0.asd
 parse-number, ghcr.io/ocicl/parse-number@sha256:11f3f9f512871e1f96cea6b8260aa3610e34e8fd7272bbcdb210fd3c5dd8025c, parse-number-20240503-cb9e487/parse-number.asd
-plump, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump.asd
-plump-dom, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump-dom.asd
-plump-lexer, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump-lexer.asd
-plump-parser, ghcr.io/ocicl/plump@sha256:2bc0bdca26de6eb6de7c79cc85f0720be3508b79e943998f9e92cd2f22795c95, plump-20260218-251fbe0/plump-parser.asd
+plump, ghcr.io/ocicl/plump-parser@sha256:ec5b30ac56f19035aea27050f62e0d417bb083fffa85387365cdd3778606903a, plump-20260417-45fb7ff/plump.asd
+plump-dom, ghcr.io/ocicl/plump-parser@sha256:ec5b30ac56f19035aea27050f62e0d417bb083fffa85387365cdd3778606903a, plump-20260417-45fb7ff/plump-dom.asd
+plump-lexer, ghcr.io/ocicl/plump-parser@sha256:ec5b30ac56f19035aea27050f62e0d417bb083fffa85387365cdd3778606903a, plump-20260417-45fb7ff/plump-lexer.asd
+plump-parser, ghcr.io/ocicl/plump-parser@sha256:ec5b30ac56f19035aea27050f62e0d417bb083fffa85387365cdd3778606903a, plump-20260417-45fb7ff/plump-parser.asd
 precise-time, ghcr.io/ocicl/precise-time@sha256:0fa8039008f0635013d25c14d50c5743c64d6a1ef64bd0e62d1785a4b9d3a873, precise-time-20260218-93ea6ae/precise-time.asd
 proc-parse, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse.asd
 proc-parse-test, ghcr.io/ocicl/proc-parse@sha256:0880f9acb35eb9efbe1f77a981e36e84e8f29a22b14f680c7686eb381fa87bd6, proc-parse-20240503-3afe2b7/proc-parse-test.asd
