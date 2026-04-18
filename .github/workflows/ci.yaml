@@ -25,12 +25,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y sbcl curl jq
-          OCICL_URL=$(curl -sL -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/ocicl/ocicl/releases/latest | \
-            jq -r '.assets[] | select(.name | endswith("_amd64.deb")) | .browser_download_url')
-          curl -sL "$OCICL_URL" -o /tmp/ocicl.deb
-          sudo dpkg -i /tmp/ocicl.deb
+          sudo apt-get install -y sbcl
+          gh release download --repo ocicl/ocicl --pattern '*_amd64.deb' --dir /tmp
+          sudo dpkg -i /tmp/ocicl_*_amd64.deb
           ocicl setup > ~/.sbclrc
 
       - name: Fetch Lisp dependencies
