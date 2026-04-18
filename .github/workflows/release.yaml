@@ -790,6 +790,10 @@ jobs:
 
       - name: Publish repodata to docs/
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin master
+
           mkdir -p docs/rpm-repo/repodata
           cp /tmp/rpms/repodata/* docs/rpm-repo/repodata/
           # Publish public key if present
@@ -797,9 +801,6 @@ jobs:
             cp /tmp/rpms/RPM-GPG-KEY-icl docs/rpm-repo/
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin master
           git add docs/rpm-repo/
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Update RPM repo for ${TAG}"
@@ -906,6 +907,10 @@ jobs:
 
       - name: Publish APT repo to docs/
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin master
+
           # Clean and rebuild
           rm -rf docs/deb-repo
           mkdir -p docs/deb-repo
@@ -916,9 +921,6 @@ jobs:
             cp /tmp/debs/icl-archive-keyring.gpg docs/deb-repo/
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin master
           git add docs/deb-repo/
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Update DEB repo for ${TAG}"
