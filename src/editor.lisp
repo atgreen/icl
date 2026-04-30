@@ -711,8 +711,8 @@
           (read-from-string trimmed)
           t)
       (end-of-file () nil)
-      ;; Reader errors (e.g. unknown package) - only complete if parens are balanced
-      (reader-error ()
+      ;; Reader errors, package-lock violations, etc. - only complete if parens are balanced
+      (error ()
         (zerop (count-unmatched-delimiters trimmed))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────

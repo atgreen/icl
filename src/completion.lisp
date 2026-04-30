@@ -118,8 +118,9 @@
    Returns NIL if not in a string. Handles escaped quotes."
   (let ((in-string nil)
         (string-start nil)
-        (is-pathname-literal nil))
-    (loop for i from 0 below col
+        (is-pathname-literal nil)
+        (i 0))
+    (loop while (< i col)
           for char = (char line i)
           do (cond
                ;; Escaped character - skip next
@@ -135,7 +136,8 @@
                       (when (and (>= i 2)
                                  (char= (char line (- i 2)) #\#)
                                  (char-equal (char line (- i 1)) #\p))
-                        (setf is-pathname-literal t)))))))
+                        (setf is-pathname-literal t))))))
+             (incf i))
     (when in-string
       (values string-start is-pathname-literal))))
 
@@ -201,8 +203,9 @@
    Checks if we're inside a function known to take pathname arguments."
   (let ((func (find-enclosing-function line col)))
     (when func
-      (let ((func-sym (intern (string-upcase func) :cl)))
-        (assoc func-sym *pathname-functions*)))))
+      (let ((func-sym (find-symbol (string-upcase func) :cl)))
+        (when func-sym
+          (assoc func-sym *pathname-functions*))))))
 
 (defun extract-completion-prefix (line col)
   "Extract the word to complete from LINE ending at COL.
