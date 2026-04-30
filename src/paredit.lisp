@@ -51,16 +51,17 @@
 
 (defun in-string-p (string pos)
   "Return T if position POS in STRING is inside a string literal."
-  (let ((in-string nil))
-    (loop for i from 0 below (min pos (length string))
+  (let ((in-string nil)
+        (i 0)
+        (limit (min pos (length string))))
+    (loop while (< i limit)
           for char = (char string i)
           do (cond
-               ((and (char= char #\\) (not in-string))
-                nil) ; escape outside string
                ((and (char= char #\\) in-string)
                 (incf i)) ; skip escaped char in string
                ((char= char #\")
-                (setf in-string (not in-string)))))
+                (setf in-string (not in-string))))
+             (incf i))
     in-string))
 
 (defun in-comment-p (string pos)
@@ -83,12 +84,14 @@
   "Count unmatched opening delimiters in STRING.
    Returns (values open-count close-count) for parens only."
   (let ((depth 0)
-        (in-string nil))
-    (loop for i from 0 below (length string)
+        (in-string nil)
+        (i 0)
+        (len (length string)))
+    (loop while (< i len)
           for char = (char string i)
           do (cond
                ;; Handle escape in string
-               ((and in-string (char= char #\\) (< (1+ i) (length string)))
+               ((and in-string (char= char #\\) (< (1+ i) len))
                 (incf i))
                ;; Toggle string state
                ((char= char #\")
@@ -99,7 +102,8 @@
                ((char= char #\()
                 (incf depth))
                ((char= char #\))
-                (decf depth))))
+                (decf depth)))
+             (incf i))
     depth))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────

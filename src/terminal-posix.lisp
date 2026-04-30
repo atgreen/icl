@@ -349,11 +349,56 @@
     ;; Handle based on terminator
     (cond
       ;; Kitty keyboard protocol: ESC[key;modifieru
-      ;; key=13 is CR (Enter), modifier=2 is Shift
+      ;; Modifier value is 1 + modifier_flags (bit0=shift, bit1=alt, bit2=ctrl)
       ((char= c #\u)
-       (if (and (= num1 13) num2 (= (logand num2 1) 1))  ; Shift bit set
-           :shift-enter
-           :unknown))
+       (let* ((mod-flags (if num2 (1- num2) 0))
+              (shift-p (logtest 1 mod-flags))
+              (alt-p   (logtest 2 mod-flags))
+              (ctrl-p  (logtest 4 mod-flags)))
+         (cond
+           ;; Enter / Shift+Enter
+           ((= num1 13)
+            (if shift-p :shift-enter :enter))
+           ;; Tab
+           ((= num1 9) :tab)
+           ;; Escape
+           ((= num1 27) :escape)
+           ;; Backspace
+           ((or (= num1 127) (= num1 8)) :backspace)
+           ;; Ctrl + printable letter
+           ((and ctrl-p (<= 97 num1 122))  ; a-z
+            (let ((ctrl-char (code-char (- num1 96))))
+              ;; Re-interpret as the control character read-key normally sees
+              (case (char-code ctrl-char)
+                (1  :home)        ; Ctrl-A
+                (2  :left)        ; Ctrl-B
+                (3  :interrupt)   ; Ctrl-C
+                (4  :ctrl-d)      ; Ctrl-D
+                (5  :end)         ; Ctrl-E
+                (6  :right)       ; Ctrl-F
+                (7  :cancel-search) ; Ctrl-G
+                (11 :kill-line)   ; Ctrl-K
+                (12 :clear-screen) ; Ctrl-L
+                (14 :ctrl-n)      ; Ctrl-N
+                (15 :open-line)   ; Ctrl-O
+                (16 :ctrl-p)      ; Ctrl-P
+                (18 :reverse-search) ; Ctrl-R
+                (20 :transpose)   ; Ctrl-T
+                (21 :clear-line)  ; Ctrl-U
+                (25 :redo)        ; Ctrl-Y
+                (26 :undo)        ; Ctrl-Z
+                (28 :suspend)     ; Ctrl-\
+                (otherwise :unknown))))
+           ;; Alt + printable character
+           ((and alt-p (<= 32 num1 126))
+            (cons :alt (code-char num1)))
+           ;; Printable ASCII character (with or without shift)
+           ((<= 32 num1 126)
+            (code-char num1))
+           ;; Other Unicode character
+           ((> num1 126)
+            (code-char num1))
+           (t :unknown))))
       ;; Modified arrow keys: ESC[1;2A = Shift+Up, etc.
       ((and (= num1 1) num2)
        (cond
