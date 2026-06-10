@@ -60,7 +60,7 @@
    :string
    :long-name "lisp"
    :key :lisp
-   :description "Lisp implementation (roswell, sbcl, ccl, ecl, clisp, abcl, clasp)"))
+   :description "Lisp implementation (roswell, sbcl, ccl, ecl, clisp, abcl, clasp). Pass arguments after -- (e.g. icl --lisp sbcl -- --dynamic-space-size 8192)"))
 
 (defun make-connect-option ()
   "Create --connect option to connect to an existing Slynk server."
@@ -221,7 +221,8 @@
         (mcp-server (clingon:getopt cmd :mcp-server))
         (browser-mode (clingon:getopt cmd :browser))
         (unsafe-viz (clingon:getopt cmd :unsafe-visualizations))
-        (no-open (clingon:getopt cmd :no-open)))
+        (no-open (clingon:getopt cmd :no-open))
+        (inferior-args (clingon:command-arguments cmd)))
     ;; Disable image caching if requested
     (when no-cache
       (setf *use-image-cache* nil))
@@ -260,7 +261,7 @@
        (let ((impl (intern (string-upcase lisp-impl) :keyword)))
          (setf *default-lisp* impl)
          (handler-case
-             (start-inferior-lisp :lisp impl)
+             (start-inferior-lisp :lisp impl :extra-args inferior-args)
            (error (e)
              (format *error-output* "~&Failed to start ~A: ~A~%" lisp-impl e)
              (uiop:quit 1)))))
@@ -273,7 +274,7 @@
            (impl
             (setf *default-lisp* impl)
             (handler-case
-                (start-inferior-lisp :lisp impl)
+                (start-inferior-lisp :lisp impl :extra-args inferior-args)
               (error (e)
                 (format *error-output* "~&Failed to start ~A: ~A~%" impl e)
                 (uiop:quit 1))))

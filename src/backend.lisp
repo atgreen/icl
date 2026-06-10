@@ -372,10 +372,12 @@
 (defvar *use-image-cache* t
   "If T, use cached SBCL images for faster startup. Set to NIL to disable.")
 
-(defun start-inferior-lisp (&key (lisp *default-lisp*) (port nil))
+(defun start-inferior-lisp (&key (lisp *default-lisp*) (port nil) (extra-args nil))
   "Start an inferior Lisp process with Slynk.
    If PORT is NIL, automatically finds a free port.
-   If PORT is specified and in use, errors."
+   If PORT is specified and in use, errors.
+   EXTRA-ARGS, if non-nil, is a list of strings passed through to the
+   inferior Lisp's command line (e.g. from `icl -- --dynamic-space-size 8192`)."
   ;; Find a free port if not specified
   (let ((actual-port (or port (find-free-port))))
     (when (and port (port-in-use-p port))
@@ -390,23 +392,28 @@
       (let ((cached-image (ensure-cached-sbcl-image)))
         (when cached-image
           (return-from start-inferior-lisp
-            (start-inferior-sbcl-with-cache actual-port cached-image)))))
+            (start-inferior-sbcl-with-cache actual-port cached-image extra-args)))))
 
     ;; Fallback: start normally (for non-SBCL or when caching fails)
-    (start-inferior-lisp-uncached lisp actual-port)))
+    (start-inferior-lisp-uncached lisp actual-port extra-args)))
 
-(defun start-inferior-sbcl-with-cache (port cached-image)
-  "Start SBCL using the cached Slynk image for fast startup."
+(defun start-inferior-sbcl-with-cache (port cached-image &optional extra-args)
+  "Start SBCL using the cached Slynk image for fast startup.
+   EXTRA-ARGS are passed to SBCL before --core so runtime options like
+   --dynamic-space-size take effect."
   (when *verbose*
-    (format t "~&; Using cached image: ~A~%" cached-image))
+    (format t "~&; Using cached image: ~A~%" cached-image)
+    (when extra-args
+      (format t "~&; Extra SBCL args: ~{~A~^ ~}~%" extra-args)))
 
   ;; Start SBCL with the cached core
   #+sbcl
   (setf *inferior-process*
         (sb-ext:run-program "sbcl"
-                            (list "--noinform"
-                                  "--core" (namestring cached-image)
-                                  (princ-to-string port))
+                            (append (list "--noinform")
+                                    extra-args
+                                    (list "--core" (namestring cached-image)
+                                          (princ-to-string port)))
                             :search t
                             :wait nil
                             :input :stream
@@ -458,14 +465,18 @@
         (stop-inferior-lisp)
         (error "Failed to connect to Slynk after ~D seconds" (/ max-ticks 10))))))
 
-(defun start-inferior-lisp-uncached (lisp port)
-  "Start an inferior Lisp process without using cached images."
+(defun start-inferior-lisp-uncached (lisp port &optional extra-args)
+  "Start an inferior Lisp process without using cached images.
+   EXTRA-ARGS, if non-nil, are spliced in after the implementation's
+   default args and before the eval flag."
   (let ((program (find-lisp-program lisp)))
     (unless program
       (error "Unknown Lisp implementation: ~A" lisp))
     ;; Verbose: show program
     (when *verbose*
-      (format t "~&; Lisp program: ~A~%" program))
+      (format t "~&; Lisp program: ~A~%" program)
+      (when extra-args
+        (format t "~&; Extra args: ~{~A~^ ~}~%" extra-args)))
     ;; Check if program exists
     (unless (program-exists-p program)
       (error "Cannot find ~A in PATH" program))
@@ -473,6 +484,7 @@
     (let* ((init-code (generate-slynk-init port))
            (eval-arg (get-lisp-eval-arg lisp))
            (args (append (get-lisp-args lisp)
+                         extra-args
                          (list eval-arg init-code))))
       ;; Verbose: show init code
       (when *verbose*
