@@ -70,12 +70,20 @@ These MUST be registered before Quicklisp to take precedence."
          (probe-file (merge-pathnames "setup.lisp" ocicl-dir)))))
 
 (defun roswell-deps-available-p ()
-  "Check if dependencies are available via Roswell/Quicklisp installation."
-  ;; If icl system can be found and its dependencies are available, we're good
+  "Check if dependencies are available via Roswell/Quicklisp installation.
+   Several of ICL's deps are not on Quicklisp/Ultralisp and only ship via
+   the vendored ocicl/ tree, so we probe for those specifically — finding
+   them indicates a working install path."
   (ignore-errors
     (and (asdf:find-system :icl nil)
          (asdf:find-system :clingon nil)
-         (asdf:find-system :termp nil))))
+         (asdf:find-system :termp nil)
+         ;; ocicl-only deps — absent on a bare Roswell+Quicklisp box
+         (asdf:find-system :pure-tls/cl+ssl-compat nil)
+         (asdf:find-system :tuition nil)
+         (asdf:find-system :version-string nil)
+         (asdf:find-system :cl-cancel nil)
+         (asdf:find-system :cl-selfupdate/drakma nil))))
 
 (progn
   (require :asdf)

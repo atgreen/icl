@@ -100,7 +100,17 @@ Download from [GitHub Releases](https://github.com/atgreen/icl/releases):
 | macOS | tarball (arm64, amd64) |
 | Windows | ZIP, EXE installer, MSI installer, Chocolatey |
 
-[Roswell](https://roswell.github.io/) users can also install with `ros install atgreen/icl`.
+[Roswell](https://roswell.github.io/) users can install with:
+
+```sh
+ros install atgreen/icl
+cd ~/.roswell/local-projects/atgreen/icl
+ocicl install
+```
+
+ICL depends on libraries that aren't published to Quicklisp/Ultralisp, so the
+[ocicl](https://github.com/ocicl/ocicl) step is required to fetch them — `ros install` alone
+will not produce a working `icl`.
 
 ### Building from Source
 

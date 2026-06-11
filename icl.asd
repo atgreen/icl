@@ -4,10 +4,14 @@
 ;;;
 ;;; Copyright (C) 2025  Anthony Green <green@moxielogic.com>
 
-;;; Load pure-tls compatibility layer before any cl+ssl-dependent systems
+;;; Load pure-tls compatibility layer before any cl+ssl-dependent systems.
+;;; Guarded with find-system so this .asd parses on Quicklisp-only installs
+;;; (e.g. `ros install atgreen/icl` without `ocicl install`); roswell/icl.ros
+;;; detects the missing dep and prints actionable instructions.
 (eval-when (:load-toplevel :execute)
-  (asdf:load-system :pure-tls/cl+ssl-compat)
-  (asdf:register-immutable-system "cl+ssl"))
+  (when (asdf:find-system :pure-tls/cl+ssl-compat nil)
+    (asdf:load-system :pure-tls/cl+ssl-compat)
+    (asdf:register-immutable-system "cl+ssl")))
 
 (asdf:defsystem "icl"
   :description "Interactive Common Lisp: An enhanced REPL"
