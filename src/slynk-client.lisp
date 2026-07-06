@@ -386,13 +386,13 @@ Respects *viz-package-exclusions* for filtering packages by regex."
    Errors propagate to Slynk's debugger, allowing interactive restart invocation.
    The dispatcher thread receives :debug events and sets *pending-debug-event*.
    This function polls for debug events and shows the TUI."
-  (let* ((eval-code (format nil "(cl:let ((cl:*package* (cl:find-package \"CL-USER\")))
-  (cl:let ((cl-user::vals (cl:multiple-value-list (cl:eval (cl:read-from-string ~S)))))
-    (cl:setf cl:*** cl:**
-              cl:** cl:*
-              cl:* (cl:first cl-user::vals))
-    (cl:force-output)
-    (cl:list :ok cl:nil (cl:mapcar (cl:lambda (cl-user::v) (cl:write-to-string cl-user::v :readably cl:nil :pretty cl:nil)) cl-user::vals))))" string))
+  (let* ((eval-code (format nil "
+  (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
+    (setf *** **
+          ** *
+          * (first vals))
+    (force-output)
+    (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))" string))
          (result-lock (bt:make-lock "debugger-eval"))
          (result-cv (bt:make-condition-variable))
          (result-available nil)
@@ -404,7 +404,9 @@ Respects *viz-package-exclusions* for filtering packages by regex."
     ;; Send eval asynchronously - errors will trigger :debug events
     (with-slynk-connection
       (slynk-client:slime-eval-async
-       `(cl:eval (cl:read-from-string ,eval-code))
+       `(cl:eval
+          (cl:let ((cl:*package* (cl:find-package "CL-USER")))
+            (cl:read-from-string ,eval-code)))
        *slynk-connection*
        (lambda (x)
          (bt:with-lock-held (result-lock)
