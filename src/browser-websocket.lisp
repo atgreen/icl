@@ -79,14 +79,39 @@
   ()
   (:documentation "A connected REPL client."))
 
+(defun websocket-origin-host (origin)
+  "Extract the host from an Origin header value like \"scheme://host:port\".
+   Handles bracketed IPv6 literals (e.g. \"[::1]\"). Returns the host string,
+   or NIL if ORIGIN has no scheme separator."
+  (let ((sep (search "://" origin)))
+    (when sep
+      ;; Authority is everything after \"://\"; an Origin carries no path, but
+      ;; strip one defensively before splitting host from port.
+      (let* ((authority (subseq origin (+ sep 3)))
+             (authority (subseq authority 0 (position #\/ authority))))
+        (if (and (plusp (length authority)) (char= (char authority 0) #\[))
+            ;; IPv6 literal: host is up to and including the closing bracket.
+            ;; The bracket must end the authority or be followed by ":port" —
+            ;; reject trailing garbage like "[::1].evil.com".
+            (let ((close (position #\] authority)))
+              (when (and close
+                         (or (= (1+ close) (length authority))
+                             (char= (char authority (1+ close)) #\:)))
+                (subseq authority 0 (1+ close))))
+            ;; Host is everything up to the port separator.
+            (subseq authority 0 (position #\: authority)))))))
+
 (defun valid-websocket-origin-p (client)
   "Check if the WebSocket connection has a valid origin (localhost only).
-   This prevents cross-site WebSocket hijacking attacks."
+   This prevents cross-site WebSocket hijacking attacks.  The host is matched
+   exactly against the loopback allow-list, so a spoofed origin whose host
+   merely contains a loopback substring (e.g. http://127.0.0.1.evil.com) is
+   rejected (CWE-346)."
   (let ((origin (hunchentoot:header-in :origin (hunchensocket:client-request client))))
     (or (null origin)  ; No origin header (same-origin request)
-        (search "://127.0.0.1" origin)
-        (search "://localhost" origin)
-        (search "://[::1]" origin))))
+        (let ((host (websocket-origin-host origin)))
+          (and host
+               (member host '("127.0.0.1" "localhost" "[::1]") :test #'string=))))))
 
 (defmethod hunchensocket:client-connected ((resource repl-resource) client)
   ;; Validate WebSocket origin - prevent cross-site WebSocket hijacking

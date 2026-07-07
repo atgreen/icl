@@ -52,9 +52,23 @@
   (or *assets-directory*
       (setf *assets-directory* (find-assets-directory))))
 
+(defun safe-asset-filename-p (filename)
+  "True if FILENAME is a safe relative asset path with no directory traversal.
+   Rejects absolute paths and any '..' path component so the filesystem-fallback
+   branch cannot escape the assets directory (CWE-22)."
+  (and (stringp filename)
+       (plusp (length filename))
+       (not (eql (char filename 0) #\/))
+       (not (find #\Nul filename))
+       (loop for part in (uiop:split-string filename :separator "/\\")
+             never (string= part ".."))))
+
 (defun serve-asset (filename)
   "Serve an asset file, returning content and setting content-type.
    First checks embedded assets, then falls back to filesystem."
+  ;; Reject directory-traversal paths before any lookup (CWE-22).
+  (unless (safe-asset-filename-p filename)
+    (return-from serve-asset nil))
   (flet ((set-content-type ()
            (setf (hunchentoot:content-type*)
                  (cond
@@ -94,6 +108,9 @@
 
 (defun serve-speedscope-asset (filename)
   "Serve a speedscope asset file."
+  ;; Reject directory-traversal paths before any lookup (CWE-22).
+  (unless (safe-asset-filename-p filename)
+    (return-from serve-speedscope-asset nil))
   (let ((key (concatenate 'string "speedscope/" filename)))
     (flet ((set-content-type ()
              (setf (hunchentoot:content-type*)
