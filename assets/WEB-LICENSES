@@ -7,9 +7,9 @@ browser interface.
 All components are distributed under the MIT License.
 
 
-dockview-core
--------------
-Version: 5.2.0
+dockview
+--------
+Version: 7.0.2
 Homepage: https://dockview.dev/
 Repository: https://github.com/mathuo/dockview
 
@@ -93,7 +93,7 @@ SOFTWARE.
 
 Vega
 ----
-Version: 6
+Version: 6.2.0
 Homepage: https://vega.github.io/vega/
 Repository: https://github.com/vega/vega
 
@@ -127,7 +127,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Vega-Lite
 ---------
-Version: 6
+Version: 6.4.3
 Homepage: https://vega.github.io/vega-lite/
 Repository: https://github.com/vega/vega-lite
 
@@ -149,7 +149,7 @@ Copyright (c) 2016-2023, University of Washington Interactive Data Lab
 
 Mermaid
 -------
-Version: 11.13.0
+Version: 11.16.0
 Homepage: https://mermaid.js.org/
 Repository: https://github.com/mermaid-js/mermaid
 

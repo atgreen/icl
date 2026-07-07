@@ -10,10 +10,10 @@
 (in-package :icl-version-checker)
 
 (defparameter *tracked-libraries*
-  '(;; Dockview - panel layout system
-    (:name "dockview-core"
-     :current-version "5.2.0"
-     :npm-package "dockview-core"
+  '(;; Dockview - panel layout system (v7 renamed the core package to "dockview")
+    (:name "dockview"
+     :current-version "7.0.2"
+     :npm-package "dockview"
      :notes "Dockable panel layout manager")
 
     ;; xterm.js - terminal emulator (migrated to scoped @xterm/xterm)
@@ -36,7 +36,7 @@
 
     ;; Vega-Lite - high-level Vega grammar
     (:name "vega-lite"
-     :current-version "6.4.2"
+     :current-version "6.4.3"
      :npm-package "vega-lite"
      :notes "Simplified Vega for common chart types")
 
@@ -48,7 +48,7 @@
 
     ;; Mermaid - diagram rendering
     (:name "mermaid"
-     :current-version "11.14.0"
+     :current-version "11.16.0"
      :npm-package "mermaid"
      :notes "Flowcharts, sequence diagrams, etc.")
 

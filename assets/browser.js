@@ -3980,7 +3980,7 @@ class TerminalPanel {
 
 // Create Dockview layout
 const container = document.getElementById('layout-container');
-const dv = window['dockview-core'];
+const dv = window.dockview;
 
 const api = dv.createDockview(container, {
   className: 'icl-dockview-theme',

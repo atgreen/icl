@@ -35,6 +35,15 @@ the fixes previously prepared for 1.23.7.
   when run without a prior `ocicl install`, instead of an obscure
   error.
 
+## Dependencies
+
+- Update dockview from 5.2.0 to 7.0.2.  In v7 upstream renamed the
+  framework-agnostic core package from `dockview-core` to `dockview`,
+  which changes the browser global from `window['dockview-core']` to
+  `window.dockview`; all dockview APIs used by ICL are unchanged.
+- Update mermaid from 11.14.0 to 11.16.0.
+- Update vega-lite from 6.4.2 to 6.4.3.
+
 ## Breaking Changes
 
 None.
