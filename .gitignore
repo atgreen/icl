@@ -8,3 +8,4 @@ slynk.zip
 *.mp4
 RCS
 *.bak
+.gstack/
