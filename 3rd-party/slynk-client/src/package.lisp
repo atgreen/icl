@@ -13,6 +13,7 @@
            #:slime-pending-evals-p
            #:with-slime-connection
            #:*write-string-hook*
+           #:*read-string-hook*
            #:*slynk-client-debug*
            #:*debug-hook*
            #:*debug-activate-hook*

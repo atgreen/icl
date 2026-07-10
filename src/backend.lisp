@@ -593,6 +593,13 @@
   ;; Inject ICL runtime on first use
   (unless *icl-runtime-injected*
     (inject-icl-runtime)
+    ;; Route worker-thread *standard-input* through the :read-string protocol
+    ;; so READ-LINE at the REPL reads user input (issue #42). Not for external
+    ;; servers (other clients like SLY share their worker bindings and don't
+    ;; handle :read-string), and not for CCL, where rebinding worker IO
+    ;; streams causes hangs (see generate-slynk-init).
+    (unless (or *external-slynk-connection* (eq *current-lisp* :ccl))
+      (configure-backend-input-redirection))
     (setf *icl-runtime-injected* t)))
 
 (defun backend-eval (string)

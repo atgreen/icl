@@ -346,6 +346,105 @@ Respects *viz-package-exclusions* for filtering packages by regex."
       (with-slynk-connection
         (slynk-client::slime-send `(:emacs-interrupt t) *slynk-connection*)))))
 
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Backend Input Redirection (:read-string protocol)
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+;; Evaluated in the backend Lisp after connecting. Rebinds worker-thread
+;; *STANDARD-INPUT* to a Slynk gray stream that requests input from ICL with
+;; a (:read-string thread tag) event and blocks until ICL answers with
+;; (:emacs-return-string thread tag string). Base Slynk (SLY) never generates
+;; :read-string itself - that machinery lives in the mrepl contrib, which ICL
+;; does not use - but its event dispatcher forwards the event to the client
+;; and routes the reply back to the waiting thread, so the SLIME-era protocol
+;; works without loading mrepl. Uses FIND-SYMBOL throughout because the form
+;; must also be readable by Lisps where these internals are absent.
+(defparameter +backend-input-redirection-code+
+  "(handler-case
+       (let ((bindings-var (find-symbol \"*DEFAULT-WORKER-THREAD-BINDINGS*\" :slynk))
+             (make-input-stream (find-symbol \"MAKE-INPUT-STREAM\" :slynk-backend))
+             (send-to-emacs (find-symbol \"SEND-TO-EMACS\" :slynk))
+             (wait-for-event (find-symbol \"WAIT-FOR-EVENT\" :slynk))
+             (make-tag (find-symbol \"MAKE-TAG\" :slynk))
+             (current-thread-id (find-symbol \"CURRENT-THREAD-ID\" :slynk)))
+         (when (and bindings-var make-input-stream send-to-emacs
+                    wait-for-event make-tag current-thread-id)
+           (let* ((out *standard-output*)
+                  (in (funcall make-input-stream
+                               (lambda ()
+                                 (force-output out)
+                                 (let ((tag (funcall make-tag)))
+                                   (funcall send-to-emacs
+                                            (list :read-string
+                                                  (funcall current-thread-id)
+                                                  tag))
+                                   (or (third (funcall wait-for-event
+                                                       (list :emacs-return-string
+                                                             tag 'value)))
+                                       \"\")))))
+                  (io (make-two-way-stream in out)))
+             (setf (symbol-value bindings-var)
+                   (list (cons '*standard-input* in)
+                         (cons '*debug-io* io)
+                         (cons '*query-io* io)
+                         (cons '*terminal-io* io)))
+             t)))
+     (error () nil))"
+  "Backend code that routes worker-thread input reads through :read-string.")
+
+(defun configure-backend-input-redirection ()
+  "Make READ-LINE etc. in backend evaluations request input from ICL.
+   Evaluates +BACKEND-INPUT-REDIRECTION-CODE+ in the backend, replacing the
+   worker-thread stream bindings set up at backend startup (which point at
+   the inferior process's stdin pipe - a pipe ICL never writes to, so reads
+   on it block forever; see issue #42). Returns T if redirection was
+   installed, NIL otherwise."
+  (when *slynk-connected-p*
+    (handler-case
+        (slynk-client:slime-eval
+         `(cl:eval (cl:let ((cl:*package* (cl:find-package "CL-USER")))
+                     (cl:read-from-string ,+backend-input-redirection-code+)))
+         *slynk-connection*)
+      (error (e)
+        (format *error-output*
+                "~&; Warning: Failed to configure backend input redirection: ~A~%" e)
+        nil))))
+
+(defun read-string-for-backend ()
+  "Provide one line of user input for a blocking read in the backend Lisp.
+   Called on a dedicated thread when the backend sends a :read-string event,
+   i.e. when evaluated code reads from *STANDARD-INPUT* (e.g. READ-LINE).
+   Returns the line with a trailing newline, \"\" on end-of-file, or NIL to
+   leave the request unanswered (evaluation ended, or the evaluating session
+   has no input stream to read from)."
+  (let* ((session (bt:with-lock-held (*evaluating-session-lock*)
+                    *evaluating-session*))
+         (in (if session
+                 (repl-session-input-stream session)
+                 *standard-input*)))
+    (when in
+      ;; Give the output reader a moment to drain backend output written
+      ;; just before the read, then flush it so a partial line (e.g. a
+      ;; "Name: " prompt, which the newline-triggered flush in the output
+      ;; reader would hold back) is visible before we wait for input.
+      (sleep 0.05)
+      (let ((out (or (evaluating-session-output-stream) *standard-output*)))
+        (ignore-errors (force-output out)))
+      ;; Poll rather than block so we can give up if the evaluation is
+      ;; interrupted; a READ-LINE blocked here would otherwise steal the
+      ;; first line the user types at the next REPL prompt.
+      (loop
+        (cond ((not *eval-in-progress*)
+               (return nil))
+              ((listen in)
+               (let ((line (read-line in nil nil)))
+                 (return (if line
+                             (concatenate 'string line (string #\Newline))
+                             ""))))
+              (t (sleep 0.02)))))))
+
+(setf slynk-client:*read-string-hook* #'read-string-for-backend)
+
 (defun debugger-eval-in-thread (sexp thread)
   "Synchronously evaluate SEXP on debug THREAD via slynk."
   (with-slynk-connection
