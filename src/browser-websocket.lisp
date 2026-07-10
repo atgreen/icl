@@ -1621,6 +1621,58 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
     (or unread-char-slot
         (not (chanl:recv-blocks-p (input-queue resource))))))
 
+(defmethod backend-read-line ((in ws-input-stream) (out t))
+  "Read one line from the browser terminal for a backend :read-string
+   request (e.g. READ-LINE evaluated in a browser session; issue #42).
+   The browser terminal is raw: keystrokes arrive one character at a time
+   with no local echo, and Enter sends #\\Return, so echoing and minimal
+   line editing (backspace) are handled here."
+  (let ((chars (make-array 0 :element-type 'character
+                             :adjustable t :fill-pointer t)))
+    (flet ((echo (string)
+             (when out
+               (ignore-errors
+                 (write-string string out)
+                 (force-output out)))))
+      (loop
+        (cond
+          ((not *eval-in-progress*)
+           (return nil))
+          ((listen in)
+           (let ((char (read-char in nil nil)))
+             (cond
+               ((null char)
+                (return ""))
+               ((or (char= char #\Return) (char= char #\Newline))
+                (echo (coerce '(#\Return #\Newline) 'string))
+                (return (concatenate 'string chars (string #\Newline))))
+               ((or (char= char #\Backspace) (char= char #\Rubout))
+                (when (plusp (fill-pointer chars))
+                  (vector-pop chars)
+                  ;; Erase the character on screen: back, overwrite, back.
+                  (echo (coerce '(#\Backspace #\Space #\Backspace) 'string))))
+               ;; Ctrl-D on an empty line: end-of-file.
+               ((char= char (code-char 4))
+                (when (zerop (fill-pointer chars))
+                  (return "")))
+               ;; Swallow escape sequences (arrow keys etc.): ESC [ ... up
+               ;; to a final byte in @..~. History/cursor keys are not
+               ;; supported while the backend is reading.
+               ((char= char #\Escape)
+                (when (and (listen in) (eql (peek-char nil in nil nil) #\[))
+                  (read-char in nil nil)
+                  (loop while (listen in)
+                        for c = (read-char in nil nil)
+                        until (or (null c)
+                                  (char<= #\@ c #\~)))))
+               ((graphic-char-p char)
+                (vector-push-extend char chars)
+                (echo (string char)))
+               ;; Ignore other control characters (Ctrl-C is handled by the
+               ;; websocket message handler before it reaches the queue).
+               (t nil))))
+          (t (sleep 0.02)))))))
+
 (defun ws-schedule-flush (stream)
   "Schedule a delayed flush for non-newline output."
   (bt:with-lock-held (*ws-flush-timer-lock*)

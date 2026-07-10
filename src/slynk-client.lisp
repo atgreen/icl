@@ -410,6 +410,29 @@ Respects *viz-package-exclusions* for filtering packages by regex."
                 "~&; Warning: Failed to configure backend input redirection: ~A~%" e)
         nil))))
 
+(defgeneric backend-read-line (in out)
+  (:documentation
+   "Read one line of user input from IN for a backend :read-string request.
+    OUT is the evaluating session's output stream, for echoing on stream
+    types whose terminal does not echo locally. Returns the line with a
+    trailing newline, \"\" on end-of-file, or NIL if the evaluation ended
+    before a full line arrived."))
+
+(defmethod backend-read-line ((in t) (out t))
+  ;; TUI: the terminal is in cooked mode during evaluation, so the tty
+  ;; handles echo and line editing. Poll rather than block so we can give
+  ;; up if the evaluation is interrupted; a READ-LINE blocked here would
+  ;; otherwise steal the first line the user types at the next REPL prompt.
+  (loop
+    (cond ((not *eval-in-progress*)
+           (return nil))
+          ((listen in)
+           (let ((line (read-line in nil nil)))
+             (return (if line
+                         (concatenate 'string line (string #\Newline))
+                         ""))))
+          (t (sleep 0.02)))))
+
 (defun read-string-for-backend ()
   "Provide one line of user input for a blocking read in the backend Lisp.
    Called on a dedicated thread when the backend sends a :read-string event,
@@ -421,27 +444,16 @@ Respects *viz-package-exclusions* for filtering packages by regex."
                     *evaluating-session*))
          (in (if session
                  (repl-session-input-stream session)
-                 *standard-input*)))
+                 *standard-input*))
+         (out (or (evaluating-session-output-stream) *standard-output*)))
     (when in
       ;; Give the output reader a moment to drain backend output written
       ;; just before the read, then flush it so a partial line (e.g. a
       ;; "Name: " prompt, which the newline-triggered flush in the output
       ;; reader would hold back) is visible before we wait for input.
       (sleep 0.05)
-      (let ((out (or (evaluating-session-output-stream) *standard-output*)))
-        (ignore-errors (force-output out)))
-      ;; Poll rather than block so we can give up if the evaluation is
-      ;; interrupted; a READ-LINE blocked here would otherwise steal the
-      ;; first line the user types at the next REPL prompt.
-      (loop
-        (cond ((not *eval-in-progress*)
-               (return nil))
-              ((listen in)
-               (let ((line (read-line in nil nil)))
-                 (return (if line
-                             (concatenate 'string line (string #\Newline))
-                             ""))))
-              (t (sleep 0.02)))))))
+      (ignore-errors (force-output out))
+      (backend-read-line in out))))
 
 (setf slynk-client:*read-string-hook* #'read-string-for-backend)
 
