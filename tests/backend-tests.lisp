@@ -48,3 +48,13 @@
   "Test that get-lisp-eval-arg returns default for known implementations"
   ;; SBCL should have --eval
   (is (stringp (icl::get-lisp-eval-arg :sbcl))))
+
+(test configure-lisp-new-implementation
+  "Test that configure-lisp builds a proper plist for unknown implementations (issue #44)"
+  (let ((icl::*lisp-implementations* (copy-tree icl::*lisp-implementations*)))
+    (icl:configure-lisp :test-lisp-44 :program "test-lisp")
+    (let ((entry (assoc :test-lisp-44 icl::*lisp-implementations*)))
+      (is (not (null entry)))
+      ;; A dotted tail here would make getf signal "malformed property list"
+      (is (string= "test-lisp" (getf (rest entry) :program)))
+      (is (string= "--eval" (getf (rest entry) :eval-arg))))))

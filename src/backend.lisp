@@ -60,10 +60,10 @@
           (when eval-arg (setf (getf plist :eval-arg) eval-arg))
           (setf (rest entry) plist))
         ;; Add new entry
-        (push (list* impl
-                     :program (or program (string-downcase (symbol-name impl)))
-                     :args args
-                     :eval-arg (or eval-arg "--eval"))
+        (push (list impl
+                    :program (or program (string-downcase (symbol-name impl)))
+                    :args args
+                    :eval-arg (or eval-arg "--eval"))
               *lisp-implementations*))
     impl))
 
