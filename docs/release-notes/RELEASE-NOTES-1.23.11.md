@@ -3,7 +3,8 @@
 ## Summary
 
 Fixes `icl:configure-lisp` crashing ICL at startup when registering a
-Lisp implementation not in the built-in table (issue #44).
+Lisp implementation not in the built-in table.  Patch contributed by
+[Manfred Bergmann](https://github.com/mdbergmann) (#44).
 
 ## Bug Fixes
 
@@ -13,7 +14,7 @@ Lisp implementation not in the built-in table (issue #44).
   first `getf` on the entry signaled "malformed property list" --
   registering any Lisp outside the built-in set (e.g.
   `(icl:configure-lisp :clamiga ...)` in `~/.iclrc`) crashed ICL at
-  startup.  Thanks to Manfred Bergmann for the report and diagnosis.
+  startup.  Fix contributed by Manfred Bergmann in #44.
 
 ## Breaking Changes
 
