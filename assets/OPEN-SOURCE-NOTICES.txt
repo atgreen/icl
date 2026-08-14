@@ -31,9 +31,9 @@ All components are distributed under the MIT License.
 
 dockview
 --------
-Version: 7.0.2
+Version: 8.1.0
 Homepage: https://dockview.dev/
-Repository: https://github.com/mathuo/dockview
+Repository: https://github.com/dockview/dockview
 
 Copyright (c) 2021 mathuo
 
@@ -147,7 +147,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Vega
 ----
-Version: 6.2.0
+Version: 6.4.0
 Homepage: https://vega.github.io/vega/
 Repository: https://github.com/vega/vega
 
@@ -203,7 +203,7 @@ Copyright (c) 2016-2023, University of Washington Interactive Data Lab
 
 Mermaid
 -------
-Version: 11.16.0
+Version: 11.16.1
 Homepage: https://mermaid.js.org/
 Repository: https://github.com/mermaid-js/mermaid
 

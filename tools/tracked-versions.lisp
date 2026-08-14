@@ -12,7 +12,7 @@
 (defparameter *tracked-libraries*
   '(;; Dockview - panel layout system (v7 renamed the core package to "dockview")
     (:name "dockview"
-     :current-version "7.0.2"
+     :current-version "8.1.0"
      :npm-package "dockview"
      :notes "Dockable panel layout manager")
 
@@ -30,7 +30,7 @@
 
     ;; Vega - declarative visualization grammar
     (:name "vega"
-     :current-version "6.2.0"
+     :current-version "6.4.0"
      :npm-package "vega"
      :notes "Core Vega visualization library")
 
@@ -48,13 +48,13 @@
 
     ;; Mermaid - diagram rendering
     (:name "mermaid"
-     :current-version "11.16.0"
+     :current-version "11.16.1"
      :npm-package "mermaid"
      :notes "Flowcharts, sequence diagrams, etc.")
 
     ;; Monaco Editor - code editor component
     (:name "monaco-editor"
-     :current-version "0.55.1"
+     :current-version "0.56.0"
      :npm-package "monaco-editor"
      :notes "Code editor for browser visualization")
 
