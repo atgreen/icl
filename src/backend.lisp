@@ -281,8 +281,15 @@
   ;; First check if it's an absolute/relative path that exists
   (when (probe-file program)
     (return-from program-exists-p t))
-  ;; Search PATH directories
-  (let ((path-dirs (uiop:getenv-absolute-directories "PATH"))
+  ;; Search PATH directories.  Note: we deliberately avoid
+  ;; UIOP:GETENV-ABSOLUTE-DIRECTORIES here because it signals an error as
+  ;; soon as $PATH contains a single relative entry (e.g. an unexpanded
+  ;; "~/.dotnet/tools"), which would keep icl from starting at all.  We
+  ;; don't actually need the entries to be absolute: MERGE-PATHNAMES /
+  ;; PROBE-FILE below resolve a relative entry against the current
+  ;; directory, exactly as a POSIX shell does with a relative PATH entry.
+  ;; See https://github.com/atgreen/icl/issues/45
+  (let ((path-dirs (remove nil (uiop:getenv-pathnames "PATH" :ensure-directory t)))
         ;; On Windows, check common executable extensions
         #+windows (extensions '("" ".exe" ".cmd" ".bat" ".com"))
         #-windows (extensions '("")))
