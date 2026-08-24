@@ -26,6 +26,7 @@ cl-cancel, ghcr.io/ocicl/cl-cancel@sha256:b6e6387eed5027d5becb5fa18b370c1c3a755d
 cl-cookie, ghcr.io/ocicl/cl-cookie@sha256:2c3efe5b8518a09dcca46c2180593e75c02a0c8b45583a7549b916a2f2fb023d, cl-cookie-20260406-355f9c1/cl-cookie.asd
 cl-cookie-test, ghcr.io/ocicl/cl-cookie@sha256:2c3efe5b8518a09dcca46c2180593e75c02a0c8b45583a7549b916a2f2fb023d, cl-cookie-20260406-355f9c1/cl-cookie-test.asd
 cl-fad, ghcr.io/ocicl/cl-fad@sha256:c0aaffc859e419e0a94cedb08f48c2484da404363fb0fe4ffd6e09a80aadafe1, cl-fad-0.7.6/cl-fad.asd
+cl-json, ghcr.io/ocicl/cl-json@sha256:54c4d00901c2c5b0ea9da11eed8f0104fc5819e1ed9a29d1f3364503a720a868, cl-json-20240907-994dd38/cl-json.asd
 cl-postgres_plus_local-time, ghcr.io/ocicl/local-time@sha256:73545a4ff5ab4edc96acf2affd1cbe28295d655d7bd51eaff509269a476b6bda, local-time-20260812-59d93f7/cl-postgres+local-time.asd
 cl-ppcre, ghcr.io/ocicl/cl-ppcre@sha256:bf073924cf4fd5957a4fd961a95d446ed0e53fa32a5002cbd2d52182874f45e5, cl-ppcre-20250606-a2ea581/cl-ppcre.asd
 cl-ppcre-unicode, ghcr.io/ocicl/cl-ppcre@sha256:bf073924cf4fd5957a4fd961a95d446ed0e53fa32a5002cbd2d52182874f45e5, cl-ppcre-20250606-a2ea581/cl-ppcre-unicode.asd

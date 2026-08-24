@@ -465,3 +465,78 @@
     (icl::buffer-insert-char buf #\a)
     (setf (icl::edit-buffer-col buf) 0)
     (is (null (icl::buffer-kill-word-backward buf)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Selection
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun %buf-with (string &key (row 0) (col 0) mark-row mark-col)
+  "Build a buffer containing STRING with cursor and optional mark."
+  (let ((buf (icl::make-edit-buffer)))
+    (icl::buffer-set-contents buf string)
+    (setf (icl::edit-buffer-row buf) row
+          (icl::edit-buffer-col buf) col)
+    (when mark-row
+      (icl::buffer-set-mark buf mark-row (or mark-col 0)))
+    buf))
+
+(test buffer-has-selection-p-empty-without-mark
+  "A buffer with no mark has no selection."
+  (let ((buf (icl::make-edit-buffer)))
+    (is (not (icl::buffer-has-selection-p buf)))))
+
+(test buffer-has-selection-p-mark-equals-cursor
+  "A mark at the cursor is not a selection."
+  (let ((buf (%buf-with "hello" :row 0 :col 2 :mark-row 0 :mark-col 2)))
+    (is (not (icl::buffer-has-selection-p buf)))))
+
+(test buffer-has-selection-p-forward
+  "A mark before the cursor is a selection."
+  (let ((buf (%buf-with "hello" :row 0 :col 4 :mark-row 0 :mark-col 1)))
+    (is (icl::buffer-has-selection-p buf))))
+
+(test buffer-selection-text-same-line
+  "Selection text on one line is the substring between mark and cursor."
+  (let ((buf (%buf-with "hello" :row 0 :col 4 :mark-row 0 :mark-col 1)))
+    (is (string= "ell" (icl::buffer-selection-text buf)))))
+
+(test buffer-selection-text-backward
+  "Selection text is the same when the cursor is before the mark."
+  (let ((buf (%buf-with "hello" :row 0 :col 1 :mark-row 0 :mark-col 4)))
+    (is (string= "ell" (icl::buffer-selection-text buf)))))
+
+(test buffer-selection-text-multi-line
+  "Multi-line selection includes newlines."
+  (let ((buf (%buf-with (format nil "ab~%cd~%ef")
+                       :row 2 :col 1 :mark-row 0 :mark-col 1)))
+    (is (string= (format nil "b~%cd~%e") (icl::buffer-selection-text buf)))))
+
+(test buffer-delete-selection-same-line
+  "Deleting a same-line selection joins the leftover characters."
+  (let ((buf (%buf-with "hello" :row 0 :col 4 :mark-row 0 :mark-col 1)))
+    (is (string= "ell" (icl::buffer-delete-selection buf)))
+    (is (string= "ho" (icl::buffer-contents buf)))
+    (is (= 0 (icl::edit-buffer-row buf)))
+    (is (= 1 (icl::edit-buffer-col buf)))
+    (is (not (icl::buffer-has-selection-p buf)))))
+
+(test buffer-delete-selection-multi-line
+  "Deleting a multi-line selection joins the first and last partial lines."
+  (let ((buf (%buf-with (format nil "ab~%cd~%ef")
+                       :row 2 :col 1 :mark-row 0 :mark-col 1)))
+    (is (string= (format nil "b~%cd~%e") (icl::buffer-delete-selection buf)))
+    (is (string= "af" (icl::buffer-contents buf)))
+    (is (= 0 (icl::edit-buffer-row buf)))
+    (is (= 1 (icl::edit-buffer-col buf)))))
+
+(test buffer-delete-selection-none
+  "Deleting with no selection returns NIL and leaves the buffer unchanged."
+  (let ((buf (%buf-with "hello" :row 0 :col 2)))
+    (is (null (icl::buffer-delete-selection buf)))
+    (is (string= "hello" (icl::buffer-contents buf)))))
+
+(test buffer-clear-mark
+  "Clearing the mark removes the selection."
+  (let ((buf (%buf-with "hello" :row 0 :col 4 :mark-row 0 :mark-col 1)))
+    (icl::buffer-clear-mark buf)
+    (is (not (icl::buffer-has-selection-p buf)))))

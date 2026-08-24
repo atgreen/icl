@@ -131,3 +131,131 @@
       (is (= 0 cursor-row))
       ;; prompt ">>> " is 4 chars, cursor at col 5 -> visual col 9
       (is (= 9 cursor-col)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Mouse / selection mapping
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(test screen-to-buffer-click-on-text
+  "Click past the prompt maps onto the matching character."
+  (let ((buf (icl::make-edit-buffer :prompt ">> " :continuation-prompt ".. ")))
+    (dolist (c (coerce "hello" 'list))
+      (icl::buffer-insert-char buf c))
+    (multiple-value-bind (row col)
+        (icl::screen-to-buffer-position buf 5 1 :origin-row 1 :term-width 80)
+      ;; prompt ">> " is 3 cols; 1-based x=5 is the second text char
+      (is (= 0 row))
+      (is (= 1 col)))))
+
+(test screen-to-buffer-click-on-prompt
+  "Click on the prompt clamps to column 0."
+  (let ((buf (icl::make-edit-buffer :prompt ">> " :continuation-prompt ".. ")))
+    (dolist (c (coerce "hello" 'list))
+      (icl::buffer-insert-char buf c))
+    (multiple-value-bind (row col)
+        (icl::screen-to-buffer-position buf 2 1 :origin-row 1 :term-width 80)
+      (is (= 0 row))
+      (is (= 0 col)))))
+
+(test screen-to-buffer-click-past-end
+  "Click past the end of the line clamps to the line length."
+  (let ((buf (icl::make-edit-buffer :prompt ">> " :continuation-prompt ".. ")))
+    (dolist (c (coerce "hi" 'list))
+      (icl::buffer-insert-char buf c))
+    (multiple-value-bind (row col)
+        (icl::screen-to-buffer-position buf 40 1 :origin-row 1 :term-width 80)
+      (is (= 0 row))
+      (is (= 2 col)))))
+
+(test screen-to-buffer-second-line
+  "Click on the continuation line maps to row 1."
+  (let ((buf (icl::make-edit-buffer :prompt ">> " :continuation-prompt ".. ")))
+    (icl::buffer-set-contents buf (format nil "ab~%cd"))
+    (setf (icl::edit-buffer-row buf) 0
+          (icl::edit-buffer-col buf) 0)
+    (multiple-value-bind (row col)
+        (icl::screen-to-buffer-position buf 5 2 :origin-row 1 :term-width 80)
+      (is (= 1 row))
+      (is (= 1 col)))))
+
+(test apply-reverse-range-plain
+  "Reverse video wraps the requested visible columns."
+  (let* ((on icl::*ansi-reverse*)
+         (off (format nil "~C[27m" #\Escape))
+         (result (icl::apply-reverse-range "hello" 1 4)))
+    (is (string= (format nil "h~Aell~Ao" on off) result))))
+
+(test apply-reverse-range-survives-reset
+  "Reverse video is restored after an SGR reset inside the selection."
+  (let* ((on icl::*ansi-reverse*)
+         (off (format nil "~C[27m" #\Escape))
+         (reset (format nil "~C[0m" #\Escape))
+         (input (format nil "a~Ab" reset))
+         (result (icl::apply-reverse-range input 0 2)))
+    (is (string= (format nil "~Aa~A~Ab~A" on reset on off) result))))
+
+(test parse-sgr-mouse-press
+  "SGR press encodes as :press :left with 1-based coordinates."
+  (is (equal '(:mouse :press :left 10 5)
+             (with-input-from-string (*standard-input* "0;10;5M")
+               (icl::parse-sgr-mouse)))))
+
+(test parse-sgr-mouse-drag
+  "SGR motion with button 32 is a left drag."
+  (is (equal '(:mouse :drag :left 11 5)
+             (with-input-from-string (*standard-input* "32;11;5M")
+               (icl::parse-sgr-mouse)))))
+
+(test parse-sgr-mouse-release
+  "SGR lowercase m is a release."
+  (is (equal '(:mouse :release :left 11 5)
+             (with-input-from-string (*standard-input* "0;11;5m")
+               (icl::parse-sgr-mouse)))))
+
+(test handle-mouse-drag-selects
+  "Press then drag creates a selection covering the dragged range."
+  (let ((buf (icl::make-edit-buffer :prompt ">> " :continuation-prompt ".. ")))
+    (dolist (c (coerce "hello" 'list))
+      (icl::buffer-insert-char buf c))
+    (icl::handle-mouse buf '(:mouse :press :left 4 1))
+    (icl::handle-mouse buf '(:mouse :drag :left 7 1))
+    (icl::handle-mouse buf '(:mouse :release :left 7 1))
+    (is (icl::buffer-has-selection-p buf))
+    (is (string= "hel" (icl::buffer-selection-text buf)))))
+
+(test handle-key-delete-selection
+  "Backspace deletes a selection instead of a single character."
+  (let ((buf (icl::make-edit-buffer)))
+    (icl::buffer-set-contents buf "hello")
+    (icl::buffer-set-mark buf 0 1)
+    (setf (icl::edit-buffer-row buf) 0
+          (icl::edit-buffer-col buf) 4)
+    (icl::handle-key buf :backspace)
+    (is (string= "ho" (icl::buffer-contents buf)))
+    (is (not (icl::buffer-has-selection-p buf)))))
+
+(test handle-key-cut-selection
+  "Ctrl-X cuts the selection out of the buffer."
+  (let ((buf (icl::make-edit-buffer)))
+    (icl::buffer-set-contents buf "hello")
+    (icl::buffer-set-mark buf 0 1)
+    (setf (icl::edit-buffer-row buf) 0
+          (icl::edit-buffer-col buf) 4)
+    (icl::handle-key buf :cut)
+    (is (string= "ho" (icl::buffer-contents buf)))
+    (is (not (icl::buffer-has-selection-p buf)))))
+
+(test handle-key-type-replaces-selection
+  "Typing replaces the selected text."
+  (let ((buf (icl::make-edit-buffer)))
+    (icl::buffer-set-contents buf "hello")
+    (icl::buffer-set-mark buf 0 1)
+    (setf (icl::edit-buffer-row buf) 0
+          (icl::edit-buffer-col buf) 4)
+    (icl::handle-key buf #\X)
+    (is (string= "hXo" (icl::buffer-contents buf)))))
+
+(test base64-encode-known-value
+  "Base64 encoding matches the RFC 4648 example."
+  (is (string= "TWFu"
+               (icl::%base64-encode (icl::%utf8-octets "Man")))))
