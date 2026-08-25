@@ -19,16 +19,6 @@
   (siblings nil :type list)               ; List of sibling accessors at this level
   (sibling-index 0 :type fixnum))         ; Current position in siblings list
 
-(defun make-root-nav (object)
-  "Create a root navigation node for OBJECT."
-  (make-inspector-nav
-   :object object
-   :parent nil
-   :accessor :root
-   :accessor-arg nil
-   :siblings nil
-   :sibling-index 0))
-
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Sibling Computation
 ;;; ─────────────────────────────────────────────────────────────────────────────
@@ -182,30 +172,6 @@
   "Navigate up to parent. Returns parent nav node or NIL if at root."
   (inspector-nav-parent nav))
 
-(defun nav-left (nav)
-  "Navigate to previous sibling. Returns new nav node or NIL."
-  (let ((siblings (inspector-nav-siblings nav))
-        (idx (inspector-nav-sibling-index nav))
-        (parent (inspector-nav-parent nav)))
-    (when (and parent siblings (> idx 0))
-      (let* ((new-idx (1- idx))
-             (sibling (nth new-idx siblings))
-             (accessor (car sibling))
-             (arg (cdr sibling)))
-        (nav-to-accessor parent accessor arg)))))
-
-(defun nav-right (nav)
-  "Navigate to next sibling. Returns new nav node or NIL."
-  (let ((siblings (inspector-nav-siblings nav))
-        (idx (inspector-nav-sibling-index nav))
-        (parent (inspector-nav-parent nav)))
-    (when (and parent siblings (< idx (1- (length siblings))))
-      (let* ((new-idx (1+ idx))
-             (sibling (nth new-idx siblings))
-             (accessor (car sibling))
-             (arg (cdr sibling)))
-        (nav-to-accessor parent accessor arg)))))
-
 (defun nav-to-accessor (nav accessor arg)
   "Navigate from NAV using ACCESSOR and ARG."
   (case accessor
@@ -244,12 +210,13 @@
 
 (defun nav-path-string (nav &optional (separator " > "))
   "Return string representation of navigation path."
-  (let ((path (nav-breadcrumb-path nav)))
-    (format nil "~{~A~^~A~}"
-            (mapcar (lambda (p)
-                      (format-breadcrumb-element (car p) (cdr p)))
-                    path)
-            separator)))
+  (let ((elements (mapcar (lambda (p)
+                            (format-breadcrumb-element (car p) (cdr p)))
+                          (nav-breadcrumb-path nav))))
+    (with-output-to-string (out)
+      (loop for (element . rest) on elements
+            do (write-string element out)
+            when rest do (write-string separator out)))))
 
 (defun nav-sibling-position (nav)
   "Return (current . total) sibling position, or NIL if no siblings."
@@ -275,56 +242,3 @@
    :current-index -1
    :max-size max-size))
 
-(defun history-push (history nav)
-  "Push NAV onto history, truncating any forward history."
-  (let ((entries (visit-history-entries history))
-        (idx (visit-history-current-index history)))
-    ;; Truncate forward history
-    (setf (fill-pointer entries) (max 0 (1+ idx)))
-    ;; Add new entry
-    (vector-push-extend nav entries)
-    ;; Update index
-    (setf (visit-history-current-index history)
-          (1- (fill-pointer entries)))
-    ;; Trim to max size if needed
-    (when (> (fill-pointer entries) (visit-history-max-size history))
-      (let ((new-entries (subseq entries 1)))
-        (setf (visit-history-entries history)
-              (make-array (visit-history-max-size history)
-                          :adjustable t
-                          :fill-pointer (length new-entries)
-                          :initial-contents new-entries))
-        (decf (visit-history-current-index history))))))
-
-(defun history-back (history)
-  "Go back in history. Returns nav node or NIL."
-  (let ((entries (visit-history-entries history))
-        (idx (visit-history-current-index history)))
-    (when (> idx 0)
-      (decf (visit-history-current-index history))
-      (aref entries (visit-history-current-index history)))))
-
-(defun history-forward (history)
-  "Go forward in history. Returns nav node or NIL."
-  (let ((entries (visit-history-entries history))
-        (idx (visit-history-current-index history)))
-    (when (< idx (1- (fill-pointer entries)))
-      (incf (visit-history-current-index history))
-      (aref entries (visit-history-current-index history)))))
-
-(defun history-can-go-back-p (history)
-  "Return T if we can go back in history."
-  (> (visit-history-current-index history) 0))
-
-(defun history-can-go-forward-p (history)
-  "Return T if we can go forward in history."
-  (let ((entries (visit-history-entries history))
-        (idx (visit-history-current-index history)))
-    (< idx (1- (fill-pointer entries)))))
-
-(defun history-position (history)
-  "Return (current . total) history position."
-  (let ((idx (visit-history-current-index history))
-        (total (fill-pointer (visit-history-entries history))))
-    (when (plusp total)
-      (cons (1+ idx) total))))

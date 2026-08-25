@@ -441,8 +441,8 @@
 
 (defun inspector-history-forward ()
   "Go forward in visit history.
-   Note: Forward navigation requires tracking - not yet implemented."
-  ;; TODO: Implement forward history tracking
+   Forward navigation requires history tracking, which is not implemented,
+   so this is currently a no-op."
   nil)
 
 ;;; ─────────────────────────────────────────────────────────────────────────────

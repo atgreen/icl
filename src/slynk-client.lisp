@@ -277,15 +277,6 @@ Respects *viz-package-exclusions* for filtering packages by regex."
 ;;; High-level Operations
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(defun slynk-eval (string &key (package "CL-USER"))
-  "Evaluate STRING in the backend server.
-   Returns the result."
-  (declare (ignore package))
-  (unless *slynk-connected-p*
-    (error "Not connected to backend server"))
-  (slynk-client:slime-eval `(cl:eval (cl:read-from-string ,string))
-                           *slynk-connection*))
-
 (defvar *last-error-backtrace* nil
   "Backtrace from the last error, if available.")
 
@@ -599,14 +590,11 @@ Respects *viz-package-exclusions* for filtering packages by regex."
       (slynk-eval-form-with-debugger string)
       (slynk-eval-form-wrapped string)))
 
-(defun slynk-eval-form-wrapped (string)
-  "Evaluate STRING with handler-case wrapping (original error handling).
-   Used as fallback when interactive debugger is disabled."
-  ;; Don't redirect output streams - let output go to the inferior process's stdout
-  ;; which is picked up by the output reader thread. This ensures libraries like llog
-  ;; that capture *standard-output* at initialization time continue to work.
-  (setf *eval-in-progress* t)
-  (let ((wrapper-code (format nil "(let ((captured-restarts nil) (captured-ctype nil))
+(defun %eval-wrapper-code (string &key update-history)
+  "Build the remote error-capturing wrapper code that evaluates STRING.
+   When UPDATE-HISTORY, the generated code also updates the *, **, ***
+   REPL history variables. Shared by the wrapped and internal eval paths."
+  (format nil "(let ((captured-restarts nil) (captured-ctype nil))
   (handler-case
     (handler-bind
       ((error (lambda (c)
@@ -617,15 +605,10 @@ Respects *viz-package-exclusions* for filtering packages by regex."
                                       (handler-case (princ-to-string r) (error () \"\"))))
                               (compute-restarts c))))))
       (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
-        ;; Update standard REPL history variables so ,i works
-        (setf *** **
-              ** *
-              * (first vals))
-        (force-output)
+~A        (force-output)
         (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals))))
     (error (err)
       (list :error
-            ;; Clean error message: strip Stream: lines from reader errors
             (let ((msg (princ-to-string err)))
               (string-right-trim '(#\\Newline #\\Space)
                 (with-output-to-string (s)
@@ -640,7 +623,23 @@ Respects *viz-package-exclusions* for filtering packages by regex."
             (ignore-errors
               (slynk:backtrace 0 30))
             captured-ctype
-            captured-restarts))))" string)))
+            captured-restarts))))" string
+          (if update-history
+              "        ;; Update standard REPL history variables so ,i works
+        (setf *** **
+              ** *
+              * (first vals))
+"
+              "")))
+
+(defun slynk-eval-form-wrapped (string)
+  "Evaluate STRING with handler-case wrapping (original error handling).
+   Used as fallback when interactive debugger is disabled."
+  ;; Don't redirect output streams - let output go to the inferior process's stdout
+  ;; which is picked up by the output reader thread. This ensures libraries like llog
+  ;; that capture *standard-output* at initialization time continue to work.
+  (setf *eval-in-progress* t)
+  (let ((wrapper-code (%eval-wrapper-code string :update-history t)))
     (unwind-protect
         (handler-case
             (let ((result (with-slynk-connection
@@ -693,36 +692,7 @@ Respects *viz-package-exclusions* for filtering packages by regex."
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
   ;; Same wrapper as slynk-eval-form but WITHOUT the setf for history variables
-  (let ((wrapper-code (format nil "(let ((captured-restarts nil) (captured-ctype nil))
-  (handler-case
-    (handler-bind
-      ((error (lambda (c)
-                (setf captured-ctype (princ-to-string (type-of c)))
-                (setf captured-restarts
-                      (mapcar (lambda (r)
-                                (list (princ-to-string (restart-name r))
-                                      (handler-case (princ-to-string r) (error () \"\"))))
-                              (compute-restarts c))))))
-      (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
-        (force-output)
-        (list :ok nil (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals))))
-    (error (err)
-      (list :error
-            (let ((msg (princ-to-string err)))
-              (string-right-trim '(#\\Newline #\\Space)
-                (with-output-to-string (s)
-                  (with-input-from-string (in msg)
-                    (loop for line = (read-line in nil nil)
-                          while line
-                          unless (and (> (length line) 2)
-                                      (char= (char line 0) #\\Space)
-                                      (char= (char line 1) #\\Space)
-                                      (search \"Stream:\" line))
-                          do (write-line line s))))))
-            (ignore-errors
-              (slynk:backtrace 0 30))
-            captured-ctype
-            captured-restarts))))" string)))
+  (let ((wrapper-code (%eval-wrapper-code string)))
     (handler-case
         (let ((result (with-slynk-connection
                         (slynk-client:slime-eval

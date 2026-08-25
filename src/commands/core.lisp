@@ -461,31 +461,12 @@ Returns the file content as a string, or NIL if not available."
 (defun extract-location-info (location)
   "Extract file, position, and label from a Slynk LOCATION.
 Returns (values label file position) or NIL if invalid."
-  ;; Location formats vary:
-  ;; (label (:location (:file "...") (:position N) ...))
-  ;; (label ((:file "...") (:position N) ...))
-  ;; (label (:error "..."))
+  ;; Location is (label loc-data); loc-data formats are handled by
+  ;; EXTRACT-FILE-AND-POSITION (:location form, direct alist, or errors).
   (when (listp location)
-    (let* ((label (first location))
-           (loc-data (second location))
-           file pos)
-      (cond
-        ;; (:location (:file ...) (:position ...))
-        ((and (listp loc-data) (eq (first loc-data) :location))
-         (let ((props (rest loc-data)))
-           (setf file (second (assoc :file props)))
-           (setf pos (second (assoc :position props)))))
-        ;; ((:file ...) (:position ...)) - direct alist
-        ((and (listp loc-data) (listp (first loc-data)) (eq (first (first loc-data)) :file))
-         (setf file (second (assoc :file loc-data)))
-         (setf pos (second (assoc :position loc-data))))
-        ;; (:error "message") - skip errors
-        ((and (listp loc-data) (eq (first loc-data) :error))
-         (return-from extract-location-info nil))
-        (t
-         (return-from extract-location-info nil)))
+    (multiple-value-bind (file pos) (extract-file-and-position (second location))
       (when file
-        (values label file pos)))))
+        (values (first location) file pos)))))
 
 (defun open-source-for-definitions (locations symbol-name)
   "Open Monaco source panel with all LOCATIONS for SYMBOL-NAME.
@@ -513,47 +494,25 @@ Shows a dropdown when multiple definitions exist."
 
 (defun open-source-for-definition (location symbol-name)
   "Open Monaco source panel for a source LOCATION from Slynk."
-  ;; Location formats vary:
-  ;; (label (:location (:file "...") (:position N) ...))
-  ;; (label ((:file "...") (:position N) ...))
-  ;; (label (:error "..."))
+  ;; Location is (label loc-data); loc-data is either an error or a form
+  ;; handled by EXTRACT-FILE-AND-POSITION.
   (when (listp location)
-    (let* ((label (first location))
-           (loc-data (second location))
-           file pos)
-      ;; Extract file and position
-      (cond
-        ;; (:location (:file ...) (:position ...))
-        ((and (listp loc-data) (eq (first loc-data) :location))
-         (let ((props (rest loc-data)))
-           (setf file (second (assoc :file props)))
-           (setf pos (second (assoc :position props)))))
-        ;; ((:file ...) (:position ...)) - direct alist
-        ((and (listp loc-data) (listp (first loc-data)) (eq (first (first loc-data)) :file))
-         (setf file (second (assoc :file loc-data)))
-         (setf pos (second (assoc :position loc-data))))
-        ;; (:error "message")
-        ((and (listp loc-data) (eq (first loc-data) :error))
-         (format *error-output* "~&~A: ~A~%" label (second loc-data))
-         (return-from open-source-for-definition nil))
-        (t
-         (format *error-output* "~&Unknown location format: ~S~%" loc-data)
-         (return-from open-source-for-definition nil)))
-      ;; Open the source panel - try local first, then remote via Slynk
-      (cond
-        ((null file)
-         (format *error-output* "~&No file path in location~%"))
-        (t
-         (let* ((content (if (probe-file file)
-                             ;; Local file available
-                             (uiop:read-file-string file)
-                             ;; Try fetching via Slynk (remote file)
-                             (slynk-read-file file)))
-                (line (when (and content pos)
-                        (position-to-line-from-string content pos))))
-           (if content
-               (icl::open-source-panel symbol-name file :line line :content content)
-               (format *error-output* "~&File not accessible: ~A~%" file))))))))
+    (let ((label (first location))
+          (loc-data (second location)))
+      (if (and (listp loc-data) (eq (first loc-data) :error))
+          (format *error-output* "~&~A: ~A~%" label (second loc-data))
+          (multiple-value-bind (file pos) (extract-file-and-position loc-data)
+            ;; Open the source panel - try local first, then remote via Slynk
+            (if (null file)
+                (format *error-output* "~&No file path in location~%")
+                (let* ((content (if (probe-file file)
+                                    (uiop:read-file-string file)
+                                    (slynk-read-file file)))
+                       (line (when (and content pos)
+                               (position-to-line-from-string content pos))))
+                  (if content
+                      (icl::open-source-panel symbol-name file :line line :content content)
+                      (format *error-output* "~&File not accessible: ~A~%" file)))))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Cross-Reference (Xref)
@@ -1276,20 +1235,14 @@ Examples:
     ((null expressions)
      (format t "~&; Usage: ,viz <expression> [<expression2>]~%"))
     (t
-     (let ((num-exprs (length expressions)))
-       (cond
+     (if (> (length expressions) 1)
          ;; Multiple expressions - try as FSet sets for Venn diagram
-         ((> num-exprs 1)
-          (viz-fset-sets expressions))
+         (viz-fset-sets expressions)
          ;; Single expression - detect type
-         ((= num-exprs 1)
-          (let ((trimmed (first expressions)))
-            (handler-case
-                (viz-single-expression trimmed)
-              (error (e)
-                (format *error-output* "~&; Error: ~A~%" e)))))
-         (t
-          (format t "~&; Usage: ,viz <expression>~%")))))))
+         (handler-case
+             (viz-single-expression (first expressions))
+           (error (e)
+             (format *error-output* "~&; Error: ~A~%" e)))))))
 
 (defun viz-single-expression (trimmed)
   "Visualize a single expression - detect type and dispatch."

@@ -104,23 +104,6 @@
                 (return (1+ i)))))
         finally (return (length string))))
 
-(defun find-matching-close (string start open-char close-char)
-  "Find matching close paren/bracket starting after OPEN-CHAR at START."
-  (let ((depth 1))
-    (loop for i from start below (length string)
-          do (let ((c (char string i)))
-               (cond
-                 ((char= c open-char) (incf depth))
-                 ((char= c close-char)
-                  (decf depth)
-                  (when (zerop depth)
-                    (return (1+ i))))
-                 ((char= c #\")
-                  (setf i (1- (find-string-end string (1+ i)))))
-                 ((char= c #\;)
-                  (setf i (1- (skip-to-end-of-line string i))))))
-          finally (return (length string)))))
-
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Token Extraction
 ;;; ─────────────────────────────────────────────────────────────────────────────

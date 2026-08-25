@@ -354,6 +354,24 @@
   "The name of the last command that produced output.")
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Command Registry
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Defined here (rather than in commands/registry.lisp) so that completion.lisp,
+;;; which is loaded earlier and inlines the COMMAND accessors, sees the structure
+;;; definition at compile time.
+
+(defvar *commands* (make-hash-table :test 'equal)
+  "Registry of available commands, keyed by lowercase name.")
+
+(defstruct (command (:constructor make-command))
+  "A registered ICL command."
+  (name nil :type symbol)
+  (aliases nil :type list)
+  (function nil :type function)
+  (argspec nil :type list)
+  (documentation nil :type (or null string)))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Last Action Tracking
 ;;; ─────────────────────────────────────────────────────────────────────────────
 

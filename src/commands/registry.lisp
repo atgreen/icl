@@ -6,20 +6,8 @@
 
 (in-package #:icl)
 
-;;; ─────────────────────────────────────────────────────────────────────────────
-;;; Command Registry
-;;; ─────────────────────────────────────────────────────────────────────────────
-
-(defvar *commands* (make-hash-table :test 'equal)
-  "Registry of available commands, keyed by lowercase name.")
-
-(defstruct (command (:constructor make-command))
-  "A registered ICL command."
-  (name nil :type symbol)
-  (aliases nil :type list)
-  (function nil :type function)
-  (argspec nil :type list)
-  (documentation nil :type (or null string)))
+;;; The COMMAND struct and *COMMANDS* registry live in specials.lisp so that
+;;; completion.lisp (loaded earlier) sees them at compile time.
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Registration

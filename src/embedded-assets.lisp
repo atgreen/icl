@@ -118,8 +118,3 @@
 (defun get-embedded-binary-asset (filename)
   "Get an embedded binary asset by filename. Returns the byte vector or NIL."
   (gethash filename *embedded-binary-assets*))
-
-(defun embedded-asset-exists-p (filename)
-  "Check if an embedded asset exists (text or binary)."
-  (or (nth-value 1 (gethash filename *embedded-assets*))
-      (nth-value 1 (gethash filename *embedded-binary-assets*))))

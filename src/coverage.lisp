@@ -440,19 +440,6 @@ Returns the report ID for serving."
                         (t "text/plain")))
             content))))))
 
-(defun clear-old-coverage-reports (&optional (keep-latest t))
-  "Clear coverage reports from memory, optionally keeping the latest."
-  (if keep-latest
-      (let ((latest *current-coverage-id*))
-        (maphash (lambda (id data)
-                   (declare (ignore data))
-                   (unless (string= id latest)
-                     (remhash id *coverage-reports*)))
-                 *coverage-reports*))
-      (progn
-        (clrhash *coverage-reports*)
-        (setf *current-coverage-id* nil))))
-
 ;;; Panel integration
 
 (defun send-coverage-loading-message (&optional title)

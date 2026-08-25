@@ -262,18 +262,6 @@ STACKS is a list of (stack-list . count) pairs."
   "Retrieve stored profile data by ID."
   (gethash id *profile-data*))
 
-(defun clear-old-profiles (&optional (max-age 3600))
-  "Clear profiles older than MAX-AGE seconds."
-  (let ((cutoff (- (get-universal-time) max-age)))
-    (maphash (lambda (id data)
-               (declare (ignore data))
-               ;; Extract timestamp from ID
-               (let* ((parts (split-sequence:split-sequence #\- id))
-                      (timestamp (parse-integer (third parts) :junk-allowed t)))
-                 (when (and timestamp (< timestamp cutoff))
-                   (remhash id *profile-data*))))
-             *profile-data*)))
-
 ;;; High-level profiling interface
 
 (defun profile-and-store (form-string &key (mode :cpu) (name "Lisp Profile") (sample-interval 0.001))

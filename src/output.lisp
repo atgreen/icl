@@ -318,34 +318,3 @@
     (format t " [paredit]"))
   (format t "~%by Anthony Green • https://github.com/atgreen/icl~%")
   (format t "Type ,help for commands, ,quit to exit.~2%"))
-
-;;; ─────────────────────────────────────────────────────────────────────────────
-;;; Formatted Output
-;;; ─────────────────────────────────────────────────────────────────────────────
-
-(defun print-divider (&optional (char #\─) (width 60))
-  "Print a horizontal divider."
-  (format t "~&~V,,,VA~%" width char char))
-
-(defun print-table (headers rows)
-  "Print a simple table with HEADERS and ROWS."
-  (let* ((widths (loop for i below (length headers)
-                       collect (max (length (nth i headers))
-                                    (loop for row in rows
-                                          maximize (length (princ-to-string (nth i row))))))))
-    ;; Print headers
-    (format t "~&")
-    (loop for header in headers
-          for width in widths
-          do (format t "~VA  " width header))
-    (format t "~%")
-    ;; Print separator
-    (loop for width in widths
-          do (format t "~V,,,'-A  " width ""))
-    (format t "~%")
-    ;; Print rows
-    (dolist (row rows)
-      (loop for cell in row
-            for width in widths
-            do (format t "~VA  " width cell))
-      (format t "~%"))))

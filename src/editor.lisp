@@ -400,8 +400,6 @@
 (defun render-buffer-final (buf)
   "Render the buffer without paren matching (for final display after submission)."
   (let ((line-count (buffer-line-count buf))
-        (cursor-row (edit-buffer-row buf))
-        (cursor-col (edit-buffer-col buf))
         (full-content (buffer-contents buf))
         (term-width (safe-term-width)))
     ;; Move up to line 0 from current screen position
