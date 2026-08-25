@@ -17,8 +17,10 @@
   (col 0 :type fixnum)              ; Current column (0-indexed)
   (prompt "" :type string)          ; Primary prompt
   (continuation-prompt "" :type string) ; Continuation line prompt
-  (undo-stack nil :type list)       ; List of (lines row col) snapshots
-  (redo-stack nil :type list))      ; Redo snapshots
+  (undo-stack nil :type list)       ; List of (lines row col mark-row mark-col) snapshots
+  (redo-stack nil :type list)       ; Redo snapshots
+  (mark-row nil :type (or null fixnum)) ; Selection anchor row, or NIL
+  (mark-col nil :type (or null fixnum))) ; Selection anchor column, or NIL
 
 (defun make-edit-buffer (&key (prompt "") (continuation-prompt ""))
   "Create a new edit buffer with a single empty line."
@@ -40,12 +42,25 @@
       (setf (aref copy i) (copy-seq (aref lines i))))
     copy))
 
+(defun %buffer-snapshot (buf)
+  "Capture a restorable snapshot of BUF (lines, cursor, and mark)."
+  (list (%copy-lines (edit-buffer-lines buf))
+        (edit-buffer-row buf)
+        (edit-buffer-col buf)
+        (edit-buffer-mark-row buf)
+        (edit-buffer-mark-col buf)))
+
+(defun %restore-buffer-snapshot (buf snapshot)
+  "Restore BUF from SNAPSHOT."
+  (setf (edit-buffer-lines buf) (%copy-lines (first snapshot))
+        (edit-buffer-row buf) (second snapshot)
+        (edit-buffer-col buf) (third snapshot)
+        (edit-buffer-mark-row buf) (fourth snapshot)
+        (edit-buffer-mark-col buf) (fifth snapshot)))
+
 (defun buffer-push-undo (buf)
   "Push current state onto the undo stack. Call BEFORE mutating."
-  (push (list (%copy-lines (edit-buffer-lines buf))
-              (edit-buffer-row buf)
-              (edit-buffer-col buf))
-        (edit-buffer-undo-stack buf))
+  (push (%buffer-snapshot buf) (edit-buffer-undo-stack buf))
   ;; Limit stack depth
   (when (> (length (edit-buffer-undo-stack buf)) 100)
     (setf (edit-buffer-undo-stack buf)
@@ -56,27 +71,15 @@
 (defun buffer-undo (buf)
   "Undo the last edit. Returns T if performed."
   (when (edit-buffer-undo-stack buf)
-    (push (list (%copy-lines (edit-buffer-lines buf))
-                (edit-buffer-row buf)
-                (edit-buffer-col buf))
-          (edit-buffer-redo-stack buf))
-    (destructuring-bind (lines row col) (pop (edit-buffer-undo-stack buf))
-      (setf (edit-buffer-lines buf) (%copy-lines lines)
-            (edit-buffer-row buf) row
-            (edit-buffer-col buf) col))
+    (push (%buffer-snapshot buf) (edit-buffer-redo-stack buf))
+    (%restore-buffer-snapshot buf (pop (edit-buffer-undo-stack buf)))
     t))
 
 (defun buffer-redo (buf)
   "Redo the last undone edit. Returns T if performed."
   (when (edit-buffer-redo-stack buf)
-    (push (list (%copy-lines (edit-buffer-lines buf))
-                (edit-buffer-row buf)
-                (edit-buffer-col buf))
-          (edit-buffer-undo-stack buf))
-    (destructuring-bind (lines row col) (pop (edit-buffer-redo-stack buf))
-      (setf (edit-buffer-lines buf) (%copy-lines lines)
-            (edit-buffer-row buf) row
-            (edit-buffer-col buf) col))
+    (push (%buffer-snapshot buf) (edit-buffer-undo-stack buf))
+    (%restore-buffer-snapshot buf (pop (edit-buffer-redo-stack buf)))
     t))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
@@ -452,3 +455,96 @@
                              (subseq line col)))
           (setf (edit-buffer-col buf) start)
           t)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Selection (mark / region)
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun buffer-position<= (row1 col1 row2 col2)
+  "Return T if (ROW1, COL1) is at or before (ROW2, COL2)."
+  (or (< row1 row2)
+      (and (= row1 row2) (<= col1 col2))))
+
+(defun buffer-set-mark (buf row col)
+  "Set the selection anchor of BUF to ROW, COL."
+  (setf (edit-buffer-mark-row buf) row
+        (edit-buffer-mark-col buf) col))
+
+(defun buffer-clear-mark (buf)
+  "Clear the selection anchor of BUF. Returns T if a selection was present."
+  (let ((had (buffer-has-selection-p buf)))
+    (setf (edit-buffer-mark-row buf) nil
+          (edit-buffer-mark-col buf) nil)
+    had))
+
+(defun buffer-move-to (buf row col)
+  "Move cursor to ROW, COL, clamping to valid buffer positions."
+  (let* ((line-count (buffer-line-count buf))
+         (row (max 0 (min row (1- line-count))))
+         (col (max 0 (min col (buffer-line-length buf row)))))
+    (setf (edit-buffer-row buf) row
+          (edit-buffer-col buf) col)
+    (values row col)))
+
+(defun buffer-has-selection-p (buf)
+  "Return T if BUF has a non-empty selection."
+  (let ((mark-row (edit-buffer-mark-row buf))
+        (mark-col (edit-buffer-mark-col buf)))
+    (and mark-row mark-col
+         (not (and (= mark-row (edit-buffer-row buf))
+                   (= mark-col (edit-buffer-col buf)))))))
+
+(defun buffer-selection-bounds (buf)
+  "Return (values start-row start-col end-row end-col) for BUF's selection.
+   START is at or before END. Returns NIL if there is no selection."
+  (when (buffer-has-selection-p buf)
+    (let ((mark-row (edit-buffer-mark-row buf))
+          (mark-col (edit-buffer-mark-col buf))
+          (row (edit-buffer-row buf))
+          (col (edit-buffer-col buf)))
+      (if (buffer-position<= mark-row mark-col row col)
+          (values mark-row mark-col row col)
+          (values row col mark-row mark-col)))))
+
+(defun buffer-selection-text (buf)
+  "Return the selected text, or NIL if there is no selection.
+   Newlines between lines are included."
+  (multiple-value-bind (r1 c1 r2 c2) (buffer-selection-bounds buf)
+    (when r1
+      (if (= r1 r2)
+          (subseq (buffer-line buf r1) c1 c2)
+          (with-output-to-string (out)
+            (write-string (subseq (buffer-line buf r1) c1) out)
+            (write-char #\Newline out)
+            (loop for i from (1+ r1) below r2
+                  do (write-string (buffer-line buf i) out)
+                     (write-char #\Newline out))
+            (write-string (subseq (buffer-line buf r2) 0 c2) out))))))
+
+(defun buffer-delete-lines (buf start count)
+  "Remove COUNT lines starting at START from BUF."
+  (let ((lines (edit-buffer-lines buf)))
+    (loop for i from start below (- (length lines) count)
+          do (setf (aref lines i) (aref lines (+ i count))))
+    (decf (fill-pointer lines) count)))
+
+(defun buffer-delete-selection (buf)
+  "Delete the selected region. Cursor moves to the start of the region.
+   Returns the deleted text, or NIL if there was no selection."
+  (multiple-value-bind (r1 c1 r2 c2) (buffer-selection-bounds buf)
+    (when r1
+      (let ((text (buffer-selection-text buf))
+            (lines (edit-buffer-lines buf)))
+        (if (= r1 r2)
+            (let ((line (buffer-line buf r1)))
+              (setf (aref lines r1)
+                    (concatenate 'string (subseq line 0 c1) (subseq line c2))))
+            (let ((first (subseq (buffer-line buf r1) 0 c1))
+                  (last (subseq (buffer-line buf r2) c2)))
+              (setf (aref lines r1) (concatenate 'string first last))
+              (buffer-delete-lines buf (1+ r1) (- r2 r1))))
+        (when (zerop (length lines))
+          (vector-push-extend "" lines))
+        (buffer-clear-mark buf)
+        (buffer-move-to buf r1 c1)
+        text))))

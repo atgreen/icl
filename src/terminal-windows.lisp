@@ -91,6 +91,12 @@
 (defvar *terminal-raw-p* nil
   "T when terminal is in raw mode.")
 
+(defvar *want-mouse-tracking* nil
+  "When T, enter-raw-mode enables SGR mouse tracking.")
+
+(defvar *mouse-tracking-enabled* nil
+  "T when mouse tracking sequences have been sent to the terminal.")
+
 (defvar *console-input-handle* nil
   "Cached console input handle.")
 
@@ -150,10 +156,14 @@
         ;; - Disable line input (get chars immediately)
         ;; - Disable echo
         ;; - Enable virtual terminal input (for escape sequences)
+        ;; - Disable Quick Edit when tracking mouse so clicks reach the app
         (let ((new-input-mode (logior +enable-virtual-terminal-input+
                                       (logand *saved-input-mode*
                                               (lognot (logior +enable-line-input+
-                                                              +enable-echo-input+))))))
+                                                              +enable-echo-input+
+                                                              (if *want-mouse-tracking*
+                                                                  +enable-quick-edit-mode+
+                                                                  0)))))))
           (unless (plusp (set-console-mode *console-input-handle* new-input-mode))
             (return-from enter-raw-mode nil)))
         ;; Enable virtual terminal processing on output (for ANSI colors)
@@ -161,6 +171,8 @@
                                        +enable-virtual-terminal-processing+)))
           (set-console-mode *console-output-handle* new-output-mode))
         (setf *terminal-raw-p* t)
+        (when *want-mouse-tracking*
+          (enable-mouse-tracking))
         t)
     (error ()
       nil)))
@@ -176,6 +188,7 @@
   (when (and *terminal-raw-p* *saved-input-mode*)
     (handler-case
         (progn
+          (disable-mouse-tracking)
           (set-console-mode *console-input-handle* *saved-input-mode*)
           (when *saved-output-mode*
             (set-console-mode *console-output-handle* *saved-output-mode*)))
@@ -395,6 +408,7 @@
       ((char= c (code-char 28)) :suspend)  ; Ctrl-\
       ((char= c (code-char 18)) :reverse-search) ; Ctrl-R
       ((char= c (code-char 7)) :cancel-search)  ; Ctrl-G
+      ((char= c (code-char 24)) :cut)           ; Ctrl-X
       ((char= c #\Tab) :tab)
       ;; Regular character
       (t c))))
@@ -418,6 +432,9 @@
     (unless c
       (return-from parse-csi-sequence :unknown))
     (cond
+      ;; SGR mouse: ESC[<btn;x;yM or ...m
+      ((char= c #\<)
+       (parse-sgr-mouse))
       ;; Arrow keys
       ((char= c #\A) :up)
       ((char= c #\B) :down)
@@ -476,6 +493,58 @@
          (6 :page-down)
          (otherwise :unknown)))
       (t :unknown))))
+
+(defun parse-sgr-mouse ()
+  "Parse an SGR mouse event after ESC [ < has been read.
+   Returns (:mouse action button x y) or :unknown."
+  (let ((nums (list 0))
+        (c nil))
+    (loop do (setf c (read-char-raw))
+          while c
+          do (cond
+               ((digit-char-p c)
+                (setf (car nums)
+                      (+ (* (car nums) 10)
+                         (- (char-code c) (char-code #\0)))))
+               ((char= c #\;)
+                (push 0 nums))
+               (t (return))))
+    (unless (and c
+                 (or (char= c #\M) (char= c #\m))
+                 (>= (length nums) 3))
+      (return-from parse-sgr-mouse :unknown))
+    (let* ((nums (nreverse nums))
+           (btn (first nums))
+           (x (second nums))
+           (y (third nums))
+           (release (char= c #\m))
+           (motion (logtest 32 btn))
+           (button (cond
+                     ((logtest 64 btn)
+                      (if (logtest 1 btn) :wheel-down :wheel-up))
+                     ((= (logand btn 3) 0) :left)
+                     ((= (logand btn 3) 1) :middle)
+                     ((= (logand btn 3) 2) :right)
+                     (t :left)))
+           (action (cond
+                     (release :release)
+                     (motion :drag)
+                     (t :press))))
+      (list :mouse action button x y))))
+
+(defun enable-mouse-tracking ()
+  "Enable SGR mouse tracking (clicks and drags)."
+  (unless (or *browser-terminal-active* *mouse-tracking-enabled*)
+    (format t "~C[?1000h~C[?1002h~C[?1006h" +esc+ +esc+ +esc+)
+    (force-output)
+    (setf *mouse-tracking-enabled* t)))
+
+(defun disable-mouse-tracking ()
+  "Disable SGR mouse tracking."
+  (when *mouse-tracking-enabled*
+    (format t "~C[?1006l~C[?1002l~C[?1000l" +esc+ +esc+ +esc+)
+    (force-output)
+    (setf *mouse-tracking-enabled* nil)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Terminal Color Detection

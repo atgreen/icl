@@ -127,6 +127,9 @@
 (defvar *screen-row* 0
   "Current screen row relative to line 0 of the buffer.")
 
+(defvar *editor-origin-row* 1
+  "1-based terminal row of the first editor line.")
+
 (defvar *last-key-was-tab* nil
   "T if the last key pressed was Tab (for completion cycling).")
 
@@ -151,6 +154,7 @@
   (setf *inline-hint* nil)
   (when (and *inline-hints-enabled*
              (not (completion-menu-active-p))
+             (not (buffer-has-selection-p buf))
              (not (if session
                       (repl-session-search-mode session)
                       *search-mode*)))
@@ -221,6 +225,126 @@
         (incf total-rows line-rows)))
     (values total-rows cursor-visual-row cursor-visual-col)))
 
+(defun screen-to-buffer-position (buf screen-x screen-y
+                                  &key (origin-row *editor-origin-row*)
+                                       (term-width (safe-term-width)))
+  "Map 1-based terminal coordinates to a buffer (row, col), clamped to valid text.
+   Clicks on a prompt land at column 0 of that line; clicks below the buffer
+   land at the end."
+  (let ((visual-row (- screen-y origin-row))
+        (visual-col (max 0 (1- screen-x)))
+        (line-count (buffer-line-count buf)))
+    (when (minusp visual-row)
+      (return-from screen-to-buffer-position (values 0 0)))
+    (let ((row-acc 0))
+      (dotimes (i line-count)
+        (let* ((prompt-len (visible-string-length (buffer-prompt-for-line buf i)))
+               (line-len (length (buffer-line buf i)))
+               (line-total (+ prompt-len line-len))
+               (line-rows (calculate-visual-rows line-total term-width)))
+          (when (< visual-row (+ row-acc line-rows))
+            (let* ((row-offset (- visual-row row-acc))
+                   (abs-col (+ (* row-offset term-width) visual-col))
+                   (text-col (- abs-col prompt-len)))
+              (return-from screen-to-buffer-position
+                (values i (max 0 (min line-len text-col))))))
+          (incf row-acc line-rows)))
+      (values (1- line-count) (buffer-line-length buf (1- line-count))))))
+
+(defun adjust-editor-origin (buf)
+  "Slide *editor-origin-row* up if the buffer would draw past the screen bottom."
+  (multiple-value-bind (cols rows) (get-terminal-size)
+    (declare (ignore cols))
+    (when (and (integerp rows) (plusp rows))
+      (multiple-value-bind (total-rows vis-row vis-col)
+          (buffer-visual-info buf (safe-term-width))
+        (declare (ignore vis-row vis-col))
+        (let ((last-row (+ *editor-origin-row* total-rows -1)))
+          (when (> last-row rows)
+            (setf *editor-origin-row*
+                  (max 1 (- *editor-origin-row* (- last-row rows))))))))))
+
+(defun line-selection-cols (line-index line-length r1 c1 r2 c2)
+  "Return (values from-col to-col) of the selection on LINE-INDEX, or NIL.
+   TO-COL is exclusive."
+  (cond
+    ((or (< line-index r1) (> line-index r2))
+     (values nil nil))
+    ((= r1 r2)
+     (values c1 c2))
+    ((= line-index r1)
+     (values c1 line-length))
+    ((= line-index r2)
+     (values 0 c2))
+    (t
+     (values 0 line-length))))
+
+(defun %ansi-sequence-end (string start)
+  "If STRING has an ANSI CSI sequence at START, return the index after it."
+  (when (and (< start (length string))
+             (char= (char string start) #\Escape))
+    (let ((j (1+ start))
+          (len (length string)))
+      (when (and (< j len) (char= (char string j) #\[))
+        (incf j)
+        (loop while (and (< j len)
+                         (not (char<= #\@ (char string j) #\~)))
+              do (incf j))
+        (when (< j len) (incf j)))
+      j)))
+
+(defun apply-reverse-range (ansi-line from-col to-col)
+  "Wrap visible characters [FROM-COL, TO-COL) of ANSI-LINE in reverse video.
+   Syntax highlighting emits SGR 0 resets between tokens; those clear reverse
+   video, so reverse is re-applied after any ANSI sequence still inside the
+   selection."
+  (when (or (null from-col) (>= from-col to-col))
+    (return-from apply-reverse-range ansi-line))
+  (let ((reverse-off (format nil "~C[27m" #\Escape)))
+    (with-output-to-string (out)
+      (let ((i 0)
+            (len (length ansi-line))
+            (vis 0)
+            (in-reverse nil))
+        (loop while (< i len) do
+          (let ((seq-end (%ansi-sequence-end ansi-line i)))
+            (cond
+              (seq-end
+               (write-string (subseq ansi-line i seq-end) out)
+               ;; SGR 0 (and other SGR) drop reverse; restore it while selected.
+               (when (and in-reverse (< vis to-col))
+                 (write-string *ansi-reverse* out))
+               (setf i seq-end))
+              (t
+               (when (and (not in-reverse) (= vis from-col))
+                 (write-string *ansi-reverse* out)
+                 (setf in-reverse t))
+               (when (and in-reverse (= vis to-col))
+                 (write-string reverse-off out)
+                 (setf in-reverse nil))
+               (write-char (char ansi-line i) out)
+               (incf vis)
+               (incf i)))))
+        (when in-reverse
+          (write-string reverse-off out))))))
+
+(defun overlay-selection (highlighted buf)
+  "Apply reverse-video to the selected region of HIGHLIGHTED (ANSI) text."
+  (unless (buffer-has-selection-p buf)
+    (return-from overlay-selection highlighted))
+  (multiple-value-bind (r1 c1 r2 c2) (buffer-selection-bounds buf)
+    (let ((hl-lines (split-sequence:split-sequence #\Newline highlighted))
+          (line-count (buffer-line-count buf)))
+      (format nil "~{~A~^~%~}"
+              (loop for i from 0
+                    for hl-line in hl-lines
+                    collect (if (>= i line-count)
+                                hl-line
+                                (multiple-value-bind (from to)
+                                    (line-selection-cols i (length (buffer-line buf i))
+                                                         r1 c1 r2 c2)
+                                  (apply-reverse-range hl-line from to))))))))
+
 (defun render-buffer (buf)
   "Render the buffer to the terminal, using *screen-row* to know current position."
   (let ((line-count (buffer-line-count buf))
@@ -236,8 +360,13 @@
     (when (plusp *screen-row*)
       (cursor-up *screen-row*))
     (cursor-to-column 1)
-    ;; Highlight the full content with cursor position for paren matching
-    (let* ((highlighted (highlight-string full-content cursor-pos))
+    ;; Highlight the full content. Skip paren-match backgrounds while a
+    ;; selection is active — they fight reverse-video and look wrong.
+    (let* ((highlighted (overlay-selection
+                         (highlight-string full-content
+                                           (unless (buffer-has-selection-p buf)
+                                             cursor-pos))
+                         buf))
            (highlighted-lines (split-sequence:split-sequence #\Newline highlighted)))
       ;; Draw each line
       (dotimes (i line-count)
@@ -249,6 +378,7 @@
           (format t "~A~A" prompt hl-line)
           ;; Show inline hint as ghost text on the cursor line
           (when (and *inline-hint*
+                     (not (buffer-has-selection-p buf))
                      (= i cursor-row)
                      (= cursor-col (length (buffer-line buf i))))
             (format t "~A~A~A" *ansi-dim* *inline-hint* *ansi-reset*))
@@ -264,6 +394,7 @@
           (cursor-up rows-up))
         (cursor-to-column (1+ cursor-visual-col))
         (setf *screen-row* cursor-visual-row)))
+    (adjust-editor-origin buf)
     (force-output)))
 
 (defun render-buffer-final (buf)
@@ -312,8 +443,8 @@
          (prompt-len (visible-string-length prompt))
          (term-width (safe-term-width))
          (line-total-len (+ prompt-len (visible-string-length line))))
-    ;; If line wraps, we need a full redraw to handle visual rows correctly
-    (if (> line-total-len term-width)
+    ;; If line wraps or a selection is visible, do a full redraw
+    (if (or (buffer-has-selection-p buf) (> line-total-len term-width))
         (render-buffer buf)
         ;; Simple case: line fits in one visual row
         (let* ((full-content (buffer-contents buf))
@@ -802,6 +933,92 @@
      :menu-dismissed)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Clipboard
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defun %utf8-octets (string)
+  "Encode STRING as a UTF-8 octet vector."
+  (flexi-streams:string-to-octets string :external-format :utf-8))
+
+(defun %base64-encode (octets)
+  "Encode OCTETS as a Base64 string."
+  (let* ((table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+         (len (length octets))
+         (out (make-array (* 4 (ceiling len 3)) :element-type 'character :fill-pointer 0)))
+    (labels ((enc (n)
+               (char table (logand n 63))))
+      (loop for i from 0 below len by 3 do
+        (let* ((b0 (aref octets i))
+               (b1 (if (< (1+ i) len) (aref octets (1+ i)) 0))
+               (b2 (if (< (+ i 2) len) (aref octets (+ i 2)) 0))
+               (n (logior (ash b0 16) (ash b1 8) b2))
+               (remain (- len i)))
+          (vector-push (enc (ash n -18)) out)
+          (vector-push (enc (ash n -12)) out)
+          (vector-push (if (>= remain 2) (enc (ash n -6)) #\=) out)
+          (vector-push (if (>= remain 3) (enc n) #\=) out))))
+    (coerce out 'string)))
+
+(defun %clipboard-command ()
+  "Return a list of program + args for writing the system clipboard, or NIL."
+  #+darwin '("pbcopy")
+  #+(or win32 windows) '("clip")
+  #-(or darwin win32 windows)
+  (cond
+    ((uiop:executable-find "wl-copy") '("wl-copy"))
+    ((uiop:executable-find "xclip") '("xclip" "-selection" "clipboard"))
+    (t nil)))
+
+(defun copy-text-to-clipboard (text)
+  "Copy TEXT to the clipboard via OSC 52 and, when available, a platform tool."
+  (when (and text (plusp (length text)))
+    (when *terminal-raw-p*
+      (ignore-errors
+        (format t "~C]52;c;~A~C\\" #\Escape (%base64-encode (%utf8-octets text)) #\Escape)
+        (force-output)))
+    (ignore-errors
+      (let ((cmd (%clipboard-command)))
+        (when cmd
+          (uiop:run-program cmd
+                            :input (make-string-input-stream text)
+                            :output nil
+                            :error-output nil
+                            :ignore-error-status t)))))
+  t)
+
+(defun handle-mouse (buf key)
+  "Handle a (:mouse action button x y) event. Returns :redraw or :continue."
+  (destructuring-bind (tag action button x y) key
+    (declare (ignore tag))
+    (case button
+      (:left
+       (multiple-value-bind (row col)
+           (screen-to-buffer-position buf x y)
+         (case action
+           (:press
+            (buffer-move-to buf row col)
+            (buffer-set-mark buf row col)
+            :redraw)
+           (:drag
+            (buffer-move-to buf row col)
+            (unless (edit-buffer-mark-row buf)
+              (buffer-set-mark buf row col))
+            :redraw)
+           (:release
+            (buffer-move-to buf row col)
+            (unless (buffer-has-selection-p buf)
+              (buffer-clear-mark buf))
+            :redraw)
+           (t :continue))))
+      (otherwise :continue))))
+
+(defun delete-selection-or-nil (buf)
+  "If BUF has a selection, delete it and return T. Otherwise return NIL."
+  (when (buffer-has-selection-p buf)
+    (buffer-delete-selection buf)
+    t))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Key Handling
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
@@ -809,7 +1026,7 @@
   "Return T if KEY will mutate the buffer contents."
   (or (characterp key)
       (member key '(:enter :shift-enter :backspace :delete :ctrl-d
-                    :kill-line :clear-line :transpose :open-line :tab))
+                    :kill-line :clear-line :transpose :open-line :tab :cut))
       (and (consp key) (eql (car key) :paste))
       (and (consp key) (eql (first key) :alt)
            (member (rest key) '(#\q #\d) :test #'char-equal))
@@ -817,6 +1034,9 @@
 
 (defun handle-key (buf key &optional (session *current-session*))
   "Handle KEY input, updating BUF for SESSION. Returns :done, :cancel, :continue, or :redraw."
+  ;; Mouse events never mutate the buffer text
+  (when (and (consp key) (eq (first key) :mouse))
+    (return-from handle-key (handle-mouse buf key)))
   ;; Push undo snapshot before mutating operations
   (when (mutating-key-p key)
     (buffer-push-undo buf))
@@ -841,13 +1061,24 @@
     ((eql key :redo)
      (when (buffer-redo buf)
        :redraw))
-    ;; Enter - check if form is complete
-    ;; In paredit mode, also require cursor at end (since forms are always balanced)
+    ;; Cut selection (Ctrl-X)
+    ((eql key :cut)
+     (reset-prefix-search session)
+     (let ((text (buffer-selection-text buf)))
+       (if text
+           (progn
+             (copy-text-to-clipboard text)
+             (buffer-delete-selection buf)
+             :redraw)
+           :continue)))
+    ;; Enter - submit a complete form only at the end of the buffer.
+    ;; An active selection is cancelled without changing the buffer first.
     ((eql key :enter)
+     (when (buffer-has-selection-p buf)
+       (buffer-clear-mark buf))
      (let ((contents (buffer-contents buf)))
        (if (and (form-complete-p contents)
-                (or (not *paredit-mode*)
-                    (buffer-at-end-p buf)))
+                (buffer-at-end-p buf))
            :done
            (progn
              (buffer-insert-newline buf)
@@ -857,23 +1088,27 @@
          (and (consp key)
               (eql (first key) :alt)
               (member (rest key) '(#\Return #\Newline) :test #'char=)))
+     (delete-selection-or-nil buf)
      (buffer-insert-newline buf)
      :newline)
     ;; Navigation - need full redraw for multi-line to update paren highlighting
     ((eql key :left)
-     (buffer-move-left buf)
-     (if (> (buffer-line-count buf) 1) :redraw :continue))
+     (let ((had (buffer-clear-mark buf)))
+       (buffer-move-left buf)
+       (if (or had (> (buffer-line-count buf) 1)) :redraw :continue)))
     ((eql key :right)
-     (if *inline-hint*
-         ;; Accept the inline hint
-         (progn
-           (loop for c across *inline-hint* do (buffer-insert-char buf c))
-           (dismiss-inline-hint)
-           :redraw)
-         (progn
-           (buffer-move-right buf)
-           (if (> (buffer-line-count buf) 1) :redraw :continue))))
+     (let ((had (buffer-clear-mark buf)))
+       (if *inline-hint*
+           ;; Accept the inline hint
+           (progn
+             (loop for c across *inline-hint* do (buffer-insert-char buf c))
+             (dismiss-inline-hint)
+             :redraw)
+           (progn
+             (buffer-move-right buf)
+             (if (or had (> (buffer-line-count buf) 1)) :redraw :continue)))))
     ((eql key :up)
+     (buffer-clear-mark buf)
      (if (zerop (edit-buffer-row buf))
          ;; At first line - try history
          (when (history-previous buf session)
@@ -882,6 +1117,7 @@
            (buffer-move-up buf)
            :redraw)))
     ((eql key :down)
+     (buffer-clear-mark buf)
      (if (= (edit-buffer-row buf) (1- (buffer-line-count buf)))
          ;; At last line - try history forward
          (when (history-next buf session)
@@ -891,62 +1127,77 @@
            :redraw)))
     ;; Ctrl+P - previous line (pure line movement, no history)
     ((eql key :ctrl-p)
+     (buffer-clear-mark buf)
      (when (plusp (edit-buffer-row buf))
        (buffer-move-up buf)
        :redraw))
     ;; Ctrl+N - next line (pure line movement, no history)
     ((eql key :ctrl-n)
+     (buffer-clear-mark buf)
      (when (< (edit-buffer-row buf) (1- (buffer-line-count buf)))
        (buffer-move-down buf)
        :redraw))
     ((eql key :home)
-     (buffer-move-to-line-start buf)
-     (if (> (buffer-line-count buf) 1) :redraw :continue))
+     (let ((had (buffer-clear-mark buf)))
+       (buffer-move-to-line-start buf)
+       (if (or had (> (buffer-line-count buf) 1)) :redraw :continue)))
     ((eql key :end)
-     (if *inline-hint*
-         ;; Accept the inline hint
-         (progn
-           (loop for c across *inline-hint* do (buffer-insert-char buf c))
-           (dismiss-inline-hint)
-           :redraw)
-         (progn
-           (buffer-move-to-line-end buf)
-           (if (> (buffer-line-count buf) 1) :redraw :continue))))
+     (let ((had (buffer-clear-mark buf)))
+       (if *inline-hint*
+           ;; Accept the inline hint
+           (progn
+             (loop for c across *inline-hint* do (buffer-insert-char buf c))
+             (dismiss-inline-hint)
+             :redraw)
+           (progn
+             (buffer-move-to-line-end buf)
+             (if (or had (> (buffer-line-count buf) 1)) :redraw :continue)))))
     ;; Deletion (with paredit support)
     ((eql key :backspace)
      (reset-prefix-search session)
-     (if (if *paredit-mode*
-             (paredit-backspace buf)
-             (buffer-delete-char-before buf))
-         :redraw
-         :continue))
+     (cond
+       ((delete-selection-or-nil buf) :redraw)
+       ((if *paredit-mode*
+            (paredit-backspace buf)
+            (buffer-delete-char-before buf))
+        :redraw)
+       (t :continue)))
     ((eql key :delete)
      (reset-prefix-search session)
-     (if (if *paredit-mode*
-             (paredit-delete buf)
-             (buffer-delete-char-at buf))
-         :redraw
-         :continue))
+     (cond
+       ((delete-selection-or-nil buf) :redraw)
+       ((if *paredit-mode*
+            (paredit-delete buf)
+            (buffer-delete-char-at buf))
+        :redraw)
+       (t :continue)))
     ;; Ctrl-D: delete char at cursor, or EOF if buffer empty (Emacs behavior)
     ((eql key :ctrl-d)
      (reset-prefix-search session)
-     (if (buffer-empty-p buf)
-         :eof
-         (if (if *paredit-mode*
-                 (paredit-delete buf)
-                 (buffer-delete-char-at buf))
-             :redraw
-             :continue)))
+     (cond
+       ((delete-selection-or-nil buf) :redraw)
+       ((buffer-empty-p buf) :eof)
+       ((if *paredit-mode*
+            (paredit-delete buf)
+            (buffer-delete-char-at buf))
+        :redraw)
+       (t :continue)))
     ((eql key :kill-line)
      (reset-prefix-search session)
-     (buffer-kill-line buf)
-     :redraw)
+     (if (delete-selection-or-nil buf)
+         :redraw
+         (progn
+           (buffer-kill-line buf)
+           :redraw)))
     ((eql key :clear-line)
      (buffer-clear-line buf)
+     (buffer-clear-mark buf)
      :redraw)
     ((eql key :clear-screen)
      (clear-screen-full)
      (cursor-position 1 1)
+     (setf *editor-origin-row* 1
+           *screen-row* 0)
      :redraw)
     ;; Ctrl+T - transpose characters
     ((eql key :transpose)
@@ -995,6 +1246,7 @@
      :search-mode)
     ;; Bracketed paste - insert entire string at once
     ((and (consp key) (eql (car key) :paste))
+     (delete-selection-or-nil buf)
      (let ((text (cdr key)))
        (dotimes (i (length text))
          (let ((c (char text i)))
@@ -1015,6 +1267,7 @@
     ((characterp key)
      ;; Reset prefix search since buffer is being modified
      (reset-prefix-search session)
+     (delete-selection-or-nil buf)
      (if (and *paredit-mode*
               (eql (paredit-handle-char buf key) :handled))
          ;; Paredit handled it
@@ -1036,9 +1289,11 @@
   "Run the multi-line editor for SESSION.
    Returns the input string, :EOF on EOF, :CANCEL on interrupt, or :NOT-A-TTY if raw mode fails."
   (let ((buf (make-edit-buffer :prompt prompt
-                               :continuation-prompt continuation-prompt)))
+                               :continuation-prompt continuation-prompt))
+        (*want-mouse-tracking* (not *browser-terminal-active*)))
     ;; Reset global editor state (non-session-specific)
     (setf *screen-row* 0
+          *editor-origin-row* 1
           *last-key-was-tab* nil
           *completion-line-col* nil
           *inline-hint* nil)
@@ -1062,6 +1317,11 @@
              ;; Initial render
              (format t "~A" prompt)
              (force-output)
+             (unless *browser-terminal-active*
+               (multiple-value-bind (row col)
+                   (get-cursor-position)
+                 (declare (ignore col))
+                 (setf *editor-origin-row* row)))
              ;; Main loop
              (loop
                (let ((key (read-key))

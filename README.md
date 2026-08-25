@@ -568,7 +568,7 @@ Use `configure-lisp` to customize how ICL invokes a Lisp implementation:
 
 | Key | Description |
 |-----|-------------|
-| `Enter` | Submit form if complete, otherwise insert newline |
+| `Enter` | Submit a complete form only at the end of the buffer; otherwise insert newline |
 | `Alt+Enter` | Always insert newline (works in most terminals) |
 | `Shift+Enter` | Always insert newline (requires kitty keyboard protocol) |
 | `Tab` | Complete symbol or show completion menu |
@@ -600,7 +600,8 @@ Use `configure-lisp` to customize how ICL invokes a Lisp implementation:
 | `Alt+B` | Backward sexp (paredit mode only) |
 
 **Notes:**
-- In paredit mode, Enter only submits when the cursor is at the end of the buffer (allowing multi-line editing of balanced forms)
+- Enter only submits a complete form when the cursor is at the end of the buffer; otherwise it inserts a newline, including in paredit mode
+- With an active selection, Enter cancels the selection without changing the text, then applies the same rule
 - Use Alt+Enter in gnome-terminal and most other terminals. Shift+Enter only works in terminals with kitty keyboard protocol support (kitty, WezTerm, Alacritty, etc.).
 
 ## Environment Variables
