@@ -255,6 +255,78 @@
     (icl::handle-key buf #\X)
     (is (string= "hXo" (icl::buffer-contents buf)))))
 
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Ordinary Enter submission and newline behavior
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(test handle-key-enter-complete-at-buffer-end
+  "Ordinary Enter submits a complete form at the end in either paredit mode."
+  (dolist (paredit-enabled '(nil t))
+    (let ((icl::*paredit-mode* paredit-enabled)
+          (buf (icl::make-edit-buffer)))
+      (icl::buffer-set-contents buf "(+ 1 2)")
+      (icl::buffer-move-to-end buf)
+      (is (eql :done (icl::handle-key buf :enter)))
+      (is (string= "(+ 1 2)" (icl::buffer-contents buf))))))
+
+(test handle-key-enter-complete-in-middle-inserts-newline
+  "Ordinary Enter inserts a newline when the cursor is inside a complete form."
+  (dolist (paredit-enabled '(nil t))
+    (let ((icl::*paredit-mode* paredit-enabled)
+          (buf (icl::make-edit-buffer)))
+      (icl::buffer-set-contents buf "(+ 1 2)")
+      (setf (icl::edit-buffer-row buf) 0
+            (icl::edit-buffer-col buf) 3)
+      (is (eql :newline (icl::handle-key buf :enter)))
+      (is (= 2 (icl::buffer-line-count buf)))
+      (is (string= "(+ " (icl::buffer-line buf 0)))
+      (is (string= "1 2)"
+                   (string-trim '(#\Space #\Tab)
+                                (icl::buffer-line buf 1)))))))
+
+(test handle-key-enter-earlier-line-inserts-newline
+  "Ordinary Enter inserts a newline on an earlier line of a complete buffer."
+  (dolist (paredit-enabled '(nil t))
+    (let ((icl::*paredit-mode* paredit-enabled)
+          (buf (icl::make-edit-buffer)))
+      (icl::buffer-set-contents buf (format nil "(+ 1)~%(+ 2)"))
+      (setf (icl::edit-buffer-row buf) 0
+            (icl::edit-buffer-col buf) (length (icl::buffer-line buf 0)))
+      (is (eql :newline (icl::handle-key buf :enter)))
+      (is (= 3 (icl::buffer-line-count buf)))
+      (is (string= "(+ 1)" (icl::buffer-line buf 0)))
+      (is (string= "" (icl::buffer-line buf 1)))
+      (is (string= "(+ 2)" (icl::buffer-line buf 2))))))
+
+(test handle-key-enter-selection-cancels-before-submission
+  "Enter cancels a selection without changing text before submitting at buffer end."
+  (dolist (paredit-enabled '(nil t))
+    (let ((icl::*paredit-mode* paredit-enabled)
+          (buf (icl::make-edit-buffer)))
+      (icl::buffer-set-contents buf "(+ 1 2)")
+      (icl::buffer-move-to-end buf)
+      (icl::buffer-set-mark buf 0 0)
+      (is (icl::buffer-has-selection-p buf))
+      (is (eql :done (icl::handle-key buf :enter)))
+      (is (string= "(+ 1 2)" (icl::buffer-contents buf)))
+      (is (not (icl::buffer-has-selection-p buf))))))
+
+(test handle-key-enter-selection-cancels-before-newline
+  "Enter cancels a selection without changing text before inserting a newline."
+  (dolist (paredit-enabled '(nil t))
+    (let ((icl::*paredit-mode* paredit-enabled)
+          (buf (icl::make-edit-buffer)))
+      (icl::buffer-set-contents buf "(+ 1 2)")
+      (setf (icl::edit-buffer-row buf) 0
+            (icl::edit-buffer-col buf) 3)
+      (icl::buffer-set-mark buf 0 0)
+      (is (eql :newline (icl::handle-key buf :enter)))
+      (is (not (icl::buffer-has-selection-p buf)))
+      (is (string= "(+ " (icl::buffer-line buf 0)))
+      (is (string= "1 2)"
+                   (string-trim '(#\Space #\Tab)
+                                (icl::buffer-line buf 1)))))))
+
 (test base64-encode-known-value
   "Base64 encoding matches the RFC 4648 example."
   (is (string= "TWFu"

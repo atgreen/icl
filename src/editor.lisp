@@ -1071,16 +1071,16 @@
              (buffer-delete-selection buf)
              :redraw)
            :continue)))
-    ;; Enter - check if form is complete
-    ;; In paredit mode, also require cursor at end (since forms are always balanced)
+    ;; Enter - submit a complete form only at the end of the buffer.
+    ;; An active selection is cancelled without changing the buffer first.
     ((eql key :enter)
+     (when (buffer-has-selection-p buf)
+       (buffer-clear-mark buf))
      (let ((contents (buffer-contents buf)))
        (if (and (form-complete-p contents)
-                (or (not *paredit-mode*)
-                    (buffer-at-end-p buf)))
+                (buffer-at-end-p buf))
            :done
            (progn
-             (delete-selection-or-nil buf)
              (buffer-insert-newline buf)
              :newline))))  ; Special case - just need to show new line
     ;; Shift+Enter or Alt+Enter - always insert newline (don't submit even if form is complete)
