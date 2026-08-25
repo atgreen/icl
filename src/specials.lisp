@@ -89,6 +89,12 @@
 (defvar *browser-terminal-active* nil
   "T when running the REPL against a browser-based terminal (xterm.js).")
 
+(defvar *want-mouse-tracking* nil
+  "When T, enter-raw-mode enables SGR mouse tracking.")
+
+(defvar *mouse-tracking-enabled* nil
+  "T when mouse tracking sequences have been sent to the terminal.")
+
 (defvar *unsafe-visualizations* nil
   "When T, disable security restrictions on visualizations (HTML, Mermaid, Vega).
    Allows JavaScript execution in custom visualize methods.
@@ -277,6 +283,31 @@
   (or *history-file*
       (setf *history-file*
             (merge-pathnames "history" (state-directory)))))
+
+(defun program-exists-p (program)
+  "Return T if PROGRAM can be found in PATH.
+   Uses portable PATH search instead of shell commands."
+  ;; First check if it's an absolute/relative path that exists
+  (when (probe-file program)
+    (return-from program-exists-p t))
+  ;; Search PATH directories.  Note: we deliberately avoid
+  ;; UIOP:GETENV-ABSOLUTE-DIRECTORIES here because it signals an error as
+  ;; soon as $PATH contains a single relative entry (e.g. an unexpanded
+  ;; "~/.dotnet/tools"), which would keep icl from starting at all.  We
+  ;; don't actually need the entries to be absolute: MERGE-PATHNAMES /
+  ;; PROBE-FILE below resolve a relative entry against the current
+  ;; directory, exactly as a POSIX shell does with a relative PATH entry.
+  ;; See https://github.com/atgreen/icl/issues/45
+  (let ((path-dirs (remove nil (uiop:getenv-pathnames "PATH" :ensure-directory t)))
+        ;; On Windows, check common executable extensions
+        #+windows (extensions '("" ".exe" ".cmd" ".bat" ".com"))
+        #-windows (extensions '("")))
+    (dolist (dir path-dirs)
+      (dolist (ext extensions)
+        (let ((full-path (merge-pathnames (concatenate 'string program ext) dir)))
+          (when (probe-file full-path)
+            (return-from program-exists-p t)))))
+    nil))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Hooks

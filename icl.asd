@@ -28,6 +28,7 @@
                ;; Utilities
                :alexandria
                :split-sequence
+               :cl-base64
                ;; JSON for MCP protocol
                :yason
                :com.inuoe.jzon
@@ -55,6 +56,7 @@
                  (:file "themes")
                  (:file "terminal-posix" :if-feature (:not :windows))
                  (:file "terminal-windows" :if-feature :windows)
+                 (:file "terminal-common")
                  (:file "buffer")
                  (:file "paredit")
                  (:file "indent")

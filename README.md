@@ -598,10 +598,14 @@ Use `configure-lisp` to customize how ICL invokes a Lisp implementation:
 | `Alt+Q` | Reindent current form |
 | `Alt+F` | Forward sexp (paredit mode only) |
 | `Alt+B` | Backward sexp (paredit mode only) |
+| `Ctrl+X` | Cut the selection to the clipboard |
+| Mouse drag | Select text; releasing copies the selection to the clipboard |
 
 **Notes:**
 - Enter only submits a complete form when the cursor is at the end of the buffer; otherwise it inserts a newline, including in paredit mode
 - With an active selection, Enter cancels the selection without changing the text, then applies the same rule
+- Drag with the left mouse button to select; on release the selection is copied to the clipboard (via OSC 52 and, when available, `wl-copy`/`xclip`/`pbcopy`) and stays highlighted until the next edit or cursor move. Typing, paste, or Backspace/Delete replaces the selection; `Ctrl+X` cuts it.
+- Because ICL tracks the mouse for selection, use your terminal's modifier (usually hold `Shift`) for its own native selection and scrollback.
 - Use Alt+Enter in gnome-terminal and most other terminals. Shift+Enter only works in terminals with kitty keyboard protocol support (kitty, WezTerm, Alacritty, etc.).
 
 ## Environment Variables

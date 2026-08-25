@@ -275,31 +275,6 @@
     (when entry
       (getf (rest entry) :program))))
 
-(defun program-exists-p (program)
-  "Return T if PROGRAM can be found in PATH.
-   Uses portable PATH search instead of shell commands."
-  ;; First check if it's an absolute/relative path that exists
-  (when (probe-file program)
-    (return-from program-exists-p t))
-  ;; Search PATH directories.  Note: we deliberately avoid
-  ;; UIOP:GETENV-ABSOLUTE-DIRECTORIES here because it signals an error as
-  ;; soon as $PATH contains a single relative entry (e.g. an unexpanded
-  ;; "~/.dotnet/tools"), which would keep icl from starting at all.  We
-  ;; don't actually need the entries to be absolute: MERGE-PATHNAMES /
-  ;; PROBE-FILE below resolve a relative entry against the current
-  ;; directory, exactly as a POSIX shell does with a relative PATH entry.
-  ;; See https://github.com/atgreen/icl/issues/45
-  (let ((path-dirs (remove nil (uiop:getenv-pathnames "PATH" :ensure-directory t)))
-        ;; On Windows, check common executable extensions
-        #+windows (extensions '("" ".exe" ".cmd" ".bat" ".com"))
-        #-windows (extensions '("")))
-    (dolist (dir path-dirs)
-      (dolist (ext extensions)
-        (let ((full-path (merge-pathnames (concatenate 'string program ext) dir)))
-          (when (probe-file full-path)
-            (return-from program-exists-p t)))))
-    nil))
-
 (defun get-lisp-args (impl)
   "Get command-line arguments for Lisp implementation IMPL."
   (let ((entry (assoc impl *lisp-implementations*)))

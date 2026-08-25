@@ -329,5 +329,4 @@
 
 (test base64-encode-known-value
   "Base64 encoding matches the RFC 4648 example."
-  (is (string= "TWFu"
-               (icl::%base64-encode (icl::%utf8-octets "Man")))))
+  (is (string= "TWFu" (icl::%base64-utf8 "Man"))))

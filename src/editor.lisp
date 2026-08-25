@@ -936,28 +936,10 @@
 ;;; Clipboard
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(defun %utf8-octets (string)
-  "Encode STRING as a UTF-8 octet vector."
-  (flexi-streams:string-to-octets string :external-format :utf-8))
-
-(defun %base64-encode (octets)
-  "Encode OCTETS as a Base64 string."
-  (let* ((table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
-         (len (length octets))
-         (out (make-array (* 4 (ceiling len 3)) :element-type 'character :fill-pointer 0)))
-    (labels ((enc (n)
-               (char table (logand n 63))))
-      (loop for i from 0 below len by 3 do
-        (let* ((b0 (aref octets i))
-               (b1 (if (< (1+ i) len) (aref octets (1+ i)) 0))
-               (b2 (if (< (+ i 2) len) (aref octets (+ i 2)) 0))
-               (n (logior (ash b0 16) (ash b1 8) b2))
-               (remain (- len i)))
-          (vector-push (enc (ash n -18)) out)
-          (vector-push (enc (ash n -12)) out)
-          (vector-push (if (>= remain 2) (enc (ash n -6)) #\=) out)
-          (vector-push (if (>= remain 3) (enc n) #\=) out))))
-    (coerce out 'string)))
+(defun %base64-utf8 (string)
+  "Encode STRING as Base64 of its UTF-8 octets."
+  (cl-base64:usb8-array-to-base64-string
+   (flexi-streams:string-to-octets string :external-format :utf-8)))
 
 (defun %clipboard-command ()
   "Return a list of program + args for writing the system clipboard, or NIL."
@@ -965,8 +947,8 @@
   #+(or win32 windows) '("clip")
   #-(or darwin win32 windows)
   (cond
-    ((uiop:executable-find "wl-copy") '("wl-copy"))
-    ((uiop:executable-find "xclip") '("xclip" "-selection" "clipboard"))
+    ((program-exists-p "wl-copy") '("wl-copy"))
+    ((program-exists-p "xclip") '("xclip" "-selection" "clipboard"))
     (t nil)))
 
 (defun copy-text-to-clipboard (text)
@@ -974,7 +956,7 @@
   (when (and text (plusp (length text)))
     (when *terminal-raw-p*
       (ignore-errors
-        (format t "~C]52;c;~A~C\\" #\Escape (%base64-encode (%utf8-octets text)) #\Escape)
+        (format t "~C]52;c;~A~C\\" #\Escape (%base64-utf8 text) #\Escape)
         (force-output)))
     (ignore-errors
       (let ((cmd (%clipboard-command)))
@@ -1006,8 +988,11 @@
             :redraw)
            (:release
             (buffer-move-to buf row col)
-            (unless (buffer-has-selection-p buf)
-              (buffer-clear-mark buf))
+            (if (buffer-has-selection-p buf)
+                ;; Drag-release copies the selection to the clipboard,
+                ;; leaving it highlighted until the next edit or move.
+                (copy-text-to-clipboard (buffer-selection-text buf))
+                (buffer-clear-mark buf))
             :redraw)
            (t :continue))))
       (otherwise :continue))))
