@@ -21,13 +21,18 @@ function openNotebookPanel(msg) {
   if (!dockviewApi) return;
   const existing = dockviewApi.getPanel(panelId);
   if (existing) { dockviewApi.removePanel(existing); }
+  // Open as a tab in the main (terminal) group so the notebook fills the
+  // large area, with the REPL Console one tab away.
+  const hasTerminal = !!dockviewApi.getPanel('terminal');
   dockviewApi.addPanel({
     id: panelId,
     component: 'notebook',
     title: msg.title ? ('Notebook: ' + msg.title) : 'Notebook',
     params: { title: msg.title, path: msg.path, cells: msg.cells || [] },
-    position: { referencePanel: 'terminal', direction: 'right' }
+    position: hasTerminal ? { referencePanel: 'terminal' } : undefined
   });
+  const p = dockviewApi.getPanel(panelId);
+  if (p && p.api && p.api.setActive) p.api.setActive();
 }
 
 function handleCellResult(msg) {
@@ -47,6 +52,78 @@ function handleNotebookError(msg) {
   if (typeof terminal !== 'undefined' && terminal) {
     terminal.write('\r\n; Notebook error: ' + msg.message + '\r\n');
   }
+}
+
+// ── Minimal markdown → HTML (headings, emphasis, code, lists, links) ──
+
+function nbEscapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function nbMarkdownInline(t) {
+  return nbEscapeHtml(t)
+    .replace(/`([^`]+)`/g, '<code style="background:var(--bg-tertiary);padding:1px 4px;border-radius:3px;">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
+function nbParseRow(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|')) s = s.slice(0, -1);
+  return s.split('|').map(c => c.trim());
+}
+
+function nbIsTableSep(line) {
+  return !!line && line.includes('-') && /^\s*\|?[\s:|-]+\|?\s*$/.test(line);
+}
+
+function nbRenderMarkdown(md) {
+  const lines = (md || '').split('\n');
+  let html = '', inList = false, inCode = false, code = '';
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  const cell = (tag, text) =>
+    '<' + tag + ' style="border:1px solid var(--border);padding:3px 8px;' +
+    (tag === 'th' ? 'background:var(--bg-tertiary);text-align:left;' : '') + '">' +
+    nbMarkdownInline(text) + '</' + tag + '>';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().startsWith('```')) {
+      if (inCode) {
+        html += '<pre style="background:var(--bg-tertiary);padding:8px;border-radius:4px;overflow:auto;"><code>' + nbEscapeHtml(code) + '</code></pre>';
+        code = ''; inCode = false;
+      } else { closeList(); inCode = true; }
+      continue;
+    }
+    if (inCode) { code += line + '\n'; continue; }
+    // GFM table: a header row followed by a separator row.
+    if (line.includes('|') && nbIsTableSep(lines[i + 1])) {
+      closeList();
+      const header = nbParseRow(line);
+      let body = '';
+      i += 2;  // consume header + separator
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+        body += '<tr>' + nbParseRow(lines[i]).map(c => cell('td', c)).join('') + '</tr>';
+        i++;
+      }
+      i--;  // the for-loop will re-increment
+      html += '<table style="border-collapse:collapse;margin:6px 0;">' +
+              '<thead><tr>' + header.map(h => cell('th', h)).join('') + '</tr></thead>' +
+              '<tbody>' + body + '</tbody></table>';
+      continue;
+    }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { closeList(); const n = h[1].length; html += '<h' + n + '>' + nbMarkdownInline(h[2]) + '</h' + n + '>'; continue; }
+    if (/^\s*[-*]\s+/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + nbMarkdownInline(line.replace(/^\s*[-*]\s+/, '')) + '</li>'; continue; }
+    if (/^\s*---+\s*$/.test(line)) { closeList(); html += '<hr>'; continue; }
+    if (line.trim() === '') { closeList(); continue; }
+    closeList();
+    html += '<p>' + nbMarkdownInline(line) + '</p>';
+  }
+  closeList();
+  if (inCode) html += '<pre><code>' + nbEscapeHtml(code) + '</code></pre>';
+  return html;
 }
 
 // ── Output rendering (blob kinds mirror the server taxonomy) ──
@@ -73,8 +150,9 @@ function nbRenderOutputs(outEl, outputs) {
         div.textContent = o.payload;
         break;
       case 'markdown':
-        div.style.cssText = 'padding:4px 8px;color:var(--fg-primary);white-space:pre-wrap;';
-        div.textContent = o.payload;  // rich markdown (tuition) comes later
+        div.style.cssText = 'padding:4px 12px;color:var(--fg-primary);line-height:1.5;' +
+          'font-family:system-ui,-apple-system,sans-serif;';
+        div.innerHTML = nbRenderMarkdown(o.payload);
         break;
       default:
         div.style.cssText = base + 'color:var(--fg-secondary);';
@@ -185,6 +263,14 @@ class NotebookPanel {
     wrap.appendChild(out);
     notebookCells.set(cellId, { outputEl: out, execEl: exec, textarea: ta, wrap });
 
+    if (kind === 'markdown') {
+      out.style.cursor = 'pointer';
+      out.title = 'Click to edit';
+      out.addEventListener('click', () => this._editMarkdown(wrap));
+      ta.addEventListener('blur', () => { if (ta.value.trim() !== '') this._renderMarkdown(wrap); });
+      if (source.trim() !== '') this._renderMarkdown(wrap);
+    }
+
     if (afterEl && afterEl.nextSibling) {
       this._cellsEl.insertBefore(wrap, afterEl.nextSibling);
     } else if (afterEl) {
@@ -208,16 +294,27 @@ class NotebookPanel {
     wrap.remove();
   }
 
+  // Show the rendered markdown, hide the editor (Jupyter-style).
+  _renderMarkdown(wrap) {
+    const entry = notebookCells.get(wrap.dataset.cellId);
+    nbRenderOutputs(entry.outputEl, [{ kind: 'markdown', payload: entry.textarea.value }]);
+    entry.textarea.style.display = 'none';
+    entry.outputEl.style.borderTop = 'none';
+  }
+
+  // Reveal the editor for a markdown cell.
+  _editMarkdown(wrap) {
+    const entry = notebookCells.get(wrap.dataset.cellId);
+    entry.textarea.style.display = '';
+    entry.outputEl.style.display = 'none';
+    entry.textarea.focus();
+  }
+
   _runCell(wrap) {
     const cellId = wrap.dataset.cellId;
     const kind = wrap.dataset.kind;
     const source = wrap.querySelector('textarea').value;
-    const entry = notebookCells.get(cellId);
-    if (kind === 'markdown') {
-      // Rendered locally for now; rich markdown via the backend comes later.
-      nbRenderOutputs(entry.outputEl, [{ kind: 'markdown', payload: source }]);
-      return;
-    }
+    if (kind === 'markdown') { this._renderMarkdown(wrap); return; }
     ws.send(JSON.stringify({ type: 'run-cell', cellId, kind, source }));
   }
 
