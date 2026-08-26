@@ -2224,21 +2224,25 @@ Example: ,ai-cli          - Show current setting and available CLIs
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
 (define-command notebook (&optional path)
-  "Open a notebook in the browser (requires browser mode).
+  "Open a notebook in the browser, starting browser mode if needed.
 Example: ,notebook            - open a new, empty notebook
          ,notebook foo.iclnb  - open an existing notebook file"
-  (cond
-    ((not *browser-terminal-active*)
-     (format t "~&; Notebooks need browser mode. Run ,browser first.~%"))
-    (t
-     (let ((nb (if (and path (probe-file path))
-                   (load-notebook path)
-                   (let ((n (make-notebook :path path)))
-                     (notebook-add-cell n :kind :code :source "")
-                     n))))
-       (setf *current-notebook* nb)
+  (let ((nb (if (and path (probe-file path))
+                (load-notebook path)
+                (let ((n (make-notebook :path path)))
+                  (notebook-add-cell n :kind :code :source "")
+                  n))))
+    (setf *current-notebook* nb)
+    (cond
+      (*repl-resource*
+       ;; Browser already running: open (or re-open) the notebook now.
        (open-notebook-panel nb)
-       (format t "~&; Notebook opened.~%")))))
+       (format t "~&; Notebook opened.~%"))
+      (t
+       ;; Launch the browser; the notebook opens once the page connects
+       ;; (see the terminal-ready websocket handler).
+       (format t "~&; Starting browser for notebook...~%")
+       (start-browser)))))
 
 (define-command browser (&optional action)
   "Open the System Browser for exploring packages, classes, and methods.

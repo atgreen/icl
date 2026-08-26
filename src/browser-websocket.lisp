@@ -148,7 +148,11 @@
           ;; Terminal ready - start the REPL thread
           ((string= type "terminal-ready")
            (unless (repl-thread resource)
-             (start-browser-repl-thread)))
+             (start-browser-repl-thread))
+           ;; If a notebook is pending (e.g. ,notebook launched the browser
+           ;; from the terminal), open it now that the page has connected.
+           (when *current-notebook*
+             (open-notebook-panel *current-notebook*)))
 
           ;; Terminal input - send each character
           ((string= type "input")
