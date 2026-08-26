@@ -225,20 +225,4 @@
       (cons (1+ (inspector-nav-sibling-index nav))
             (length siblings)))))
 
-;;; ─────────────────────────────────────────────────────────────────────────────
-;;; Visit History
-;;; ─────────────────────────────────────────────────────────────────────────────
-
-(defstruct visit-history
-  "History of visited navigation positions."
-  (entries (make-array 100 :adjustable t :fill-pointer 0))
-  (current-index -1 :type fixnum)
-  (max-size 100 :type fixnum))
-
-(defun make-empty-history (&optional (max-size 100))
-  "Create a new empty visit history."
-  (make-visit-history
-   :entries (make-array max-size :adjustable t :fill-pointer 0)
-   :current-index -1
-   :max-size max-size))
 

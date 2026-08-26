@@ -179,8 +179,7 @@
           ;; Clear debugger display before showing inspector
           (clear-debugger)
           ;; Set up and run inspector
-          (setf *inspector* (make-inspector-state
-                             :visit-history (make-empty-history)))
+          (setf *inspector* (make-inspector-state))
           (setf *inspector-lines-drawn* 0)
           (update-inspector-state data)
           (let ((first-render t))

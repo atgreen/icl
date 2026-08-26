@@ -40,7 +40,6 @@
   (title "" :type string)               ; Title for current view
   ;; Advanced navigation (Phase 6)
   (nav nil :type (or null inspector-nav))   ; Zipper navigation node
-  (visit-history nil :type (or null visit-history)) ; Visit history for back/forward
   (keyhole-mode nil :type boolean))     ; Focused view mode
 
 (defvar *inspector* nil
@@ -525,9 +524,7 @@
     (unless data
       (format t "~&Could not inspect object.~%")
       (return-from run-inspector nil))
-    ;; Initialize inspector state with visit history
-    (setf *inspector* (make-inspector-state
-                       :visit-history (make-empty-history)))
+    (setf *inspector* (make-inspector-state))
     (setf *inspector-lines-drawn* 0)
     (update-inspector-state data)
     ;; Note: nav is not initialized here because we only have Slynk data,
