@@ -128,37 +128,73 @@ function nbRenderMarkdown(md) {
 
 // ── Output rendering (blob kinds mirror the server taxonomy) ──
 
+const NB_RICH_KINDS = new Set(['hash-table', 'vega-lite', 'mermaid', 'json', 'svg', 'html', 'image']);
+
+// Render a rich blob by reusing browser.js's existing panel renderers.
+function nbRenderRich(outEl, o) {
+  const div = document.createElement('div');
+  div.style.cssText = 'padding:6px 8px;';
+  try {
+    switch (o.kind) {
+      case 'hash-table': renderHashTable(div, o.count, o.entries); break;
+      case 'vega-lite': div.style.minHeight = '260px'; renderVegaLite(div, o.payload); break;
+      case 'mermaid': renderMermaid(div, o.payload); break;
+      case 'json': renderJson(div, o.payload); break;
+      case 'svg': div.innerHTML = o.payload; break;
+      case 'html': {
+        const f = document.createElement('iframe');
+        f.style.cssText = 'width:100%;height:300px;border:none;background:white;';
+        f.sandbox = 'allow-same-origin'; f.srcdoc = o.payload;
+        div.appendChild(f); break;
+      }
+      case 'image': renderImage(div, o.payload); break;
+    }
+  } catch (e) { div.textContent = 'render error: ' + e; }
+  outEl.appendChild(div);
+}
+
+// The printed value, collapsed under a toggle (shown when a rich view exists).
+function nbRenderValueToggle(outEl, payload) {
+  const wrap = document.createElement('div');
+  const toggle = document.createElement('div');
+  toggle.textContent = '▸ printed value';
+  toggle.style.cssText = 'cursor:pointer;font:11px monospace;color:var(--fg-secondary);padding:2px 8px;user-select:none;';
+  const val = document.createElement('div');
+  val.style.cssText = 'display:none;white-space:pre-wrap;font-family:monospace;font-size:13px;padding:2px 8px;color:var(--fg-primary);';
+  val.textContent = payload;
+  toggle.onclick = () => {
+    const show = val.style.display === 'none';
+    val.style.display = show ? 'block' : 'none';
+    toggle.textContent = (show ? '▾' : '▸') + ' printed value';
+  };
+  wrap.appendChild(toggle); wrap.appendChild(val);
+  outEl.appendChild(wrap);
+}
+
+function nbRenderTextBlob(outEl, o) {
+  const div = document.createElement('div');
+  const base = 'white-space:pre-wrap;font-family:monospace;font-size:13px;padding:4px 8px;';
+  switch (o.kind) {
+    case 'value':  div.style.cssText = base + 'color:var(--fg-primary);'; div.textContent = o.payload; break;
+    case 'stdout': div.style.cssText = base + 'color:var(--fg-secondary);'; div.textContent = o.payload; break;
+    case 'error':  div.style.cssText = base + 'color:#e06c75;'; div.textContent = o.payload; break;
+    case 'markdown':
+      div.style.cssText = 'padding:4px 12px;color:var(--fg-primary);line-height:1.5;font-family:system-ui,-apple-system,sans-serif;';
+      div.innerHTML = nbRenderMarkdown(o.payload); break;
+    default: div.style.cssText = base + 'color:var(--fg-secondary);'; div.textContent = o.payload;
+  }
+  outEl.appendChild(div);
+}
+
 function nbRenderOutputs(outEl, outputs) {
   outEl.innerHTML = '';
   if (!outputs || outputs.length === 0) { outEl.style.display = 'none'; return; }
   outEl.style.display = 'block';
+  const rich = outputs.find(o => NB_RICH_KINDS.has(o.kind));
   for (const o of outputs) {
-    const div = document.createElement('div');
-    div.className = 'nb-out nb-out-' + o.kind;
-    const base = 'white-space:pre-wrap;font-family:monospace;font-size:13px;padding:4px 8px;';
-    switch (o.kind) {
-      case 'value':
-        div.style.cssText = base + 'color:var(--fg-primary);';
-        div.textContent = o.payload;
-        break;
-      case 'stdout':
-        div.style.cssText = base + 'color:var(--fg-secondary);';
-        div.textContent = o.payload;
-        break;
-      case 'error':
-        div.style.cssText = base + 'color:#e06c75;';
-        div.textContent = o.payload;
-        break;
-      case 'markdown':
-        div.style.cssText = 'padding:4px 12px;color:var(--fg-primary);line-height:1.5;' +
-          'font-family:system-ui,-apple-system,sans-serif;';
-        div.innerHTML = nbRenderMarkdown(o.payload);
-        break;
-      default:
-        div.style.cssText = base + 'color:var(--fg-secondary);';
-        div.textContent = o.payload;
-    }
-    outEl.appendChild(div);
+    if (o === rich) { nbRenderRich(outEl, o); }
+    else if (rich && o.kind === 'value') { nbRenderValueToggle(outEl, o.payload); }
+    else { nbRenderTextBlob(outEl, o); }
   }
 }
 

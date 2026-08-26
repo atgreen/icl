@@ -1060,9 +1060,17 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
 
 (defun notebook-output->wire (output)
   "Convert a notebook OUTPUT blob to a JSON-friendly hash-table."
-  (let ((h (make-hash-table :test 'equal)))
-    (setf (gethash "kind" h) (string-downcase (symbol-name (cell-output-kind output)))
-          (gethash "payload" h) (or (cell-output-payload output) ""))
+  (let ((h (make-hash-table :test 'equal))
+        (kind (cell-output-kind output))
+        (payload (cell-output-payload output)))
+    (setf (gethash "kind" h) (string-downcase (symbol-name kind)))
+    (if (eq kind :hash-table)
+        ;; Structured payload: (:count N :entries ((k v) ...)) -> count + [[k,v],...]
+        (setf (gethash "count" h) (getf payload :count)
+              (gethash "entries" h)
+              (coerce (mapcar (lambda (e) (coerce e 'vector)) (getf payload :entries))
+                      'vector))
+        (setf (gethash "payload" h) (or payload "")))
     h))
 
 (defun notebook-outputs->wire (outputs)
@@ -1099,6 +1107,15 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                :kind (if (and kind (string-equal kind "markdown")) :markdown :code)
                :source source)))
     (notebook-eval-cell cell)
+    ;; For a code cell that produced a value, add a rich rendering of that
+    ;; value (classifying * — the value just computed — so side effects don't
+    ;; run twice). The plain printed value stays for the client's toggle.
+    (when (and (eq (notebook-cell-kind cell) :code)
+               (find :value (notebook-cell-outputs cell) :key #'cell-output-kind))
+      (let ((rich (ignore-errors (notebook-value-output "*"))))
+        (when rich
+          (setf (notebook-cell-outputs cell)
+                (append (notebook-cell-outputs cell) (list rich))))))
     (incf *notebook-exec-counter*)
     (let ((obj (make-hash-table :test 'equal)))
       (setf (gethash "type" obj) "cell-result"

@@ -1244,11 +1244,8 @@ Examples:
            (error (e)
              (format *error-output* "~&; Error: ~A~%" e)))))))
 
-(defun viz-single-expression (trimmed)
-  "Visualize a single expression - detect type and dispatch."
-  ;; Query backend to determine type and get visualization data
-  ;; First checks for custom icl-runtime:visualize method, then falls back to built-in detection
-  (let* ((query (format nil "(let* ((obj ~A)
+(defparameter +viz-classification-query+
+  "(let* ((obj ~A)
                                 (fset-pkg (find-package :fset))
                                 (custom-viz (and (find-package :icl-runtime)
                                                  (fboundp 'icl-runtime:visualize)
@@ -1400,10 +1397,43 @@ Examples:
                                                   (t \"image/webp\"))))
                                       (list :image-bytes mime (icl-runtime:usb8-array-to-base64-string obj))))
                                    (t (list :unknown (type-of obj) (princ-to-string obj))))))))"
-                        trimmed))
+  "Backend query that evaluates ~A and returns a classified
+   (:type ...) visualization descriptor for it.")
+
+(defun classify-viz-value (expr-string)
+  "Evaluate EXPR-STRING in the backend and classify it for visualization.
+Returns the parsed (:type ...) descriptor, or NIL if unavailable.
+Checks for a custom icl-runtime:visualize method first, then built-in detection."
+  (let* ((query (format nil +viz-classification-query+ expr-string))
          (result (backend-eval-internal query)))
     (when (and result (listp result) (first result))
-      (let ((parsed (read-from-string (first result))))
+      (read-from-string (first result)))))
+
+(defun notebook-value-output (expr-string)
+  "Classify EXPR-STRING's value and return a rich notebook output blob,
+   or NIL when there is no richer-than-text rendering. Payloads match the
+   browser's render taxonomy so they feed the existing client renderers."
+  (let ((parsed (ignore-errors (classify-viz-value expr-string))))
+    (when (and (consp parsed) (keywordp (first parsed)))
+      (case (first parsed)
+        ((:hash-table :fset-map :fset-bag)
+         (make-cell-output :hash-table
+                           (list :count (second parsed) :entries (third parsed))))
+        (:vega-lite (make-cell-output :vega-lite (second parsed)))
+        (:mermaid   (make-cell-output :mermaid (second parsed)))
+        (:svg       (make-cell-output :svg (second parsed)))
+        (:html      (make-cell-output :html (second parsed)))
+        (:json      (make-cell-output :json (second parsed)))
+        (:image-bytes
+         (make-cell-output :image
+                           (format nil "data:~A;base64,~A" (second parsed) (third parsed))))
+        (t nil)))))
+
+(defun viz-single-expression (trimmed)
+  "Visualize a single expression - detect type and dispatch."
+  (let ((parsed (classify-viz-value trimmed)))
+    (when parsed
+      (progn
         (case (first parsed)
           (:class
            (let ((sym-name (second parsed))
