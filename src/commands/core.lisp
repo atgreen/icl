@@ -1264,6 +1264,13 @@ Examples:
                                      (convert-fn (fset-fn \"CONVERT\"))
                                      (multiplicity-fn (fset-fn \"MULTIPLICITY\")))
                                  (cond
+                                   ;; Lisp-Stat / vega plot object -> its Vega-Lite JSON spec
+                                   ((and (find-package \"VEGA\")
+                                         (find-symbol \"VEGA-PLOT\" \"VEGA\")
+                                         (let ((c (find-class (find-symbol \"VEGA-PLOT\" \"VEGA\") nil)))
+                                           (and c (typep obj c))))
+                                    (list :vega-lite
+                                          (funcall (find-symbol \"WRITE-SPEC\" \"VEGA\") obj)))
                                    ((symbolp obj)
                                     (if (find-class obj nil)
                                         (list :class
