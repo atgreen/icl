@@ -762,6 +762,46 @@ Returns (values output-string value-strings). Does not print to the local REPL."
          (otherwise
           (error "Unexpected slynk response: ~A" result)))))))
 
+(defun slynk-eval-all-capturing (string &key (package "CL-USER"))
+  "Evaluate every form in STRING, capturing stdout/stderr into a string.
+Returns (values output-string value-strings) for the LAST form (notebook
+semantics). Does not print to the local REPL."
+  (declare (ignore package))
+  (unless *slynk-connected-p*
+    (error "Not connected to backend server"))
+  (let* ((wrapper-code (format nil "(let* ((out (make-string-output-stream))
+       (*standard-output* out)
+       (*error-output* out)
+       (*trace-output* out)
+       (*debug-io* out)
+       (*terminal-io* (make-two-way-stream (make-string-input-stream \"\") out))
+       (*query-io* *terminal-io*))
+  (handler-case
+    (let ((in (make-string-input-stream ~S)) (eof (list nil)) (vals nil))
+      (loop for form = (read in nil eof)
+            until (eq form eof)
+            do (setf vals (multiple-value-list (eval form))))
+      (setf *** ** ** * * (first vals))
+      (force-output)
+      (list :ok (get-output-stream-string out)
+            (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
+    (error (err)
+      (list :error (princ-to-string err) (get-output-stream-string out)))))" string))
+         (result (with-slynk-connection
+                   (slynk-client:slime-eval
+                    `(cl:eval
+                      (cl:let ((cl:*package* (cl:find-package "CL-USER")))
+                        (cl:read-from-string ,wrapper-code)))
+                    *slynk-connection*))))
+    (cond
+      ((not (consp result))
+       (values (princ-to-string result) nil))
+      (t
+       (case (first result)
+         (:ok (values (second result) (third result)))
+         (:error (error "~A" (second result)))
+         (otherwise (error "Unexpected slynk response: ~A" result)))))))
+
 (defun slynk-complete-simple (prefix &key (package "CL-USER"))
   "Get simple completions for PREFIX.
    Returns list of completion strings."

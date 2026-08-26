@@ -604,6 +604,12 @@ Returns two values: output-string and list of result strings."
   (ensure-backend)
   (slynk-eval-form-capturing string))
 
+(defun backend-eval-all-capture (string)
+  "Evaluate every form in STRING, capturing stdout/stderr.
+Returns two values: output-string and the last form's result strings."
+  (ensure-backend)
+  (slynk-eval-all-capturing string))
+
 (defun backend-documentation (name type)
   "Get documentation for NAME of TYPE using Slynk backend."
   (ensure-backend)
