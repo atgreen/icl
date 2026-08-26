@@ -130,6 +130,14 @@
 (defvar *editor-origin-row* 1
   "1-based terminal row of the first editor line.")
 
+(defvar *notebook-editor-mode* nil
+  "When T (notebook cell editing), Enter always inserts a newline and
+   Shift-Enter submits, instead of the REPL's Enter-submits-when-complete.")
+
+(defvar *editor-render-hook* nil
+  "When bound to a function, RENDER-BUFFER calls it with the buffer after each
+   full render. Used by notebook cell editors to report their height.")
+
 (defvar *last-key-was-tab* nil
   "T if the last key pressed was Tab (for completion cycling).")
 
@@ -395,6 +403,8 @@
         (cursor-to-column (1+ cursor-visual-col))
         (setf *screen-row* cursor-visual-row)))
     (adjust-editor-origin buf)
+    (when *editor-render-hook*
+      (funcall *editor-render-hook* buf))
     (force-output)))
 
 (defun render-buffer-final (buf)
@@ -1059,18 +1069,30 @@
     ((eql key :enter)
      (when (buffer-has-selection-p buf)
        (buffer-clear-mark buf))
-     (let ((contents (buffer-contents buf)))
-       (if (and (form-complete-p contents)
-                (buffer-at-end-p buf))
-           :done
-           (progn
-             (buffer-insert-newline buf)
-             :newline))))  ; Special case - just need to show new line
-    ;; Shift+Enter or Alt+Enter - always insert newline (don't submit even if form is complete)
-    ((or (eql key :shift-enter)
-         (and (consp key)
-              (eql (first key) :alt)
-              (member (rest key) '(#\Return #\Newline) :test #'char=)))
+     (if *notebook-editor-mode*
+         ;; Notebook cell: Enter always inserts a newline; Shift-Enter submits.
+         (progn (buffer-insert-newline buf) :newline)
+         (let ((contents (buffer-contents buf)))
+           (if (and (form-complete-p contents)
+                    (buffer-at-end-p buf))
+               :done
+               (progn
+                 (buffer-insert-newline buf)
+                 :newline)))))  ; Special case - just need to show new line
+    ;; Shift+Enter: submit in a notebook cell, otherwise insert a newline
+    ;; (don't submit even if the form is complete).
+    ((eql key :shift-enter)
+     (buffer-clear-mark buf)
+     (if *notebook-editor-mode*
+         :done
+         (progn
+           (delete-selection-or-nil buf)
+           (buffer-insert-newline buf)
+           :newline)))
+    ;; Alt+Enter - always insert newline
+    ((and (consp key)
+          (eql (first key) :alt)
+          (member (rest key) '(#\Return #\Newline) :test #'char=))
      (delete-selection-or-nil buf)
      (buffer-insert-newline buf)
      :newline)
@@ -1268,12 +1290,17 @@
 ;;; Main Editor Loop
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(defun run-editor (prompt continuation-prompt &optional (session *current-session*))
+(defun run-editor (prompt continuation-prompt &optional (session *current-session*)
+                                                        initial-content)
   "Run the multi-line editor for SESSION.
-   Returns the input string, :EOF on EOF, :CANCEL on interrupt, or :NOT-A-TTY if raw mode fails."
+   Returns the input string, :EOF on EOF, :CANCEL on interrupt, or :NOT-A-TTY if raw mode fails.
+   INITIAL-CONTENT, when given, pre-populates the buffer for editing."
   (let ((buf (make-edit-buffer :prompt prompt
                                :continuation-prompt continuation-prompt))
         (*want-mouse-tracking* (not *browser-terminal-active*)))
+    (when (and initial-content (plusp (length initial-content)))
+      (buffer-set-contents buf initial-content)
+      (buffer-move-to-end buf))
     ;; Reset global editor state (non-session-specific)
     (setf *screen-row* 0
           *editor-origin-row* 1
@@ -1305,6 +1332,9 @@
                    (get-cursor-position)
                  (declare (ignore col))
                  (setf *editor-origin-row* row)))
+             ;; Draw pre-populated content, if any
+             (when (and initial-content (plusp (length initial-content)))
+               (render-buffer buf))
              ;; Main loop
              (loop
                (let ((key (read-key))

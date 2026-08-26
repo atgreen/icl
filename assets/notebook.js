@@ -9,10 +9,99 @@
 // notebook to disk via `save-notebook`. Depends on globals from browser.js:
 // `ws`, `dockviewApi`.
 
-// cellId -> { outputEl, execEl } for routing cell-result messages.
+// cellId -> { outputEl, execEl, textarea, wrap, term, termDiv } for routing.
 const notebookCells = new Map();
 let notebookCellSeq = 0;
+let nbPanel = null;   // the live NotebookPanel, for message handlers
 function nbNewCellId() { return 'nbcell-' + (++notebookCellSeq); }
+
+// ── ICL editor (xterm) messages ──
+
+function handleCellTerm(msg) {
+  const e = notebookCells.get(msg.cellId);
+  // Match the REPL terminal: a bare \n must also carry a carriage return,
+  // or text after a newline lands at the previous column.
+  if (e && e.term) e.term.write(msg.data.replace(/\n/g, '\r\n'));
+}
+
+// The editor reports its exact height (visual rows) so we size the xterm to fit.
+function handleCellRows(msg) {
+  const e = notebookCells.get(msg.cellId);
+  if (e && e.term) {
+    const want = Math.min(60, Math.max(3, (msg.rows | 0) + 1));
+    if (want !== e.term.rows) e.term.resize(e.term.cols, want);
+  }
+}
+
+function handleCellEdited(msg) {
+  const e = notebookCells.get(msg.cellId);
+  if (!e) return;
+  if (e.term) { try { e.term.dispose(); } catch (x) {} e.term = null; }
+  if (e.termDiv) { e.termDiv.remove(); e.termDiv = null; }
+  e.textarea.value = msg.source || '';
+  e.textarea.style.display = '';
+  if (msg.submitted && nbPanel) nbPanel._runCell(e.wrap);
+}
+
+// getSymbolBounds() in browser.js is bound to the REPL terminal; this variant
+// reads the given cell terminal's buffer.
+function nbSymbolBoundsFor(term, col, row) {
+  const line = term.buffer.active.getLine(row);
+  if (!line) return null;
+  const lineText = line.translateToString();
+  if (col >= lineText.length || !isSymbolChar(lineText[col])) return null;
+  let start = col, end = col;
+  while (start > 0 && isSymbolChar(lineText[start - 1])) start--;
+  while (end < lineText.length && isSymbolChar(lineText[end])) end++;
+  const symbol = lineText.substring(start, end).trim();
+  return symbol.length > 0 ? { start, end, symbol } : null;
+}
+
+// Give a cell terminal the same symbol hover/click behaviour as the REPL:
+// hover highlights a symbol, click updates Symbol Info, Ctrl/Cmd-click inspects.
+function nbWireSymbolInteraction(term, containerEl) {
+  let hovered = null, downPos = null, dragging = false, box = null;
+  term.element.addEventListener('mousedown', (e) => { downPos = { x: e.clientX, y: e.clientY }; dragging = false; });
+  term.element.addEventListener('mouseup', (e) => {
+    if (term.hasSelection && term.hasSelection()) { downPos = null; return; }
+    if (hovered && downPos && !dragging &&
+        Math.abs(e.clientX - downPos.x) < 5 && Math.abs(e.clientY - downPos.y) < 5) {
+      if (e.ctrlKey || e.metaKey) openInspector(hovered, null);
+      else ws.send(JSON.stringify({ type: 'symbol-click', symbol: hovered }));
+      term.focus();
+    }
+    downPos = null;
+  });
+  containerEl.addEventListener('mousemove', (e) => {
+    if (downPos && (Math.abs(e.clientX - downPos.x) > 5 || Math.abs(e.clientY - downPos.y) > 5)) {
+      dragging = true; hovered = null; if (box) box.style.display = 'none'; term.element.style.cursor = ''; return;
+    }
+    const rect = term.element.getBoundingClientRect();
+    const dims = term._core._renderService.dimensions;
+    if (!dims.css.cell.width) return;
+    const col = Math.floor((e.clientX - rect.left) / dims.css.cell.width);
+    const row = Math.floor((e.clientY - rect.top) / dims.css.cell.height);
+    const si = nbSymbolBoundsFor(term, col, row + term.buffer.active.viewportY);
+    if (si) {
+      hovered = si.symbol;
+      if (!box) {
+        box = document.createElement('div');
+        box.style.cssText = 'position:absolute;border:1px solid var(--accent);border-radius:2px;pointer-events:none;z-index:10;';
+        containerEl.style.position = 'relative';
+        containerEl.appendChild(box);
+      }
+      const cw = dims.css.cell.width, ch = dims.css.cell.height;
+      box.style.left = (si.start * cw) + 'px'; box.style.top = (row * ch) + 'px';
+      box.style.width = ((si.end - si.start) * cw) + 'px'; box.style.height = ch + 'px';
+      box.style.display = 'block'; term.element.style.cursor = 'pointer';
+    } else {
+      hovered = null; if (box) box.style.display = 'none'; term.element.style.cursor = '';
+    }
+  });
+  containerEl.addEventListener('mouseleave', () => {
+    hovered = null; if (box) box.style.display = 'none'; term.element.style.cursor = '';
+  });
+}
 
 // ── Server → client entry points (called from browser.js onmessage) ──
 
@@ -137,7 +226,11 @@ function nbRenderRich(outEl, o) {
   try {
     switch (o.kind) {
       case 'hash-table': renderHashTable(div, o.count, o.entries); break;
-      case 'vega-lite': div.style.minHeight = '260px'; renderVegaLite(div, o.payload); break;
+      case 'vega-lite':
+        // A definite height lets Vega-Lite's height:"container" size correctly.
+        div.style.height = '340px'; div.style.overflow = 'auto';
+        renderVegaLite(div, o.payload);
+        break;
       case 'mermaid': renderMermaid(div, o.payload); break;
       case 'json': renderJson(div, o.payload); break;
       case 'svg': div.innerHTML = o.payload; break;
@@ -213,6 +306,7 @@ class NotebookPanel {
   get element() { return this._element; }
 
   init(params) {
+    nbPanel = this;
     const p = params.params || {};
     this._path = p.path || null;
     this._title = p.title || 'Untitled';
@@ -220,13 +314,50 @@ class NotebookPanel {
     this._build(cells);
   }
 
+  // Open the real ICL editor (an xterm bound to a backend editor session)
+  // for a code cell, seeded with its current source.
+  _startIclEdit(wrap) {
+    const entry = notebookCells.get(wrap.dataset.cellId);
+    if (!entry || entry.term) return;
+    entry.textarea.style.display = 'none';
+    const termDiv = document.createElement('div');
+    termDiv.style.cssText = 'padding:4px 8px;background:var(--bg-primary);';
+    wrap.insertBefore(termDiv, entry.outputEl);
+    const theme = (typeof terminal !== 'undefined' && terminal && terminal.options)
+      ? terminal.options.theme : undefined;
+    const initialRows = Math.min(30, Math.max(4, entry.textarea.value.split('\n').length + 1));
+    const term = new Terminal({
+      cursorBlink: true, fontFamily: "'JetBrains Mono', monospace", fontSize: 13,
+      cols: 100, rows: initialRows, theme, convertEol: false
+    });
+    term.open(termDiv);
+    // xterm sends plain \r for both Enter and Shift-Enter; deliver Shift-Enter
+    // as the kitty sequence the editor decodes as :shift-enter (submit).
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.key === 'Enter' && e.shiftKey) {
+        ws.send(JSON.stringify({ type: 'cell-key', cellId: wrap.dataset.cellId, data: '\x1b[13;2u' }));
+        return false;
+      }
+      return true;
+    });
+    term.onData(d => ws.send(JSON.stringify({ type: 'cell-key', cellId: wrap.dataset.cellId, data: d })));
+    nbWireSymbolInteraction(term, termDiv);
+    term.focus();
+    entry.term = term;
+    entry.termDiv = termDiv;
+    ws.send(JSON.stringify({ type: 'edit-cell', cellId: wrap.dataset.cellId, source: entry.textarea.value }));
+  }
+
   _button(label, fn) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.textContent = label;
     b.style.cssText =
       'font:12px sans-serif;padding:3px 8px;cursor:pointer;border:1px solid var(--border);' +
-      'border-radius:4px;background:var(--bg-tertiary);color:var(--fg-primary);';
-    b.onclick = fn;
+      'border-radius:4px;background:var(--bg-tertiary);color:var(--fg-primary);position:relative;z-index:3;';
+    // Keep the click from reaching an underlying cell editor / terminal.
+    b.addEventListener('mousedown', (e) => e.stopPropagation());
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     return b;
   }
 
@@ -261,7 +392,7 @@ class NotebookPanel {
     const head = document.createElement('div');
     head.style.cssText =
       'display:flex;align-items:center;gap:6px;padding:2px 6px;background:var(--bg-secondary);' +
-      'font:11px monospace;color:var(--fg-secondary);';
+      'font:11px monospace;color:var(--fg-secondary);position:relative;z-index:2;';
     const exec = document.createElement('span');
     exec.style.cssText = 'min-width:34px;';
     exec.textContent = '';
@@ -305,6 +436,13 @@ class NotebookPanel {
       out.addEventListener('click', () => this._editMarkdown(wrap));
       ta.addEventListener('blur', () => { if (ta.value.trim() !== '') this._renderMarkdown(wrap); });
       if (source.trim() !== '') this._renderMarkdown(wrap);
+    } else {
+      // Code cell: the textarea is a resting display of the source; clicking it
+      // opens the real ICL editor (paredit, indent, highlighting, completion).
+      ta.readOnly = true;
+      ta.style.cursor = 'text';
+      ta.title = 'Click to edit in the ICL editor';
+      ta.addEventListener('mousedown', (e) => { e.preventDefault(); this._startIclEdit(wrap); });
     }
 
     if (afterEl && afterEl.nextSibling) {
@@ -321,8 +459,12 @@ class NotebookPanel {
     const active = document.activeElement;
     const afterEl = active && active.closest ? active.closest('[data-cell-id]') : null;
     const w = this._appendCell(kind, '', [], afterEl);
-    const ta = w.querySelector('textarea');
-    if (ta) ta.focus();
+    if (kind === 'markdown') {
+      const ta = w.querySelector('textarea');
+      if (ta) ta.focus();
+    } else {
+      this._startIclEdit(w);   // open the ICL editor for a fresh code cell
+    }
   }
 
   _removeCell(wrap) {
@@ -349,9 +491,14 @@ class NotebookPanel {
   _runCell(wrap) {
     const cellId = wrap.dataset.cellId;
     const kind = wrap.dataset.kind;
-    const source = wrap.querySelector('textarea').value;
     if (kind === 'markdown') { this._renderMarkdown(wrap); return; }
-    ws.send(JSON.stringify({ type: 'run-cell', cellId, kind, source }));
+    const entry = notebookCells.get(cellId);
+    if (entry && entry.term) {
+      // Being edited in the ICL editor: submit it (same path as Shift-Enter).
+      ws.send(JSON.stringify({ type: 'cell-key', cellId, data: '\x1b[13;2u' }));
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'run-cell', cellId, kind, source: wrap.querySelector('textarea').value }));
   }
 
   _runAll() {

@@ -51,6 +51,14 @@
    (input-queue :accessor input-queue :initform (make-instance 'chanl:unbounded-channel)))
   (:documentation "WebSocket resource for REPL connections."))
 
+;; Notebook per-cell editor registry (defined here so the message handler,
+;; which references NB-EDITOR-CHANNEL, sees the structure at compile time).
+(defstruct nb-editor cell-id channel in-stream out-stream thread)
+
+(defvar *nb-editors* (make-hash-table :test 'equal)
+  "Active notebook cell editors, keyed by cell id.")
+(defvar *nb-editors-lock* (bt:make-lock "nb-editors"))
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; WebSocket Keepalive
 ;;; ─────────────────────────────────────────────────────────────────────────────
@@ -433,6 +441,29 @@
                 (lambda ()
                   (notebook-handle-run-cell client cell-id kind source))
                 :name "notebook-run-cell-handler"))))
+
+          ;; Notebook: start the ICL editor for a code cell
+          ((string= type "edit-cell")
+           (let ((cell-id (gethash "cellId" json))
+                 (source (gethash "source" json)))
+             (when cell-id
+               (notebook-start-cell-editor client cell-id (or source "")))))
+
+          ;; Notebook: keystrokes for a cell editor
+          ((string= type "cell-key")
+           (let ((cell-id (gethash "cellId" json))
+                 (data (gethash "data" json)))
+             (when (and cell-id data)
+               (let ((ed (gethash cell-id *nb-editors*)))
+                 (when ed
+                   (loop for ch across data
+                         do (chanl:send (nb-editor-channel ed) ch)))))))
+
+          ;; Notebook: cancel a cell editor
+          ((string= type "stop-cell-edit")
+           (let ((cell-id (gethash "cellId" json)))
+             (when cell-id
+               (notebook-stop-cell-editor cell-id))))
 
           ;; Notebook: save the notebook to disk
           ((string= type "save-notebook")
@@ -1101,28 +1132,40 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                                             'vector))
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
+(defvar *notebook-eval-lock* (bt:make-lock "notebook-eval")
+  "Serializes cell evaluation so a cell's eval and the classification of its
+   value (via the backend's *) are atomic and never race another cell.")
+
 (defun notebook-handle-run-cell (client cell-id kind source)
   "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
   (let ((cell (%make-notebook-cell
                :kind (if (and kind (string-equal kind "markdown")) :markdown :code)
                :source source)))
-    (notebook-eval-cell cell)
-    ;; For a code cell that produced a value, add a rich rendering of that
-    ;; value (classifying * — the value just computed — so side effects don't
-    ;; run twice). The plain printed value stays for the client's toggle.
-    (when (and (eq (notebook-cell-kind cell) :code)
-               (find :value (notebook-cell-outputs cell) :key #'cell-output-kind))
-      (let ((rich (ignore-errors (notebook-value-output "*"))))
-        (when rich
-          (setf (notebook-cell-outputs cell)
-                (append (notebook-cell-outputs cell) (list rich))))))
+    ;; Hold the lock across eval + classify so the * we classify is this
+    ;; cell's own value, even when several cells run at once (e.g. Run all).
+    (bt:with-lock-held (*notebook-eval-lock*)
+      ;; Notebook cells may hold several forms: evaluate all, last is the value.
+      (notebook-eval-cell cell :evaluator #'backend-eval-all-capture)
+      ;; For a code cell that produced a value, add a rich rendering of that
+      ;; value (classifying * — the value just computed — so side effects don't
+      ;; run twice). The plain printed value stays for the client's toggle.
+      (when (and (eq (notebook-cell-kind cell) :code)
+                 (find :value (notebook-cell-outputs cell) :key #'cell-output-kind))
+        (let ((rich (ignore-errors (notebook-value-output "*"))))
+          (when rich
+            (setf (notebook-cell-outputs cell)
+                  (append (notebook-cell-outputs cell) (list rich)))))))
     (incf *notebook-exec-counter*)
     (let ((obj (make-hash-table :test 'equal)))
       (setf (gethash "type" obj) "cell-result"
             (gethash "cellId" obj) cell-id
             (gethash "execCount" obj) *notebook-exec-counter*
             (gethash "outputs" obj) (notebook-outputs->wire (notebook-cell-outputs cell)))
-      (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
+      (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))
+    ;; A cell may have loaded systems / defined packages; refresh the browser's
+    ;; package & symbol lists and any live visualizations, as the REPL does.
+    (ignore-errors (refresh-browser-lists))
+    (ignore-errors (refresh-browser-visualizations))))
 
 (defun notebook-handle-save (client path title cells)
   "Build a notebook from the CELLS payload and save it to PATH.
@@ -1837,4 +1880,119 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
 
 (defmethod trivial-gray-streams:stream-finish-output ((stream ws-output-stream))
   (trivial-gray-streams:stream-force-output stream))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Notebook per-cell editor sessions
+;;;
+;;; A code cell edited in the browser runs the real ICL editor in its own
+;;; thread over private streams: keystrokes arrive as "cell-key" and the
+;;; editor's ANSI output is sent as "cell-term", both tagged with the cell id.
+;;; The editor's global rendering state is dynamically bound so a cell editor
+;;; can run concurrently with the main REPL editor without corrupting it.
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defclass ws-cell-input-stream (trivial-gray-streams:fundamental-character-input-stream)
+  ((channel :accessor cell-in-channel :initarg :channel)
+   (unread-char-slot :initform nil))
+  (:documentation "Input stream for a notebook cell editor, backed by a private channel."))
+
+(defmethod trivial-gray-streams:stream-read-char ((stream ws-cell-input-stream))
+  (with-slots (channel unread-char-slot) stream
+    (if unread-char-slot
+        (prog1 unread-char-slot (setf unread-char-slot nil))
+        (let ((char (chanl:recv channel)))
+          (if char char :eof)))))
+
+(defmethod trivial-gray-streams:stream-unread-char ((stream ws-cell-input-stream) char)
+  (setf (slot-value stream 'unread-char-slot) char))
+
+(defmethod trivial-gray-streams:stream-listen ((stream ws-cell-input-stream))
+  (with-slots (channel unread-char-slot) stream
+    (or unread-char-slot (not (chanl:recv-blocks-p channel)))))
+
+(defclass ws-cell-output-stream (ws-output-stream)
+  ((cell-id :accessor cell-out-id :initarg :cell-id))
+  (:documentation "Output stream that tags each flush with a notebook cell id."))
+
+(defmethod trivial-gray-streams:stream-force-output ((stream ws-cell-output-stream))
+  (let ((text (bt:with-lock-held ((stream-lock stream))
+                (prog1 (get-output-stream-string (buffer-of stream))
+                  (setf (buffer-of stream) (make-string-output-stream)))))
+        (client (stream-client stream)))
+    (when (and (plusp (length text)) client)
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "cell-term"
+              (gethash "cellId" obj) (cell-out-id stream)
+              (gethash "data" obj) text)
+        (ignore-errors
+          (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))))
+
+(defun notebook-stop-cell-editor (cell-id)
+  "Stop the editor for CELL-ID, unblocking its thread. Returns T if one existed."
+  (let ((ed (bt:with-lock-held (*nb-editors-lock*)
+              (prog1 (gethash cell-id *nb-editors*)
+                (remhash cell-id *nb-editors*)))))
+    (when ed
+      ;; Send EOF (NIL) so a blocked STREAM-READ-CHAR returns and the editor exits.
+      (ignore-errors (chanl:send (nb-editor-channel ed) nil))
+      t)))
+
+(defun notebook-start-cell-editor (client cell-id source)
+  "Start the real ICL editor for CELL-ID over private streams, seeded with SOURCE."
+  (notebook-stop-cell-editor cell-id)
+  (let* ((channel (make-instance 'chanl:unbounded-channel))
+         (in (make-instance 'ws-cell-input-stream :channel channel))
+         (out (make-instance 'ws-cell-output-stream :client client :cell-id cell-id))
+         (ed (make-nb-editor :cell-id cell-id :channel channel :in-stream in :out-stream out)))
+    (bt:with-lock-held (*nb-editors-lock*)
+      (setf (gethash cell-id *nb-editors*) ed))
+    (setf (nb-editor-thread ed)
+          (bt:make-thread
+           (lambda ()
+             (unwind-protect
+                  (let* ((session (make-repl-session
+                                   :name (format nil "nb-cell-~A" cell-id)
+                                   :input-stream in :output-stream out))
+                         (*current-session* session)
+                         (*standard-input* in)
+                         (*standard-output* out)
+                         (*error-output* out)
+                         (*trace-output* out)
+                         (*terminal-io* (make-two-way-stream in out))
+                         (*query-io* (make-two-way-stream in out))
+                         (*browser-terminal-active* t)
+                         ;; Notebook cells: Enter = newline, Shift-Enter = submit.
+                         (*notebook-editor-mode* t)
+                         ;; Report the editor's height so the client sizes the xterm.
+                         (*editor-render-hook*
+                          (lambda (b)
+                            (let ((rows (nth-value 0 (buffer-visual-info b (safe-term-width))))
+                                  (obj (make-hash-table :test 'equal)))
+                              (setf (gethash "type" obj) "cell-rows"
+                                    (gethash "cellId" obj) cell-id
+                                    (gethash "rows" obj) rows)
+                              (ignore-errors
+                                (hunchensocket:send-text-message
+                                 client (com.inuoe.jzon:stringify obj))))))
+                         ;; Isolate editor render state from the main REPL editor.
+                         (*terminal-raw-p* nil)
+                         (*want-mouse-tracking* nil)
+                         (*mouse-tracking-enabled* nil)
+                         (*screen-row* 0)
+                         (*editor-origin-row* 1)
+                         (*inline-hint* nil)
+                         (*last-key-was-tab* nil)
+                         (*completion-line-col* nil))
+                    (let ((result (run-editor "" "" session source)))
+                      (let ((obj (make-hash-table :test 'equal)))
+                        (setf (gethash "type" obj) "cell-edited"
+                              (gethash "cellId" obj) cell-id
+                              (gethash "source" obj) (if (stringp result) result source)
+                              (gethash "submitted" obj) (and (stringp result) t))
+                        (ignore-errors
+                          (hunchensocket:send-text-message
+                           client (com.inuoe.jzon:stringify obj))))))
+               (bt:with-lock-held (*nb-editors-lock*)
+                 (remhash cell-id *nb-editors*))))
+           :name (format nil "nb-cell-editor-~A" cell-id)))))
 

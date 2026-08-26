@@ -348,6 +348,15 @@ ws.onmessage = (e) => {
     case 'cell-result':
       handleCellResult(msg);
       break;
+    case 'cell-term':
+      handleCellTerm(msg);
+      break;
+    case 'cell-rows':
+      handleCellRows(msg);
+      break;
+    case 'cell-edited':
+      handleCellEdited(msg);
+      break;
     case 'notebook-saved':
       handleNotebookSaved(msg);
       break;
