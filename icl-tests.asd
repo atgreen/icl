@@ -27,6 +27,7 @@
                  (:file "paredit-tests")
                  (:file "editor-tests")
                  (:file "inspector-tests")
+                 (:file "notebook-tests")
                  (:file "input-tests"))))
   :perform (test-op (o c)
              (symbol-call :fiveam :run! :icl-tests)))

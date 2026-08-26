@@ -73,6 +73,7 @@
                  (:file "output")
                  (:file "highlight")
                  (:file "eval")
+                 (:file "notebook")
                  (:file "profiler")
                  (:file "coverage")
                  (:module "commands"
