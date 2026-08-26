@@ -729,20 +729,21 @@ Returns (values output-string value-strings). Does not print to the local REPL."
   (declare (ignore package))
   (unless *slynk-connected-p*
     (error "Not connected to backend server"))
-  (let* ((wrapper-code (format nil "(handler-case
-  (with-output-to-string (out)
-    (let* ((*standard-output* out)
-           (*error-output* out)
-           (*trace-output* out)
-           (*debug-io* out)
-           (*terminal-io* (make-two-way-stream (make-string-input-stream \"\") out))
-           (*query-io* *terminal-io*))
-      (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
-        (setf *** ** ** * * (first vals))
-        (force-output)
-        (list :ok out (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))))
-  (error (err)
-    (list :error (princ-to-string err) nil)))" string))
+  (let* ((wrapper-code (format nil "(let* ((out (make-string-output-stream))
+       (*standard-output* out)
+       (*error-output* out)
+       (*trace-output* out)
+       (*debug-io* out)
+       (*terminal-io* (make-two-way-stream (make-string-input-stream \"\") out))
+       (*query-io* *terminal-io*))
+  (handler-case
+    (let ((vals (multiple-value-list (eval (read-from-string ~S)))))
+      (setf *** ** ** * * (first vals))
+      (force-output)
+      (list :ok (get-output-stream-string out)
+            (mapcar (lambda (v) (write-to-string v :readably nil :pretty nil)) vals)))
+    (error (err)
+      (list :error (princ-to-string err) (get-output-stream-string out)))))" string))
          (result (with-slynk-connection
                    (slynk-client:slime-eval
                     `(cl:eval
