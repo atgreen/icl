@@ -419,6 +419,28 @@
                   (send-hover-doc-response client request-id symbol-name))
                 :name "hover-doc-handler"))))
 
+          ;; Notebook: run a single code cell and return its outputs
+          ((string= type "run-cell")
+           (let ((cell-id (gethash "cellId" json))
+                 (kind (gethash "kind" json))
+                 (source (gethash "source" json)))
+             (when source
+               (bt:make-thread
+                (lambda ()
+                  (notebook-handle-run-cell client cell-id kind source))
+                :name "notebook-run-cell-handler"))))
+
+          ;; Notebook: save the notebook to disk
+          ((string= type "save-notebook")
+           (let ((path (gethash "path" json))
+                 (title (gethash "title" json))
+                 (cells (gethash "cells" json)))
+             (when path
+               (bt:make-thread
+                (lambda ()
+                  (notebook-handle-save client path title cells))
+                :name "notebook-save-handler"))))
+
           ;; Get coverage file detail (on-demand parsing)
           ((string= type "get-coverage-file-detail")
            (browser-log "WS get-coverage-file-detail: hash=~S" (gethash "hash" json))
@@ -1023,6 +1045,85 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
         (setf (gethash "title" obj) (format nil "viz: ~A" title))
         (setf (gethash "content" obj) content)
         (setf (gethash "sourceExpr" obj) source-expr)
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Notebook
+;;; ─────────────────────────────────────────────────────────────────────────────
+
+(defvar *notebook-exec-counter* 0
+  "Monotonic execution counter shown as [n] beside notebook cells.")
+
+(defun notebook-output->wire (output)
+  "Convert a notebook OUTPUT blob to a JSON-friendly hash-table."
+  (let ((h (make-hash-table :test 'equal)))
+    (setf (gethash "kind" h) (string-downcase (symbol-name (cell-output-kind output)))
+          (gethash "payload" h) (or (cell-output-payload output) ""))
+    h))
+
+(defun notebook-outputs->wire (outputs)
+  "Convert a list of OUTPUTS to a JSON array (vector)."
+  (coerce (mapcar #'notebook-output->wire outputs) 'vector))
+
+(defun notebook-cell->wire (cell)
+  "Convert a notebook CELL to a JSON-friendly hash-table."
+  (let ((h (make-hash-table :test 'equal)))
+    (setf (gethash "id" h) (notebook-cell-id cell)
+          (gethash "kind" h) (string-downcase (symbol-name (notebook-cell-kind cell)))
+          (gethash "source" h) (notebook-cell-source cell)
+          (gethash "execCount" h) (or (notebook-cell-exec-count cell) 0)
+          (gethash "outputs" h) (notebook-outputs->wire (notebook-cell-outputs cell)))
+    h))
+
+(defun open-notebook-panel (nb)
+  "Send a message to the browser to open NB as a notebook panel."
+  (when *repl-resource*
+    (dolist (client (hunchensocket:clients *repl-resource*))
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "open-notebook"
+              (gethash "title" obj) (notebook-title nb)
+              (gethash "path" obj) (let ((p (notebook-path nb)))
+                                     (if p (namestring p) ""))
+              (gethash "cells" obj) (coerce (mapcar #'notebook-cell->wire
+                                                    (notebook-cell-list nb))
+                                            'vector))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
+
+(defun notebook-handle-run-cell (client cell-id kind source)
+  "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
+  (let ((cell (%make-notebook-cell
+               :kind (if (and kind (string-equal kind "markdown")) :markdown :code)
+               :source source)))
+    (notebook-eval-cell cell)
+    (incf *notebook-exec-counter*)
+    (let ((obj (make-hash-table :test 'equal)))
+      (setf (gethash "type" obj) "cell-result"
+            (gethash "cellId" obj) cell-id
+            (gethash "execCount" obj) *notebook-exec-counter*
+            (gethash "outputs" obj) (notebook-outputs->wire (notebook-cell-outputs cell)))
+      (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
+
+(defun notebook-handle-save (client path title cells)
+  "Build a notebook from the CELLS payload and save it to PATH.
+   CELLS is the parsed JSON array (a vector of hash-tables with kind/source)."
+  (handler-case
+      (let ((nb (make-notebook :title (or title "Untitled") :path path)))
+        (loop for c across cells
+              do (notebook-add-cell
+                  nb
+                  :kind (if (string-equal (gethash "kind" c "code") "markdown")
+                            :markdown :code)
+                  :source (or (gethash "source" c) "")))
+        (save-notebook nb path)
+        (setf *current-notebook* nb)
+        (let ((obj (make-hash-table :test 'equal)))
+          (setf (gethash "type" obj) "notebook-saved"
+                (gethash "path" obj) (namestring (notebook-path nb)))
+          (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))
+    (error (e)
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "notebook-error"
+              (gethash "message" obj) (princ-to-string e))
         (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
 (defun open-image-panel (title image-url content-type source-expr)

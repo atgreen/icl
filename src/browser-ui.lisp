@@ -53,5 +53,6 @@
 
   <!-- Main application script -->
   <script src='/assets/browser.js'></script>
+  <script src='/assets/notebook.js'></script>
 </body>
 </html>" *browser-token* +version+ (if *unsafe-visualizations* "true" "false")))

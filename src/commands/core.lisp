@@ -2223,6 +2223,23 @@ Example: ,ai-cli          - Show current setting and available CLIs
 ;;; System Browser
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
+(define-command notebook (&optional path)
+  "Open a notebook in the browser (requires browser mode).
+Example: ,notebook            - open a new, empty notebook
+         ,notebook foo.iclnb  - open an existing notebook file"
+  (cond
+    ((not *browser-terminal-active*)
+     (format t "~&; Notebooks need browser mode. Run ,browser first.~%"))
+    (t
+     (let ((nb (if (and path (probe-file path))
+                   (load-notebook path)
+                   (let ((n (make-notebook :path path)))
+                     (notebook-add-cell n :kind :code :source "")
+                     n))))
+       (setf *current-notebook* nb)
+       (open-notebook-panel nb)
+       (format t "~&; Notebook opened.~%")))))
+
 (define-command browser (&optional action)
   "Open the System Browser for exploring packages, classes, and methods.
 A VS Code-style browser with dockable panels for navigating the Lisp environment.

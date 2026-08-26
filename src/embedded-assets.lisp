@@ -38,6 +38,7 @@
                         "regulex.js"
                         "browser.css"
                         "browser.js"
+                        "notebook.js"
                         "WEB-LICENSES"
                         "OPEN-SOURCE-NOTICES.txt"))
       (let ((path (merge-pathnames filename assets-dir)))

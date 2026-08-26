@@ -12,6 +12,9 @@
 
 (in-package #:icl)
 
+(defvar *current-notebook* nil
+  "The notebook currently open in the browser, or NIL.")
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Data model
 ;;; ─────────────────────────────────────────────────────────────────────────────

@@ -341,6 +341,19 @@ ws.onmessage = (e) => {
       openImagePanel(msg.title, msg.imageUrl, msg.contentType, msg.sourceExpr);
       restoreTerminalFocus();
       break;
+    case 'open-notebook':
+      openNotebookPanel(msg);
+      restoreTerminalFocus();
+      break;
+    case 'cell-result':
+      handleCellResult(msg);
+      break;
+    case 'notebook-saved':
+      handleNotebookSaved(msg);
+      break;
+    case 'notebook-error':
+      handleNotebookError(msg);
+      break;
     case 'refresh-visualizations':
       refreshAllVisualizations();
       break;
@@ -4005,6 +4018,7 @@ const api = dv.createDockview(container, {
       case 'regexp': return new RegexpPanel();
       case 'venn': return new VennPanel();
       case 'graphviz': return new GraphvizPanel();
+      case 'notebook': return new NotebookPanel();
       case 'terminal': return new TerminalPanel();
     }
   }
