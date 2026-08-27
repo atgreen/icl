@@ -1261,10 +1261,19 @@ class NotebookPanel {
     });
     const SLIDE_TAGS = ['slide', 'subslide', 'fragment', 'notes', 'skip'];
     const anyTagged = cells.some(c => c.tags.some(x => SLIDE_TAGS.includes(x)));
-    const cellHtml = (c) => c.kind === 'markdown'
-      ? nbRenderMarkdown(c.e.textarea.value)
-      : '<pre><code>' + nbEscapeHtml(c.e.textarea.value) + '</code></pre>' +
-        ((c.e.outputEl && c.e.outputEl.firstChild) ? '<div>' + c.e.outputEl.innerHTML + '</div>' : '');
+    // Slides are output-forward (a presentation, not a code listing): show the
+    // cell's output first; include the code only when a cell opts in with a
+    // "show-input" tag, or when it has no output (and isn't hide-input).
+    const cellHtml = (c) => {
+      if (c.kind === 'markdown') return nbRenderMarkdown(c.e.textarea.value);
+      const out = (c.e.outputEl && c.e.outputEl.firstChild)
+        ? '<div class="nb-out">' + c.e.outputEl.innerHTML + '</div>' : '';
+      const showCode = c.tags.includes('show-input') ||
+        (!out && !c.tags.includes('hide-input'));
+      const code = showCode
+        ? '<pre><code>' + nbEscapeHtml(c.e.textarea.value) + '</code></pre>' : '';
+      return out + code;
+    };
     const slides = []; let cur = null;
     const start = (html) => { cur = { body: [html], notes: [] }; slides.push(cur); };
     for (const c of cells) {
