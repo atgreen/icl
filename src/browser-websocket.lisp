@@ -493,6 +493,11 @@
              (when (stringp sym)
                (ignore-errors (notebook-widget-set sym val)))))
 
+          ;; Notebook: variable inspector -> user-defined CL-USER bindings.
+          ((string= type "notebook-vars")
+           (bt:make-thread (lambda () (ignore-errors (notebook-send-vars client)))
+                           :name "notebook-vars-handler"))
+
           ;; Notebook: export to a jupytext-style .lisp file
           ((string= type "export-notebook")
            (let ((path (gethash "path" json))
@@ -1206,6 +1211,40 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
                   (setf (gethash ~D cl-user::*icl-out*) *)
                   nil)"
            n)))
+
+(defparameter *notebook-vars-query*
+  "(let ((vars nil) (funs nil) (*print-length* 12) (*print-level* 3))
+     (do-symbols (s :cl-user)
+       (when (eq (symbol-package s) (find-package :cl-user))
+         (when (and (boundp s)
+                    (not (member (symbol-name s)
+                                 '(\"*ICL-DISPLAYED*\" \"*ICL-WIDGETS*\" \"*ICL-OUT*\") :test 'string=)))
+           (push (list (symbol-name s)
+                       (let ((tp (type-of (symbol-value s))))
+                         (string-downcase (princ-to-string (if (consp tp) (first tp) tp))))
+                       (let ((v (ignore-errors (write-to-string (symbol-value s) :readably nil :pretty nil))))
+                         (if (and v (> (length v) 120)) (concatenate 'string (subseq v 0 120) \" ...\") (or v \"\"))))
+                 vars))
+         (when (and (fboundp s)
+                    (not (member (symbol-name s)
+                                 '(\"DISPLAY\" \"OUT\" \"SLIDER\" \"DROPDOWN\" \"CHECKBOX\" \"TEXT-INPUT\" \"BUTTON\" \"%ICL-WIDGET\")
+                                 :test 'string=)))
+           (push (symbol-name s) funs))))
+     (list (sort vars 'string< :key 'first) (sort funs 'string<)))"
+  "Backend form: enumerate CL-USER-home symbols (the user's own defvars/defuns)
+   as (vars funs), where each var is (name type short-value).")
+
+(defun notebook-send-vars (client)
+  "Query the inferior for the notebook's user-defined bindings and send them."
+  (let* ((r (ignore-errors
+              (let ((res (backend-eval-internal *notebook-vars-query*)))
+                (and (consp res) (first res) (read-from-string (first res))))))
+         (obj (make-hash-table :test 'equal)))
+    (setf (gethash "type" obj) "notebook-vars-result"
+          (gethash "vars" obj) (coerce (mapcar (lambda (v) (coerce v 'vector)) (first r)) 'vector)
+          (gethash "funs" obj) (coerce (second r) 'vector))
+    (ignore-errors
+      (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))))
 
 (defun notebook-widget-set (symbol-name value)
   "Set the CL-USER symbol named SYMBOL-NAME (a widget's binding) to VALUE."

@@ -366,6 +366,9 @@ ws.onmessage = (e) => {
     case 'notebook-restarted':
       handleNotebookRestarted(msg);
       break;
+    case 'notebook-vars-result':
+      nbShowVars(msg);
+      break;
     case 'refresh-visualizations':
       refreshAllVisualizations();
       break;

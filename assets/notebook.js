@@ -149,6 +149,44 @@ function handleCellResult(msg) {
   if (entry.timeEl) entry.timeEl.textContent = nbFmtDuration(msg.execMs);
 }
 
+// Variable inspector overlay: the notebook's user-defined vars + functions.
+function nbShowVars(msg) {
+  const old = document.getElementById('nb-vars-overlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'nb-vars-overlay';
+  ov.style.cssText = 'position:fixed;top:60px;right:20px;width:380px;max-height:70vh;overflow:auto;' +
+    'z-index:1000;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,0.3);font:12px monospace;';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 10px;' +
+    'border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-secondary);';
+  const title = document.createElement('b'); title.textContent = 'Notebook variables';
+  const close = document.createElement('button'); close.textContent = '✕';
+  close.style.cssText = 'cursor:pointer;border:none;background:none;color:var(--fg-secondary);';
+  close.onclick = () => ov.remove();
+  head.appendChild(title); head.appendChild(close); ov.appendChild(head);
+  const body = document.createElement('div'); body.style.cssText = 'padding:6px 10px;';
+  const vars = msg.vars || [], funs = msg.funs || [];
+  if (!vars.length && !funs.length) {
+    body.innerHTML = '<div style="color:var(--fg-secondary);">Nothing defined yet.</div>';
+  }
+  for (const v of vars) {
+    const row = document.createElement('div'); row.style.cssText = 'margin:2px 0;white-space:pre-wrap;';
+    row.innerHTML = '<span style="color:var(--accent,#4098ff);">' + nbEscapeHtml(v[0]) + '</span>' +
+      '<span style="color:var(--fg-secondary);"> : ' + nbEscapeHtml(v[1]) + '</span> = ' + nbEscapeHtml(v[2]);
+    body.appendChild(row);
+  }
+  if (funs.length) {
+    const h = document.createElement('div');
+    h.style.cssText = 'margin-top:8px;color:var(--fg-secondary);'; h.textContent = 'functions:';
+    body.appendChild(h);
+    const fl = document.createElement('div'); fl.textContent = funs.join('  '); body.appendChild(fl);
+  }
+  ov.appendChild(body);
+  document.body.appendChild(ov);
+}
+
 // Human-readable cell run time: "12 ms", "0.34 s", "2.1 s".
 function nbFmtDuration(ms) {
   if (ms == null || ms < 0) return '';
@@ -915,6 +953,7 @@ class NotebookPanel {
     bar.appendChild(this._button('⟳▶ Run all', () => ws.send(JSON.stringify({ type: 'notebook-restart', runAll: true })), 'Restart the image and run all cells'));
     bar.appendChild(this._button('⟳↓ below', () => { const c = this._selectedOrFirst(); if (c) this._restartRunBelow(c); }, 'Restart the image and run the selected cell and below'));
     bar.appendChild(this._button('Contents', () => this._toggleToc(), 'Toggle the table of contents'));
+    bar.appendChild(this._button('Variables', () => ws.send(JSON.stringify({ type: 'notebook-vars' })), 'Inspect notebook-defined variables & functions'));
     bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs(), 'Clear all cell outputs'));
     bar.appendChild(this._button('Find', () => this._openFind(), 'Find & replace across cells'));
     bar.appendChild(this._button('Save', () => this._save(), 'Save the notebook (.iclnb)'));
