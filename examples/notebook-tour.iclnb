@@ -1,0 +1,92 @@
+(:iclnb 1 :title "ICL Notebook Tour" :backend-info nil :next-id 11 :cells
+ ((:id 1 :kind :markdown :source "# A Tour of ICL Notebooks
+
+Welcome to a **live Common Lisp notebook**. Every code cell runs in a real
+Lisp image and is edited with the full ICL editor — paredit, auto-indent,
+completion, and click-to-inspect symbols.
+
+Euler's identity, rendered by KaTeX: $e^{i\\pi} + 1 = 0$.
+"
+   :exec-count nil :outputs nil)
+  (:id 2 :kind :markdown :source "## What this notebook shows
+
+| Feature      | Where |
+|--------------|-------|
+| Rich values  | a hash-table renders as a table |
+| Charts       | Vega-Lite bar & line charts |
+| `display()`  | several outputs from a single cell |
+| Diagrams     | a Mermaid graph |
+| Math         | KaTeX in markdown cells |
+
+Click any cell to edit it, then **Shift-Enter** to run.
+"
+   :exec-count nil :outputs nil)
+  (:id 3 :kind :code :source ";; A tiny, dependency-free Vega-Lite helper.
+;; PAIRS is a list of (label value); MARK is \"bar\" or \"line\".
+(defun vega-chart (title mark pairs)
+  (with-output-to-string (s)
+    (format s \"{\\\"$schema\\\":\\\"https://vega.github.io/schema/vega-lite/v5.json\\\",\")
+    (format s \"\\\"title\\\":\\\"~A\\\",\\\"width\\\":520,\\\"height\\\":300,\" title)
+    (format s \"\\\"data\\\":{\\\"values\\\":[\")
+    (loop for (label val) in pairs for sep = \"\" then \",\"
+          do (format s \"~A{\\\"label\\\":\\\"~A\\\",\\\"value\\\":~A}\" sep label val))
+    (format s \"]},\\\"mark\\\":{\\\"type\\\":\\\"~A\\\",\\\"point\\\":true,\\\"tooltip\\\":true},\" mark)
+    (format s \"\\\"encoding\\\":{\\\"x\\\":{\\\"field\\\":\\\"label\\\",\\\"type\\\":\\\"nominal\\\",\\\"sort\\\":null},\")
+    (format s \"\\\"y\\\":{\\\"field\\\":\\\"value\\\",\\\"type\\\":\\\"quantitative\\\"}}}\")))
+"
+   :exec-count nil :outputs nil)
+  (:id 4 :kind :code :source
+   ";; Classic recursion. The cell value is the list of the first 16 Fibonacci
+;; numbers (this cell holds two forms; the last one is the value).
+(defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
+(loop for i from 0 to 15 collect (fib i))
+"
+   :exec-count nil :outputs nil)
+  (:id 5 :kind :code :source ";; A string of Vega-Lite JSON renders as a chart.
+(vega-chart \"Fibonacci numbers\" \"bar\"
+            (loop for i from 1 to 12
+                  collect (list (format nil \"F~D\" i) (fib i))))
+"
+   :exec-count nil :outputs nil)
+  (:id 6 :kind :code :source
+   ";; One cell, several outputs: (display ...) emits each in call order,
+;; then the cell's final value is shown too.
+(display (vega-chart \"Squares\" \"line\"
+                     (loop for i from 1 to 10 collect (list i (* i i)))))
+(let ((counts (make-hash-table :test 'equal)))
+  (dolist (word '(\"alpha\" \"beta\" \"gamma\" \"delta\" \"epsilon\"))
+    (setf (gethash word counts) (length word)))
+  (display counts))
+(format nil \"A chart and a table were displayed above; this is the cell value.\")
+"
+   :exec-count nil :outputs nil)
+  (:id 7 :kind :markdown :source "## The golden ratio
+
+Ratios of consecutive Fibonacci numbers converge to
+
+$$\\varphi = \\frac{1 + \\sqrt{5}}{2} \\approx 1.6180339\\ldots$$
+
+Let's watch it happen.
+"
+   :exec-count nil :outputs nil)
+  (:id 8 :kind :code :source ";; Fibonacci ratios closing in on phi.
+(vega-chart \"Consecutive ratios approach phi\" \"line\"
+            (loop for i from 2 to 15
+                  collect (list i (/ (fib i) (float (fib (1- i)))))))
+"
+   :exec-count nil :outputs nil)
+  (:id 9 :kind :code :source
+   ";; A string that looks like a Mermaid diagram renders as one.
+(format nil \"graph TD~%  A[fib n] --> B[fib n-1]~%  A --> C[fib n-2]~%  B --> D[fib n-2]~%  B --> E[fib n-3]~%  C --> F[fib n-3]~%  C --> G[fib n-4]\")
+"
+   :exec-count nil :outputs nil)
+  (:id 10 :kind :markdown :source "## That's the tour
+
+Everything above is **live** — click a cell to edit, **Shift-Enter** to run,
+**Alt-Enter** to run and add a cell below. Press **Esc** for command mode
+(`a`/`b` insert, `dd` delete, `m`/`y` change kind).
+
+Save from the toolbar, export to HTML or `.lisp`, and reopen any time with
+`,notebook <file>` or `icl --notebook <file>`. Happy hacking! 🎉
+"
+   :exec-count nil :outputs nil)))
