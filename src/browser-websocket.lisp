@@ -484,6 +484,15 @@
            (bt:make-thread (lambda () (ignore-errors (interrupt-backend-eval)))
                            :name "notebook-interrupt-handler"))
 
+          ;; Notebook: export to a jupytext-style .lisp file
+          ((string= type "export-notebook")
+           (let ((path (gethash "path" json))
+                 (cells (gethash "cells" json)))
+             (when path
+               (bt:make-thread
+                (lambda () (notebook-handle-export-lisp client path cells))
+                :name "notebook-export-handler"))))
+
           ;; Notebook: save the notebook to disk
           ((string= type "save-notebook")
            (let ((path (gethash "path" json))
@@ -1188,6 +1197,33 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
     ;; package & symbol lists and any live visualizations, as the REPL does.
     (ignore-errors (refresh-browser-lists))
     (ignore-errors (refresh-browser-visualizations))))
+
+(defun notebook-handle-export-lisp (client path cells)
+  "Export CELLS to a loadable .lisp file with ;; %% cell markers.
+   Markdown cells become comment blocks; code cells are emitted verbatim."
+  (handler-case
+      (progn
+        (with-open-file (out path :direction :output
+                                  :if-exists :supersede :if-does-not-exist :create)
+          (loop for c across cells
+                for kind = (gethash "kind" c "code")
+                for src = (or (gethash "source" c) "")
+                do (if (string-equal kind "markdown")
+                       (progn
+                         (format out "~&;; %% [markdown]~%")
+                         (dolist (line (uiop:split-string src :separator '(#\Newline)))
+                           (format out ";; ~A~%" line)))
+                       (format out "~&;; %% [code]~%~A~%" src))
+                   (terpri out)))
+        (let ((obj (make-hash-table :test 'equal)))
+          (setf (gethash "type" obj) "notebook-saved"
+                (gethash "path" obj) (namestring (pathname path)))
+          (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))
+    (error (e)
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "type" obj) "notebook-error"
+              (gethash "message" obj) (princ-to-string e))
+        (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj))))))
 
 (defun notebook-handle-save (client path title cells)
   "Build a notebook from the CELLS payload and save it to PATH.

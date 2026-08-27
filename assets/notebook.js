@@ -430,6 +430,8 @@ class NotebookPanel {
     bar.appendChild(this._button('Contents', () => this._toggleToc()));
     bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs()));
     bar.appendChild(this._button('Save', () => this._save()));
+    bar.appendChild(this._button('→.lisp', () => this._exportLisp()));
+    bar.appendChild(this._button('→html', () => this._exportHtml()));
     this._dirtyEl = document.createElement('span');
     this._dirtyEl.title = 'Unsaved changes';
     this._dirtyEl.style.cssText = 'color:var(--accent,#4098ff);margin-left:auto;padding:0 8px;font-size:14px;';
@@ -631,5 +633,45 @@ class NotebookPanel {
     const panel = dockviewApi && dockviewApi.getPanel('notebook');
     if (panel && panel.api && panel.api.setTitle) panel.api.setTitle('Notebook: ' + this._title);
     this._writeNotebook(path);
+  }
+
+  // Export to a loadable jupytext-style .lisp (server writes the file).
+  _exportLisp() {
+    const def = (this._path || 'notebook').replace(/\.iclnb$/i, '') + '.lisp';
+    const path = window.prompt('Export to .lisp path:', def);
+    if (!path) return;
+    const cells = [];
+    for (const w of this._cellsEl.querySelectorAll('[data-cell-id]'))
+      cells.push({ kind: w.dataset.kind, source: w.querySelector('textarea').value });
+    ws.send(JSON.stringify({ type: 'export-notebook', path, format: 'lisp', cells }));
+  }
+
+  // Export to a self-contained HTML file (downloaded), capturing the
+  // rendered outputs currently in the DOM.
+  _exportHtml() {
+    const t = this._title || 'Notebook';
+    const parts = ['<!doctype html><html><head><meta charset="utf-8"><title>' + t + '</title>',
+      '<style>body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;line-height:1.5;}',
+      'pre{background:#f5f5f5;padding:8px;border-radius:4px;overflow:auto;}',
+      'table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:3px 8px;}',
+      '.cell{margin:1.2em 0;}.out{margin-top:.4em;}</style></head><body>',
+      '<h1>' + nbEscapeHtml(t) + '</h1>'];
+    for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) {
+      const e = notebookCells.get(w.dataset.cellId);
+      if (w.dataset.kind === 'markdown') {
+        parts.push('<div class="cell">' + nbRenderMarkdown(e.textarea.value) + '</div>');
+      } else {
+        parts.push('<div class="cell"><pre><code>' + nbEscapeHtml(e.textarea.value) + '</code></pre>');
+        if (e.outputEl && e.outputEl.firstChild) parts.push('<div class="out">' + e.outputEl.innerHTML + '</div>');
+        parts.push('</div>');
+      }
+    }
+    parts.push('</body></html>');
+    const blob = new Blob([parts.join('\n')], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = t + '.html';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 }
