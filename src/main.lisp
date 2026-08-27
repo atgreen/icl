@@ -112,6 +112,14 @@
    :key :no-open
    :description "Don't automatically open browser (use with -b)"))
 
+(defun make-notebook-option ()
+  "Create --notebook option to start in a browser notebook."
+  (clingon:make-option
+   :flag
+   :long-name "notebook"
+   :key :notebook
+   :description "Start a browser notebook (optionally: icl --notebook FILE.iclnb)"))
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Update Subcommand
 ;;; ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +228,8 @@
         (verbose (clingon:getopt cmd :verbose))
         (mcp-server (clingon:getopt cmd :mcp-server))
         (browser-mode (clingon:getopt cmd :browser))
+        (notebook-mode (clingon:getopt cmd :notebook))
+        (notebook-file (first (clingon:command-arguments cmd)))
         (unsafe-viz (clingon:getopt cmd :unsafe-visualizations))
         (no-open (clingon:getopt cmd :no-open))
         (inferior-args (clingon:command-arguments cmd)))
@@ -303,15 +313,24 @@
         (error (e)
           (format *error-output* "~&Error: ~A~%" e)
           (uiop:quit 1))))
-    ;; Start browser if requested
-    (when browser-mode
+    ;; Start browser if requested (--browser or --notebook)
+    (when (or browser-mode notebook-mode)
+      ;; For --notebook, prepare the notebook so it opens once the page connects
+      ;; (see the terminal-ready websocket handler).
+      (when notebook-mode
+        (setf *current-notebook*
+              (if (and notebook-file (probe-file notebook-file))
+                  (load-notebook notebook-file)
+                  (let ((nb (make-notebook :path notebook-file)))
+                    (notebook-add-cell nb :kind :code :source "")
+                    nb))))
       (format t "Starting ICL browser interface...~%")
       (let ((url (start-browser :open-browser (not no-open))))
         (if no-open
             (format t "Direct your browser to ~A~%" url)
             (format t "Browser started at ~A~%" url))))
-    ;; If --connect -b, run browser-only mode (no terminal REPL)
-    (if (and connect-str browser-mode)
+    ;; If --connect with -b/--notebook, run browser-only mode (no terminal REPL)
+    (if (and connect-str (or browser-mode notebook-mode))
         (progn
           (format t "~&; Browser-only mode (connected to ~A)~%" connect-str)
           (format t "~&; Press Ctrl-C to exit~%")
@@ -348,6 +367,7 @@ and an extensible command system."
                   (make-mcp-server-option)
                   (make-browser-option)
                   (make-no-open-option)
+                  (make-notebook-option)
                   (make-unsafe-visualizations-option))
    :sub-commands (list (make-update-command))
    :handler #'handle-cli))

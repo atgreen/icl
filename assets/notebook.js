@@ -509,6 +509,10 @@ class NotebookPanel {
     const path = window.prompt('Save notebook to path:', this._path || 'notebook.iclnb');
     if (!path) return;
     this._path = path;
+    // Title the notebook after the file's base name.
+    this._title = path.replace(/^.*\//, '').replace(/\.iclnb$/i, '') || 'Untitled';
+    const panel = dockviewApi && dockviewApi.getPanel('notebook');
+    if (panel && panel.api && panel.api.setTitle) panel.api.setTitle('Notebook: ' + this._title);
     const cells = [];
     for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) {
       cells.push({ kind: w.dataset.kind, source: w.querySelector('textarea').value });

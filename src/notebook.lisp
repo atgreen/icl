@@ -50,11 +50,13 @@
 ;;; Construction and cell operations
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
-(defun make-notebook (&key (title "Untitled") path backend-info)
-  "Create an empty notebook."
-  (%make-notebook :title title
-                  :path (and path (pathname path))
-                  :backend-info backend-info))
+(defun make-notebook (&key title path backend-info)
+  "Create an empty notebook. When TITLE is omitted, it defaults to PATH's
+   base name (or \"Untitled\")."
+  (let ((p (and path (pathname path))))
+    (%make-notebook :title (or title (and p (pathname-name p)) "Untitled")
+                    :path p
+                    :backend-info backend-info)))
 
 (defun notebook-cell-count (nb)
   "Number of cells in NB."
@@ -231,6 +233,10 @@
   "Read a notebook from the .iclnb file at PATH. Returns the notebook."
   (with-open-file (in path :direction :input)
     (let* ((*read-eval* nil)
-           (nb (sexp->notebook (read in))))
-      (setf (notebook-path nb) (pathname path))
+           (nb (sexp->notebook (read in)))
+           (p (pathname path)))
+      (setf (notebook-path nb) p)
+      ;; Title the notebook after its file unless it carries a real title.
+      (when (or (null (notebook-title nb)) (string= (notebook-title nb) "Untitled"))
+        (setf (notebook-title nb) (pathname-name p)))
       nb)))

@@ -267,11 +267,12 @@
       ((or (string-prefix-p ",cd " trimmed)
            (string-prefix-p ",in-package " trimmed))
        :package)
-      ;; File commands: ,load, ,ld, ,compile-file, ,cf
+      ;; File commands: ,load, ,ld, ,compile-file, ,cf, ,notebook
       ((or (string-prefix-p ",load " trimmed)
            (string-prefix-p ",ld " trimmed)
            (string-prefix-p ",compile-file " trimmed)
-           (string-prefix-p ",cf " trimmed))
+           (string-prefix-p ",cf " trimmed)
+           (string-prefix-p ",notebook " trimmed))
        :path)
       ;; System loading: ,load-system, ,ql
       ((or (string-prefix-p ",load-system " trimmed)

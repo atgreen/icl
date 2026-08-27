@@ -1171,7 +1171,9 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
   "Build a notebook from the CELLS payload and save it to PATH.
    CELLS is the parsed JSON array (a vector of hash-tables with kind/source)."
   (handler-case
-      (let ((nb (make-notebook :title (or title "Untitled") :path path)))
+      (let ((nb (make-notebook
+                 :title (unless (or (null title) (string= title "Untitled")) title)
+                 :path path)))
         (loop for c across cells
               do (notebook-add-cell
                   nb
