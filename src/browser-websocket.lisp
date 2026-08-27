@@ -465,6 +465,11 @@
              (when cell-id
                (notebook-stop-cell-editor cell-id))))
 
+          ;; Notebook: interrupt the running cell evaluation
+          ((string= type "notebook-interrupt")
+           (bt:make-thread (lambda () (ignore-errors (interrupt-backend-eval)))
+                           :name "notebook-interrupt-handler"))
+
           ;; Notebook: save the notebook to disk
           ((string= type "save-notebook")
            (let ((path (gethash "path" json))

@@ -396,6 +396,7 @@ class NotebookPanel {
     bar.appendChild(this._button('+ Code', () => this._addCell('code')));
     bar.appendChild(this._button('+ Markdown', () => this._addCell('markdown')));
     bar.appendChild(this._button('Run all', () => this._runAll()));
+    bar.appendChild(this._button('⏹ Interrupt', () => ws.send(JSON.stringify({ type: 'notebook-interrupt' }))));
     bar.appendChild(this._button('Save', () => this._save()));
     this._element.appendChild(bar);
 
