@@ -1,0 +1,59 @@
+(:iclnb 1 :title "Arrow Tables" :backend-info nil :next-id 7 :cells
+ ((:id 1 :kind :markdown :source "# Arrow → Perspective tables
+
+Tabular values are encoded as typed **Apache Arrow** (via the injected
+`cl-arrow`) and streamed straight into a Perspective grid — columns keep their
+types, so sorting, filtering, and **pivoting** all work. Run each cell and open
+the grid's settings (the toolbar on the right of the grid) to pivot.
+"
+   :exec-count nil :outputs nil)
+  (:id 2 :kind :code :source
+   ";; Small table — each plist is a row; keys become typed columns
+;; (string / float / int).
+(loop for (city pop area) in
+      '((\"London\" 8.9 1572)
+        (\"Paris\"  2.1 105)
+        (\"Berlin\" 3.6 891)
+        (\"Madrid\" 3.3 604))
+      collect (list :city city :pop-millions pop :area-km2 area))
+"
+   :exec-count nil :outputs nil :view-config
+   "{\"version\":\"3.8.0\",\"plugin\":\"Datagrid\",\"plugin_config\":{\"columns\":{},\"edit_mode\":\"READ_ONLY\",\"scroll_lock\":false},\"columns_config\":{},\"settings\":false,\"theme\":\"Pro Light\",\"title\":null,\"group_by\":[],\"split_by\":[],\"sort\":[],\"filter\":[],\"expressions\":{},\"columns\":[\"CITY\",\"POP-MILLIONS\",\"AREA-KM2\"],\"aggregates\":{}}")
+  (:id 3 :kind :code :source
+   ";; A larger synthetic table (5,000 rows), encoded as typed Arrow and streamed
+;; to Perspective. Open the grid settings, drag REGION (then PRODUCT) into
+;; \"Group By\", and aggregate REVENUE / UNITS as sums.
+(loop for i from 1 to 5000
+      for units = (+ 10 (mod (* i 7) 200))
+      collect (list :region  (nth (mod i 4) '(\"West\" \"East\" \"North\" \"South\"))
+                    :product (nth (mod i 3) '(\"Widget\" \"Gadget\" \"Gizmo\"))
+                    :units   units
+                    :revenue (* units (+ 5 (mod i 20)))))
+"
+   :exec-count nil :outputs nil :view-config
+   "{\"version\":\"3.8.0\",\"plugin\":\"Datagrid\",\"plugin_config\":{\"columns\":{},\"edit_mode\":\"READ_ONLY\",\"scroll_lock\":false},\"columns_config\":{},\"settings\":false,\"theme\":\"Pro Light\",\"title\":null,\"group_by\":[\"PRODUCT\"],\"split_by\":[\"REGION\"],\"sort\":[[\"REGION\",\"asc\"]],\"filter\":[],\"expressions\":{},\"columns\":[\"UNITS\",\"REVENUE\"],\"aggregates\":{}}")
+  (:id 4 :kind :code :source
+   ";; Missing keys become nulls; float and int columns keep their types.
+(list (list :sku \"A-1\" :qty 3 :weight 1.25)
+      (list :sku \"A-2\" :qty 7)                ; weight missing -> null
+      (list :sku \"A-3\"        :weight 4.0)    ; qty missing -> null
+      (list :sku \"A-4\" :qty 1 :weight 0.5))
+"
+   :exec-count nil :outputs nil :view-config
+   "{\"version\":\"3.8.0\",\"plugin\":\"Datagrid\",\"plugin_config\":{\"columns\":{},\"edit_mode\":\"READ_ONLY\",\"scroll_lock\":false},\"columns_config\":{},\"settings\":false,\"theme\":\"Pro Light\",\"title\":null,\"group_by\":[],\"split_by\":[],\"sort\":[],\"filter\":[],\"expressions\":{},\"columns\":[\"SKU\",\"QTY\",\"WEIGHT\"],\"aggregates\":{}}")
+  (:id 5 :kind :markdown :source "## Pivoting
+
+With cell 3's grid open: settings → drag **REGION** into *Group By* → set
+**REVENUE**'s aggregate to *sum*. Add **PRODUCT** as a second Group By, or drag
+it into *Split By* for a cross-tab. All of this runs client-side in Perspective's
+engine on the Arrow data — no re-query.
+"
+   :exec-count nil :outputs nil)
+  (:id 6 :kind :markdown :source "## Data frames
+
+A Lisp-Stat `data-frame` renders through the exact same path — the classifier
+recognises it, `cl-arrow` encodes its typed columns, and it lands in the grid.
+If you have Lisp-Stat loaded, evaluate a `data-frame` in a cell to try it; the
+list-of-plists tables above use the identical Arrow pipeline.
+"
+   :exec-count nil :outputs nil)))

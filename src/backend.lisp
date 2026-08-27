@@ -590,7 +590,8 @@
   (when *external-slynk-connection*
     (error "Cannot restart an external Slynk backend"))
   (ignore-errors (stop-inferior-lisp))
-  (setf *icl-runtime-injected* nil)   ; re-inject runtime into the fresh image
+  (setf *icl-runtime-injected* nil    ; re-inject runtime into the fresh image
+        *cl-arrow-injected* nil)      ; and re-inject cl-arrow lazily on next use
   (ensure-backend)
   t)
 

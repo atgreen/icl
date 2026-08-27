@@ -37,6 +37,11 @@
 (defvar *icl-runtime-injected* nil
   "T when ICL runtime has been injected into the inferior Lisp.")
 
+(defvar *cl-arrow-injected* nil
+  "T once cl-arrow + the ICL arrow adapter have been (attempted) injected into
+the inferior Lisp.  Set even on failure so we don't retry every table; reset by
+RESTART-BACKEND for a fresh image.")
+
 (defun slynk-verify-connection (connection &optional (timeout-seconds 15))
   "Verify that CONNECTION is responsive by doing a simple eval with timeout.
    Returns T if the connection is responsive, NIL otherwise.
@@ -212,6 +217,38 @@ Return NIL to use default ICL visualization.\"))
            *slynk-connection*))
       (error (e)
         (format *error-output* "~&; Warning: Failed to inject ICL runtime: ~A~%" e)))))
+
+(defun inject-cl-arrow ()
+  "Load the vendored cl-arrow bundle and the ICL arrow adapter into the inferior
+Lisp (best effort).  Idempotent in the inferior (the bundle is skipped if the
+CL-ARROW package already exists).  Requires the ICL runtime (for the base64
+helper) to have been injected first.  On any failure the arrow path simply stays
+unavailable and ICL falls back to its JSON table rendering."
+  (when (and *slynk-connected-p*
+             *cl-arrow-bundle-source* *icl-arrow-adapter-source*)
+    (handler-case
+        (progn
+          ;; Load the bundle only if cl-arrow isn't already present.
+          (slynk-client:slime-eval
+           `(cl:unless (cl:find-package :cl-arrow)
+              (cl:with-input-from-string (cl-user::icl-arrow-stream
+                                          ,*cl-arrow-bundle-source*)
+                (cl:handler-bind ((cl:warning #'cl:muffle-warning))
+                  (cl:load cl-user::icl-arrow-stream))
+                t))
+           *slynk-connection*)
+          ;; Load the adapter (defines cl-user::icl-arrow-encode).
+          (slynk-client:slime-eval
+           `(cl:with-input-from-string (cl-user::icl-arrow-stream
+                                        ,*icl-arrow-adapter-source*)
+              (cl:handler-bind ((cl:warning #'cl:muffle-warning))
+                (cl:load cl-user::icl-arrow-stream))
+              t)
+           *slynk-connection*)
+          t)
+      (error (e)
+        (format *error-output* "~&; Note: cl-arrow injection unavailable: ~A~%" e)
+        nil))))
 
 (defun package-excluded-p (package-name)
   "Check if PACKAGE-NAME matches any exclusion pattern in *viz-package-exclusions*."

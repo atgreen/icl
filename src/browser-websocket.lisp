@@ -1123,13 +1123,21 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
         (kind (cell-output-kind output))
         (payload (cell-output-payload output)))
     (setf (gethash "kind" h) (string-downcase (symbol-name kind)))
-    (if (eq kind :hash-table)
-        ;; Structured payload: (:count N :entries ((k v) ...)) -> count + [[k,v],...]
-        (setf (gethash "count" h) (getf payload :count)
-              (gethash "entries" h)
-              (coerce (mapcar (lambda (e) (coerce e 'vector)) (getf payload :entries))
-                      'vector))
-        (setf (gethash "payload" h) (or payload "")))
+    (cond
+      ((eq kind :hash-table)
+       ;; Structured payload: (:count N :entries ((k v) ...)) -> count + [[k,v],...]
+       (setf (gethash "count" h) (getf payload :count)
+             (gethash "entries" h)
+             (coerce (mapcar (lambda (e) (coerce e 'vector)) (getf payload :entries))
+                     'vector)))
+      ((eq kind :table)
+       ;; Structured payload: (:columns (...) :rows ((...) ...)) -> columns + rows
+       (setf (gethash "columns" h) (coerce (getf payload :columns) 'vector)
+             (gethash "rows" h)
+             (coerce (mapcar (lambda (r) (coerce r 'vector)) (getf payload :rows))
+                     'vector)))
+      (t
+       (setf (gethash "payload" h) (or payload ""))))
     h))
 
 (defun notebook-outputs->wire (outputs)
@@ -1144,6 +1152,8 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
           (gethash "source" h) (notebook-cell-source cell)
           (gethash "execCount" h) (or (notebook-cell-exec-count cell) 0)
           (gethash "outputs" h) (notebook-outputs->wire (notebook-cell-outputs cell)))
+    (when (notebook-cell-view-config cell)
+      (setf (gethash "viewConfig" h) (notebook-cell-view-config cell)))
     h))
 
 (defun open-notebook-panel (nb)
@@ -1237,7 +1247,9 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                   nb
                   :kind (if (string-equal (gethash "kind" c "code") "markdown")
                             :markdown :code)
-                  :source (or (gethash "source" c) "")))
+                  :source (or (gethash "source" c) "")
+                  :view-config (let ((vc (gethash "viewConfig" c)))
+                                 (and vc (stringp vc) (plusp (length vc)) vc))))
         (save-notebook nb path)
         (setf *current-notebook* nb)
         (let ((obj (make-hash-table :test 'equal)))

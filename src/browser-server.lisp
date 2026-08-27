@@ -81,13 +81,15 @@
                    ((alexandria:ends-with-subseq ".ttf" filename) "font/ttf")
                    ((alexandria:ends-with-subseq ".woff" filename) "font/woff")
                    ((alexandria:ends-with-subseq ".woff2" filename) "font/woff2")
+                   ((alexandria:ends-with-subseq ".wasm" filename) "application/wasm")
                    (t "application/octet-stream"))))
          (binary-asset-p ()
            (or (alexandria:ends-with-subseq ".png" filename)
                (alexandria:ends-with-subseq ".ico" filename)
                (alexandria:ends-with-subseq ".ttf" filename)
                (alexandria:ends-with-subseq ".woff" filename)
-               (alexandria:ends-with-subseq ".woff2" filename))))
+               (alexandria:ends-with-subseq ".woff2" filename)
+               (alexandria:ends-with-subseq ".wasm" filename))))
     ;; First try embedded text assets
     (let ((embedded (get-embedded-asset filename)))
       (when embedded
@@ -177,7 +179,7 @@
   ;; - api.github.com needed for "Check for Updates" feature
   ;; - cdn.jsdelivr.net needed for Monaco editor (coverage panel)
   (setf (hunchentoot:header-out :content-security-policy)
-        "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'; worker-src 'self' blob:;")
+        "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'; worker-src 'self' blob: https://cdn.jsdelivr.net;")
   ;; Allow same-origin framing (needed for flame graph panel)
   (setf (hunchentoot:header-out :x-frame-options) "SAMEORIGIN")
   ;; Prevent MIME type sniffing

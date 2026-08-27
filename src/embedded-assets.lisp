@@ -127,6 +127,32 @@
                        (setf (gethash key *embedded-assets*)
                              (alexandria:read-file-into-string file))))))))))))
 
+;; Perspective (Apache-2.0) assets for offline Arrow grids: js/css/md as text,
+;; wasm as binary. Recursively embedded, preserving the cdn/ + wasm/ layout the
+;; ESM modules expect (perspective.js loads ../wasm/*.wasm relative to cdn/).
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (let ((psp-dir (merge-pathnames "perspective/"
+                                  (merge-pathnames "assets/"
+                                                   (asdf:system-source-directory :icl)))))
+    (when (probe-file psp-dir)
+      (labels ((collect-files (dir)
+                 (let ((files nil))
+                   (dolist (entry (uiop:directory-files dir)) (push entry files))
+                   (dolist (subdir (uiop:subdirectories dir))
+                     (setf files (nconc files (collect-files subdir))))
+                   files)))
+        (dolist (file (collect-files psp-dir))
+          (let* ((relative-path (enough-namestring file psp-dir))
+                 (key (concatenate 'string "perspective/" relative-path))
+                 (ext (pathname-type file)))
+            (cond
+              ((string-equal ext "wasm")
+               (setf (gethash key *embedded-binary-assets*)
+                     (alexandria:read-file-into-byte-vector file)))
+              ((member ext '("js" "css" "html" "txt" "md") :test #'string-equal)
+               (setf (gethash key *embedded-assets*)
+                     (alexandria:read-file-into-string file))))))))))
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Asset Access
 ;;; ─────────────────────────────────────────────────────────────────────────────

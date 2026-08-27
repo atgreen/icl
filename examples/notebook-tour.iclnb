@@ -1,4 +1,4 @@
-(:iclnb 1 :title "ICL Notebook Tour" :backend-info nil :next-id 11 :cells
+(:iclnb 1 :title "ICL Notebook Tour" :backend-info nil :next-id 13 :cells
  ((:id 1 :kind :markdown :source "# A Tour of ICL Notebooks
 
 Welcome to a **live Common Lisp notebook**. Every code cell runs in a real
@@ -14,6 +14,7 @@ Euler's identity, rendered by KaTeX: $e^{i\\pi} + 1 = 0$.
 |--------------|-------|
 | Rich values  | a hash-table renders as a table |
 | Charts       | Vega-Lite bar & line charts |
+| Tables       | a list of plists becomes an interactive pivot grid |
 | `display()`  | several outputs from a single cell |
 | Diagrams     | a Mermaid graph |
 | Math         | KaTeX in markdown cells |
@@ -78,6 +79,29 @@ Let's watch it happen.
   (:id 9 :kind :code :source
    ";; A string that looks like a Mermaid diagram renders as one.
 (format nil \"graph TD~%  A[fib n] --> B[fib n-1]~%  A --> C[fib n-2]~%  B --> D[fib n-2]~%  B --> E[fib n-3]~%  C --> F[fib n-3]~%  C --> G[fib n-4]\")
+"
+   :exec-count nil :outputs nil)
+  (:id 11 :kind :markdown :source "## Interactive tables
+
+A list of plists (or alists) renders as an interactive
+**[Perspective](https://perspective.finos.org/)** grid. Click a column
+header to sort, or open the grid's settings to **pivot** and aggregate —
+no chart spec required.
+"
+   :exec-count nil :outputs nil)
+  (:id 12 :kind :code :source
+   ";; Each plist is a row; the keys become columns. Run this, then open the
+;; grid's settings and drag REGION into \"Group By\" to pivot, aggregating
+;; REVENUE as a sum.
+(loop for (region product units price) in
+      '((\"West\"  \"Widget\" 120  9)
+        (\"West\"  \"Gadget\"  80 14)
+        (\"East\"  \"Widget\" 200  9)
+        (\"East\"  \"Gadget\" 150 14)
+        (\"North\" \"Widget\"  60  9)
+        (\"North\" \"Gadget\"  90 14))
+      collect (list :region region :product product
+                    :units units :revenue (* units price)))
 "
    :exec-count nil :outputs nil)
   (:id 10 :kind :markdown :source "## That's the tour

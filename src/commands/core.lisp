@@ -1262,7 +1262,41 @@ Examples:
                                      (map?-fn (fset-fn \"MAP?\"))
                                      (bag?-fn (fset-fn \"BAG?\"))
                                      (convert-fn (fset-fn \"CONVERT\"))
-                                     (multiplicity-fn (fset-fn \"MULTIPLICITY\")))
+                                     (multiplicity-fn (fset-fn \"MULTIPLICITY\"))
+                                     (table-desc
+                                      (ignore-errors
+                                        (labels ((row->alist (row)
+                                                   (cond
+                                                     ((consp (first row))
+                                                      (loop for pair in row
+                                                            when (consp pair)
+                                                              collect (cons (princ-to-string (car pair)) (cdr pair))))
+                                                     ((and (symbolp (first row)) (first row)
+                                                           (ignore-errors (evenp (length row))))
+                                                      (loop for (k v) on row by #'cddr
+                                                            collect (cons (princ-to-string k) v)))
+                                                     (t nil))))
+                                          (when (and (consp obj) (listp obj)
+                                                     (ignore-errors (<= (length obj) 5000)))
+                                            (let ((arows (mapcar #'row->alist obj)))
+                                              (when (and arows (every #'identity arows))
+                                                (let ((columns nil))
+                                                  (dolist (r arows)
+                                                    (dolist (cell r)
+                                                      (pushnew (car cell) columns :test #'string=)))
+                                                  (setf columns (nreverse columns))
+                                                  (when columns
+                                                    (list :table columns
+                                                          (loop for r in arows
+                                                                for i from 0 below 1000
+                                                                collect (loop for col in columns
+                                                                              for cell = (assoc col r :test #'string=)
+                                                                              collect (if cell
+                                                                                          (let ((v (cdr cell)))
+                                                                                            (cond ((numberp v) v)
+                                                                                                  ((null v) \"\")
+                                                                                                  (t (princ-to-string v))))
+                                                                                          \"\")))))))))))))
                                  (cond
                                    ;; Lisp-Stat / vega plot object -> its Vega-Lite JSON spec
                                    ((and (find-package \"VEGA\")
@@ -1271,6 +1305,32 @@ Examples:
                                            (and c (typep obj c))))
                                     (list :vega-lite
                                           (funcall (find-symbol \"WRITE-SPEC\" \"VEGA\") obj)))
+                                   ;; Lisp-Stat data-frame -> columns + rows (only when loaded;
+                                   ;; detection never forces DATA-FRAME to load).
+                                   ((and (find-package \"DATA-FRAME\")
+                                         (find-symbol \"DATA-FRAME\" \"DATA-FRAME\")
+                                         (let ((c (find-class (find-symbol \"DATA-FRAME\" \"DATA-FRAME\") nil)))
+                                           (and c (typep obj c))))
+                                    (or (ignore-errors
+                                          (let* ((keys-fn (let ((s (find-symbol \"KEYS\" \"DATA-FRAME\")))
+                                                            (and s (fboundp s) (symbol-function s))))
+                                                 (cols-fn (let ((s (find-symbol \"COLUMNS\" \"DATA-FRAME\")))
+                                                            (and s (fboundp s) (symbol-function s))))
+                                                 (keys (and keys-fn (funcall keys-fn obj)))
+                                                 (cols (and cols-fn (funcall cols-fn obj)))
+                                                 (nrow (if (and cols (plusp (length cols)))
+                                                           (length (elt cols 0))
+                                                           0)))
+                                            (when (and keys cols)
+                                              (list :table
+                                                    (map 'list #'princ-to-string keys)
+                                                    (loop for i from 0 below (min nrow 1000)
+                                                          collect (loop for j from 0 below (length cols)
+                                                                        for v = (aref (elt cols j) i)
+                                                                        collect (if (numberp v)
+                                                                                    v
+                                                                                    (princ-to-string v))))))))
+                                        (list :unknown (type-of obj) (princ-to-string obj))))
                                    ((symbolp obj)
                                     (if (find-class obj nil)
                                         (list :class
@@ -1403,6 +1463,8 @@ Examples:
                                                   ((and (= (aref obj 0) #x47) (= (aref obj 1) #x49)) \"image/gif\")
                                                   (t \"image/webp\"))))
                                       (list :image-bytes mime (icl-runtime:usb8-array-to-base64-string obj))))
+                                   ;; Tabular value (list of plists / alists) -> columns + rows
+                                   (table-desc table-desc)
                                    (t (list :unknown (type-of obj) (princ-to-string obj))))))))"
   "Backend query that evaluates ~A and returns a classified
    (:type ...) visualization descriptor for it.")
@@ -1416,6 +1478,24 @@ Checks for a custom icl-runtime:visualize method first, then built-in detection.
     (when (and result (listp result) (first result))
       (read-from-string (first result)))))
 
+(defun ensure-cl-arrow-injected ()
+  "Inject cl-arrow into the inferior on first use (once per backend session)."
+  (unless *cl-arrow-injected*
+    (ignore-errors (inject-cl-arrow))
+    (setf *cl-arrow-injected* t)))
+
+(defun notebook-arrow-output (expr-string)
+  "If EXPR-STRING's value is tabular and cl-arrow is available in the inferior,
+return an :arrow cell-output carrying a base64 Arrow IPC stream, else NIL.
+Injects cl-arrow lazily on first tabular value."
+  (ensure-cl-arrow-injected)
+  (let ((b64 (ignore-errors
+               (let ((r (backend-eval-internal
+                         (format nil "(cl-user::icl-arrow-encode ~A)" expr-string))))
+                 (and (consp r) (first r) (read-from-string (first r)))))))
+    (when (and (stringp b64) (plusp (length b64)))
+      (make-cell-output :arrow b64))))
+
 (defun notebook-value-output (expr-string)
   "Classify EXPR-STRING's value and return a rich notebook output blob,
    or NIL when there is no richer-than-text rendering. Payloads match the
@@ -1426,6 +1506,11 @@ Checks for a custom icl-runtime:visualize method first, then built-in detection.
         ((:hash-table :fset-map :fset-bag)
          (make-cell-output :hash-table
                            (list :count (second parsed) :entries (third parsed))))
+        ;; Tabular value: prefer a typed Arrow stream (cl-arrow) for Perspective;
+        ;; fall back to the JSON columns/rows path when cl-arrow is unavailable.
+        (:table (or (notebook-arrow-output expr-string)
+                    (make-cell-output :table
+                                      (list :columns (second parsed) :rows (third parsed)))))
         (:vega-lite (make-cell-output :vega-lite (second parsed)))
         (:mermaid   (make-cell-output :mermaid (second parsed)))
         (:svg       (make-cell-output :svg (second parsed)))
