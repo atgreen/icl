@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual dry-run: builds all packages to validate the workflow without
+  # publishing a release (the 'release' job is gated to tag pushes).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (dry-run, e.g. 1.25.0)'
+        required: true
+        default: '0.0.0'
 
 jobs:
   # ========================================
@@ -17,7 +25,12 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # Tag push: strip the leading 'v'. Manual dry-run: use the input.
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   # ========================================
@@ -274,7 +287,20 @@ jobs:
       - name: Install SBCL and build tools
         shell: powershell
         run: |
-          choco install -y sbcl make nsis
+          choco install -y make nsis
+          # SBCL's Chocolatey package fetches its MSI from SourceForge, which is
+          # intermittently flaky (the v1.24.0 release failed here mid-download).
+          # Retry a few times before giving up.
+          $ok = $false
+          for ($i = 1; $i -le 5; $i++) {
+            Write-Host "Installing SBCL (attempt $i of 5)..."
+            choco install -y sbcl --no-progress
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "SBCL install failed (exit $LASTEXITCODE); retrying in 30s..."
+            choco uninstall -y sbcl 2>$null | Out-Null
+            Start-Sleep -Seconds 30
+          }
+          if (-not $ok) { Write-Error "SBCL install failed after 5 attempts"; exit 1 }
           # Add SBCL to PATH for subsequent bash steps
           $sbclPath = (Get-Command sbcl).Source | Split-Path
           echo "$sbclPath" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
@@ -661,6 +687,8 @@ jobs:
   # Create GitHub Release
   # ========================================
   release:
+    # Publish only for real tag pushes; manual dry-runs build but don't release.
+    if: ${{ github.event_name == 'push' }}
     needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-chocolatey, build-macos-arm64, build-macos-amd64, sign-artifacts, slsa-provenance, extract-version]
     permissions:
       contents: write
