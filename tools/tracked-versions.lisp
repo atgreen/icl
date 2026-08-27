@@ -63,7 +63,26 @@
     (:name "regulex"
      :current-version "0.0.5"
      :npm-package nil
-     :notes "Regex visualization (hosted, not on npm)"))
+     :notes "Regex visualization (hosted, not on npm)")
+
+    ;; Perspective (Apache-2.0) - interactive Arrow tables/charts in notebooks,
+    ;; vendored under assets/perspective/ (engine + WASM + viewer + plugins)
+    (:name "perspective"
+     :current-version "3.8.0"
+     :npm-package "@finos/perspective"
+     :notes "Perspective engine (WASM) for notebook tables")
+    (:name "perspective-viewer"
+     :current-version "3.8.0"
+     :npm-package "@finos/perspective-viewer"
+     :notes "Perspective <perspective-viewer> web component")
+    (:name "perspective-viewer-datagrid"
+     :current-version "3.8.0"
+     :npm-package "@finos/perspective-viewer-datagrid"
+     :notes "Perspective datagrid (pivot table) plugin")
+    (:name "perspective-viewer-d3fc"
+     :current-version "3.8.0"
+     :npm-package "@finos/perspective-viewer-d3fc"
+     :notes "Perspective d3fc chart plugins (bar/line/scatter/heatmap/…)"))
   "List of JavaScript libraries tracked for version updates.
 Each entry is a plist with:
   :name           - Human-readable library name
