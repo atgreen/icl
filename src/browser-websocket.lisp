@@ -467,14 +467,16 @@
 
           ;; Notebook: restart the backend image (optionally then Run all)
           ((string= type "notebook-restart")
-           (let ((run-all (gethash "runAll" json)))
+           (let ((run-all (gethash "runAll" json))
+                 (run-below (gethash "runBelow" json)))
              (bt:make-thread
               (lambda ()
                 (ignore-errors (restart-backend))
                 (dolist (c (hunchensocket:clients *repl-resource*))
                   (let ((obj (make-hash-table :test 'equal)))
                     (setf (gethash "type" obj) "notebook-restarted"
-                          (gethash "runAll" obj) (and run-all t))
+                          (gethash "runAll" obj) (and run-all t)
+                          (gethash "runBelow" obj) (and run-below t))
                     (ignore-errors
                       (hunchensocket:send-text-message c (com.inuoe.jzon:stringify obj))))))
               :name "notebook-restart-handler")))

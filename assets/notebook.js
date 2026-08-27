@@ -173,6 +173,12 @@ function handleNotebookRestarted(msg) {
   for (const [, e] of notebookCells) { if (e.execEl) e.execEl.textContent = ''; }
   if (typeof terminal !== 'undefined' && terminal) terminal.write('\r\n; Backend image restarted\r\n');
   if (msg.runAll && nbPanel) nbPanel._runAll();
+  if (msg.runBelow && nbPanel) {
+    const wrap = nbPanel._pendingRunBelowId
+      ? nbPanel._cellsEl.querySelector('[data-cell-id="' + nbPanel._pendingRunBelowId + '"]') : null;
+    nbPanel._pendingRunBelowId = null;
+    if (wrap) nbPanel._runBelow(wrap);
+  }
 }
 
 // ── Minimal markdown → HTML (headings, emphasis, code, lists, links) ──
@@ -614,7 +620,28 @@ class NotebookPanel {
     if (input == null) return;
     e.tags = Array.from(new Set(input.split(/[,\s]+/).map(s => s.trim()).filter(Boolean)));
     this._renderTags(wrap.dataset.cellId);
+    this._applyHideInput(wrap);
     this._markDirty();
+  }
+
+  // Toggle the "hide-input" tag and show/hide the cell's editor accordingly.
+  _toggleHideInput(wrap) {
+    const e = notebookCells.get(wrap.dataset.cellId);
+    if (!e) return;
+    const hidden = !(e.tags || []).includes('hide-input');
+    e.tags = (e.tags || []).filter(t => t !== 'hide-input');
+    if (hidden) e.tags.push('hide-input');
+    this._applyHideInput(wrap);
+    this._renderTags(wrap.dataset.cellId);
+    this._markDirty();
+  }
+  // Reflect the "hide-input" tag: collapse the input to show only output.
+  _applyHideInput(wrap) {
+    const e = notebookCells.get(wrap.dataset.cellId);
+    if (!e) return;
+    const hide = (e.tags || []).includes('hide-input');
+    if (e.textarea) e.textarea.style.display = hide ? 'none' : '';
+    if (e.termDiv) e.termDiv.style.display = hide ? 'none' : '';
   }
 
   async _writeNotebook(path) {
@@ -711,9 +738,12 @@ class NotebookPanel {
     bar.appendChild(this._button('+ Code', () => this._addCell('code'), 'Add a code cell'));
     bar.appendChild(this._button('+ Markdown', () => this._addCell('markdown'), 'Add a markdown cell'));
     bar.appendChild(this._button('Run all', () => this._runAll(), 'Run every cell'));
+    bar.appendChild(this._button('Run ↑', () => { const c = this._selectedOrFirst(); if (c) this._runAbove(c); }, 'Run all cells above the selected cell'));
+    bar.appendChild(this._button('Run ↓', () => { const c = this._selectedOrFirst(); if (c) this._runBelow(c); }, 'Run the selected cell and everything below'));
     bar.appendChild(this._button('⏹ Interrupt', () => ws.send(JSON.stringify({ type: 'notebook-interrupt' })), 'Interrupt the running cell'));
     bar.appendChild(this._button('⟳ Restart', () => ws.send(JSON.stringify({ type: 'notebook-restart' })), 'Restart the backend image'));
     bar.appendChild(this._button('⟳▶ Run all', () => ws.send(JSON.stringify({ type: 'notebook-restart', runAll: true })), 'Restart the image and run all cells'));
+    bar.appendChild(this._button('⟳↓ below', () => { const c = this._selectedOrFirst(); if (c) this._restartRunBelow(c); }, 'Restart the image and run the selected cell and below'));
     bar.appendChild(this._button('Contents', () => this._toggleToc(), 'Toggle the table of contents'));
     bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs(), 'Clear all cell outputs'));
     bar.appendChild(this._button('Save', () => this._save(), 'Save the notebook (.iclnb)'));
@@ -769,6 +799,7 @@ class NotebookPanel {
       o.dataset.collapsed = o.dataset.collapsed === '1' ? '' : '1';
       o.style.display = (o.dataset.collapsed === '1' || !o.firstChild) ? 'none' : 'block';
     }), 'Collapse/expand output'));
+    head.appendChild(this._button('⊟', () => this._toggleHideInput(wrap), 'Hide/show input (only output)'));
     head.appendChild(this._button('∅', () => this._clearCellOutput(wrap), "Clear this cell's output"));
     head.appendChild(this._button('↑', () => this._moveCell(wrap, -1), 'Move cell up'));
     head.appendChild(this._button('↓', () => this._moveCell(wrap, 1), 'Move cell down'));
@@ -805,6 +836,7 @@ class NotebookPanel {
                                 tags: Array.isArray(tags) ? tags.slice() : [], textarea: ta, wrap,
                                 viewer: null, savedViewConfig: viewConfig || null });
     this._renderTags(cellId);
+    this._applyHideInput(wrap);
 
     if (kind === 'markdown') {
       out.style.cursor = 'pointer';
@@ -999,6 +1031,25 @@ class NotebookPanel {
   _runAll() {
     for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) this._runCell(w);
   }
+
+  // Run every cell above the given one (exclusive).
+  _runAbove(wrap) {
+    const cs = this._cells(), i = cs.indexOf(wrap);
+    for (let k = 0; k < i; k++) this._runCell(cs[k]);
+  }
+  // Run the given cell and every cell below it (inclusive).
+  _runBelow(wrap) {
+    const cs = this._cells(), i = cs.indexOf(wrap);
+    if (i < 0) return;
+    for (let k = i; k < cs.length; k++) this._runCell(cs[k]);
+  }
+  // Restart the backend, then run the selected cell and everything below.
+  _restartRunBelow(wrap) {
+    this._pendingRunBelowId = wrap && wrap.dataset ? wrap.dataset.cellId : null;
+    ws.send(JSON.stringify({ type: 'notebook-restart', runBelow: true }));
+  }
+  // Selected cell, or the first cell as a sensible default.
+  _selectedOrFirst() { return this._selected || this._cells()[0] || null; }
 
   _save() {
     const path = window.prompt('Save notebook to path:', this._path || 'notebook.iclnb');
