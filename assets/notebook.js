@@ -474,6 +474,9 @@ class NotebookPanel {
       o.style.display = (o.dataset.collapsed === '1' || !o.firstChild) ? 'none' : 'block';
     })));
     head.appendChild(this._button('∅', () => this._clearCellOutput(wrap)));
+    head.appendChild(this._button('↑', () => this._moveCell(wrap, -1)));
+    head.appendChild(this._button('↓', () => this._moveCell(wrap, 1)));
+    head.appendChild(this._button('⎘', () => this._duplicateCell(wrap)));
     head.appendChild(this._button('✕', () => this._removeCell(wrap)));
 
     // input textarea
@@ -555,6 +558,20 @@ class NotebookPanel {
 
   _clearAllOutputs() {
     for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) this._clearCellOutput(w);
+  }
+
+  _moveCell(wrap, dir) {
+    const sib = dir < 0 ? wrap.previousElementSibling : wrap.nextElementSibling;
+    if (!(sib && sib.dataset && sib.dataset.cellId)) return;
+    if (dir < 0) this._cellsEl.insertBefore(wrap, sib);
+    else this._cellsEl.insertBefore(sib, wrap);
+    this._markDirty();
+  }
+
+  _duplicateCell(wrap) {
+    const e = notebookCells.get(wrap.dataset.cellId);
+    this._appendCell(wrap.dataset.kind, e.textarea.value, [], wrap);
+    this._markDirty();
   }
 
   // Toggle a table of contents built from markdown-cell headings.
