@@ -146,6 +146,14 @@ function handleCellResult(msg) {
     entry.execEl.textContent = msg.execCount ? ('[' + msg.execCount + ']') : '';
     entry.execEl.style.color = '';   // clear the running indicator colour
   }
+  if (entry.timeEl) entry.timeEl.textContent = nbFmtDuration(msg.execMs);
+}
+
+// Human-readable cell run time: "12 ms", "0.34 s", "2.1 s".
+function nbFmtDuration(ms) {
+  if (ms == null || ms < 0) return '';
+  if (ms < 1000) return ms + ' ms';
+  return (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + ' s';
 }
 
 function handleNotebookSaved(msg) {
@@ -717,8 +725,12 @@ class NotebookPanel {
     const kindLabel = document.createElement('span');
     kindLabel.textContent = kind;
     kindLabel.style.cssText = 'flex:1;';
+    // Per-cell execution time (filled in on cell-result).
+    const timeEl = document.createElement('span');
+    timeEl.style.cssText = 'color:var(--fg-secondary);opacity:0.7;margin-right:6px;';
     head.appendChild(exec);
     head.appendChild(kindLabel);
+    head.appendChild(timeEl);
     head.appendChild(this._button('Run', () => this._runCell(wrap), 'Run this cell'));
     head.appendChild(this._button('▾', (function () {
       const o = notebookCells.get(cellId).outputEl;
@@ -757,7 +769,7 @@ class NotebookPanel {
     wrap.appendChild(head);
     wrap.appendChild(ta);
     wrap.appendChild(out);
-    notebookCells.set(cellId, { outputEl: out, execEl: exec, textarea: ta, wrap,
+    notebookCells.set(cellId, { outputEl: out, execEl: exec, timeEl, textarea: ta, wrap,
                                 viewer: null, savedViewConfig: viewConfig || null });
 
     if (kind === 'markdown') {

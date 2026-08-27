@@ -1178,10 +1178,14 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
   "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
   (let ((cell (%make-notebook-cell
                :kind (if (and kind (string-equal kind "markdown")) :markdown :code)
-               :source source)))
+               :source source))
+        (exec-ms nil))
     ;; Hold the lock across eval + classify so the * we classify is this
     ;; cell's own value, even when several cells run at once (e.g. Run all).
     (bt:with-lock-held (*notebook-eval-lock*)
+      ;; Time the evaluation itself (inside the lock, so queue-wait on Run-all
+      ;; isn't counted). EXEC-MS holds the start tick, then the elapsed ms.
+      (setf exec-ms (get-internal-real-time))
       ;; Notebook cells may hold several forms: evaluate all, last is the value.
       (notebook-eval-cell cell :evaluator #'backend-eval-all-capture)
       ;; Assemble outputs for a code cell:
@@ -1195,12 +1199,15 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                (displayed (ignore-errors (notebook-displayed-outputs)))
                (rich (when value (ignore-errors (notebook-value-output "*")))))
           (setf (notebook-cell-outputs cell)
-                (append stdout displayed value (when rich (list rich)))))))
+                (append stdout displayed value (when rich (list rich))))))
+      (setf exec-ms (round (* 1000 (- (get-internal-real-time) exec-ms))
+                           internal-time-units-per-second)))
     (incf *notebook-exec-counter*)
     (let ((obj (make-hash-table :test 'equal)))
       (setf (gethash "type" obj) "cell-result"
             (gethash "cellId" obj) cell-id
             (gethash "execCount" obj) *notebook-exec-counter*
+            (gethash "execMs" obj) exec-ms
             (gethash "outputs" obj) (notebook-outputs->wire (notebook-cell-outputs cell)))
       (hunchensocket:send-text-message client (com.inuoe.jzon:stringify obj)))
     ;; A cell may have loaded systems / defined packages; refresh the browser's
