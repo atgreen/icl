@@ -31,6 +31,10 @@ ICL includes a Jupyter-style notebook that runs in the browser interface. Open o
 icl --notebook                    # new, empty notebook
 icl --notebook analysis.iclnb     # open an existing notebook
 ```
+```
+,notebook                 ; new notebook (browser starts if needed)
+,notebook analysis.iclnb  ; open a saved notebook (Tab completes filenames)
+```
 
 Notebooks can also be run **headlessly** (papermill-style) — parameterize and
 execute without a browser, then save the result:
@@ -41,22 +45,21 @@ icl --notebook report.iclnb --execute --param region=West -o report-west.iclnb
 
 `--param NAME=VALUE` (repeatable) overrides bindings before the run, so
 parameters declared with `defvar` pick up the override.
-```
-,notebook                 ; new notebook (browser starts if needed)
-,notebook analysis.iclnb  ; open a saved notebook (Tab completes filenames)
-```
 
 Highlights:
 
 - **The real ICL editor in every code cell** - paredit, auto-indent, syntax highlighting, completion, inline hints, and click-to-inspect symbols, not a plain text box.
 - **Multi-form cells** - a cell may hold several forms; all are evaluated and the last is the cell's value.
-- **Rich output** - a returned hash-table renders as a table, a Vega-Lite spec as a chart, a Mermaid string as a diagram, plus SVG/HTML/JSON/images. `(display obj)` emits several rich outputs from one cell; diagrams fit to width with scroll-to-zoom and drag-to-pan.
+- **Rich output** - a returned hash-table renders as a table, a Vega-Lite spec as a chart, a Mermaid string as a diagram, plus SVG/HTML/JSON/images. `(display obj)` emits several rich outputs from one cell; diagrams fit to width with scroll-to-zoom and drag-to-pan; each code cell shows its execution time.
 - **Interactive tables** - a list of plists/alists (or a Lisp-Stat `data-frame`) renders as a sortable, filterable, **pivotable** grid, powered by Apache Arrow and Perspective (bundled, so it works fully offline). Drag columns into *Group By* to pivot and aggregate, or switch the same data to a bar / line / scatter / **heatmap** / **treemap** chart from the viewer settings — no chart spec needed. Column types are preserved, the layout is saved with the notebook, and any output can be maximized to fill the window (`Esc` restores).
-- **Markdown cells** with GitHub-flavored tables and **KaTeX math** (`$…$`, `$$…$$`).
-- **Run keys** - `Shift-Enter` runs and advances, `Alt-Enter` runs and inserts a cell below, `Ctrl-Enter` runs in place; plain `Enter` inserts a newline.
+- **Interactive widgets** - `(slider 'n :min 0 :max 100)`, `(dropdown 'r choices)`, `(checkbox 'b)`, `(text-input 's)`, `(button 'go)` bind a control to a symbol; changing it re-runs the cells that reference the symbol (reactive, no callbacks).
+- **Markdown cells** with GitHub-flavored tables, **KaTeX math** (`$…$`, `$$…$$`), and `> [!NOTE]`/`WARNING`/`TIP` admonitions.
+- **Run keys** - `Shift-Enter` runs and advances, `Alt-Enter` runs and inserts a cell below, `Ctrl-Enter` runs in place; plain `Enter` inserts a newline. Toolbar adds Run-above / Run-below and Restart-&-run-below.
 - **Command mode** - press `Esc`, then `j`/`k` to move the selection, `a`/`b` to insert, `dd` to delete, `m`/`y` to switch markdown/code.
+- **Cell tags & collapse** - tag cells (`parameters`, `hide-input`, `slide`, …); collapse a cell's input to show only its output.
+- **Navigate & inspect** - table of contents from markdown headings, find & replace across cells (`Ctrl-F`), a variable inspector of everything the notebook has defined, and `(out N)` to reuse an earlier cell's value.
 - **Manage the kernel** - interrupt a running cell, restart the backend image, or Restart & Run All.
-- **Save & export** - notebooks are plain-text `.iclnb` s-expressions; export to a self-contained HTML file or a loadable jupytext-style `.lisp`.
+- **Save & export** - notebooks are plain-text `.iclnb` s-expressions; download any output (grid → CSV, chart → SVG), and export to a self-contained HTML file, a **reveal.js slide deck** (driven by slide tags), or a loadable jupytext-style `.lisp`. Grids/charts are snapshotted so they render in the exported files.
 
 ### Interactive data views (Perspective)
 
