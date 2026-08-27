@@ -1178,6 +1178,22 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
   "Serializes cell evaluation so a cell's eval and the classification of its
    value (via the backend's *) are atomic and never race another cell.")
 
+(defun notebook-store-out (n)
+  "Store the backend's current value (*) under index N in cl-user::*icl-out*,
+and lazily define cl-user::out so notebook cells can retrieve prior values with
+(out N) — N being the execution [count] shown on a cell."
+  (backend-eval-internal
+   (format nil "(progn
+                  (unless (and (boundp 'cl-user::*icl-out*) (hash-table-p cl-user::*icl-out*))
+                    (defparameter cl-user::*icl-out* (make-hash-table)))
+                  (unless (fboundp 'cl-user::out)
+                    (setf (fdefinition 'cl-user::out)
+                          (lambda (n) (values (gethash n cl-user::*icl-out*)
+                                              (nth-value 1 (gethash n cl-user::*icl-out*))))))
+                  (setf (gethash ~D cl-user::*icl-out*) *)
+                  nil)"
+           n)))
+
 (defun notebook-handle-run-cell (client cell-id kind source)
   "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
   (let ((cell (%make-notebook-cell
@@ -1204,6 +1220,10 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                (rich (when value (ignore-errors (notebook-value-output "*")))))
           (setf (notebook-cell-outputs cell)
                 (append stdout displayed value (when rich (list rich))))))
+      ;; Remember the value under its execution index so later cells can (out N),
+      ;; where N is the [count] shown on the cell.
+      (when (eq (notebook-cell-kind cell) :code)
+        (ignore-errors (notebook-store-out (1+ *notebook-exec-counter*))))
       (setf exec-ms (round (* 1000 (- (get-internal-real-time) exec-ms))
                            internal-time-units-per-second)))
     (incf *notebook-exec-counter*)
