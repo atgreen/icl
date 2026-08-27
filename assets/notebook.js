@@ -40,6 +40,7 @@ function handleCellEdited(msg) {
   if (e.termDiv) { e.termDiv.remove(); e.termDiv = null; }
   e.textarea.value = msg.source || '';
   e.textarea.style.display = '';
+  if (nbPanel) nbPanel._markDirty();
   if (msg.submitted && nbPanel) {
     nbPanel._runCell(e.wrap);
     const action = e.postRun; e.postRun = null;
@@ -326,8 +327,25 @@ class NotebookPanel {
     const p = params.params || {};
     this._path = p.path || null;
     this._title = p.title || 'Untitled';
+    this._dirty = false;
     let cells = p.cells && p.cells.length ? p.cells : [{ kind: 'code', source: '', outputs: [] }];
     this._build(cells);
+    // Autosave every 30s once the notebook has a path.
+    if (!this._autosaveTimer) {
+      this._autosaveTimer = setInterval(() => {
+        if (this._dirty && this._path) this._writeNotebook(this._path);
+      }, 30000);
+    }
+  }
+
+  _markDirty() { this._dirty = true; if (this._dirtyEl) this._dirtyEl.textContent = '●'; }
+
+  _writeNotebook(path) {
+    const cells = [];
+    for (const w of this._cellsEl.querySelectorAll('[data-cell-id]'))
+      cells.push({ kind: w.dataset.kind, source: w.querySelector('textarea').value });
+    ws.send(JSON.stringify({ type: 'save-notebook', path, title: this._title, cells }));
+    this._dirty = false; if (this._dirtyEl) this._dirtyEl.textContent = '';
   }
 
   // Run-and-advance: edit the next cell, creating a trailing code cell if none.
@@ -411,6 +429,11 @@ class NotebookPanel {
     bar.appendChild(this._button('⟳▶ Run all', () => ws.send(JSON.stringify({ type: 'notebook-restart', runAll: true }))));
     bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs()));
     bar.appendChild(this._button('Save', () => this._save()));
+    this._dirtyEl = document.createElement('span');
+    this._dirtyEl.title = 'Unsaved changes';
+    this._dirtyEl.style.cssText = 'color:var(--accent,#4098ff);margin-left:auto;padding:0 8px;font-size:14px;';
+    this._dirtyEl.textContent = this._dirty ? '●' : '';
+    bar.appendChild(this._dirtyEl);
     this._element.appendChild(bar);
 
     this._cellsEl = document.createElement('div');
@@ -511,11 +534,13 @@ class NotebookPanel {
     } else {
       this._startIclEdit(w);   // open the ICL editor for a fresh code cell
     }
+    this._markDirty();
   }
 
   _removeCell(wrap) {
     notebookCells.delete(wrap.dataset.cellId);
     wrap.remove();
+    this._markDirty();
   }
 
   _clearCellOutput(wrap) {
@@ -572,10 +597,6 @@ class NotebookPanel {
     this._title = path.replace(/^.*\//, '').replace(/\.iclnb$/i, '') || 'Untitled';
     const panel = dockviewApi && dockviewApi.getPanel('notebook');
     if (panel && panel.api && panel.api.setTitle) panel.api.setTitle('Notebook: ' + this._title);
-    const cells = [];
-    for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) {
-      cells.push({ kind: w.dataset.kind, source: w.querySelector('textarea').value });
-    }
-    ws.send(JSON.stringify({ type: 'save-notebook', path, title: this._title, cells }));
+    this._writeNotebook(path);
   }
 }
