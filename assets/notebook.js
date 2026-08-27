@@ -40,7 +40,13 @@ function handleCellEdited(msg) {
   if (e.termDiv) { e.termDiv.remove(); e.termDiv = null; }
   e.textarea.value = msg.source || '';
   e.textarea.style.display = '';
-  if (msg.submitted && nbPanel) nbPanel._runCell(e.wrap);
+  if (msg.submitted && nbPanel) {
+    nbPanel._runCell(e.wrap);
+    const action = e.postRun; e.postRun = null;
+    if (action === 'advance') nbPanel._advanceFrom(e.wrap);
+    else if (action === 'insert') nbPanel._insertAndEditAfter(e.wrap);
+    // 'inplace' (or none): stay put
+  }
 }
 
 // getSymbolBounds() in browser.js is bound to the REPL terminal; this variant
@@ -314,6 +320,23 @@ class NotebookPanel {
     this._build(cells);
   }
 
+  // Run-and-advance: edit the next cell, creating a trailing code cell if none.
+  _advanceFrom(wrap) {
+    const next = wrap.nextElementSibling;
+    if (next && next.dataset && next.dataset.cellId) {
+      if (next.dataset.kind === 'code') this._startIclEdit(next);
+      else { const ta = next.querySelector('textarea'); if (ta) { this._editMarkdown(next); } }
+    } else {
+      this._insertAndEditAfter(wrap);
+    }
+  }
+
+  // Run-and-insert: add a fresh code cell after WRAP and edit it.
+  _insertAndEditAfter(wrap) {
+    const w = this._appendCell('code', '', [], wrap);
+    this._startIclEdit(w);
+  }
+
   // Open the real ICL editor (an xterm bound to a backend editor session)
   // for a code cell, seeded with its current source.
   _startIclEdit(wrap) {
@@ -334,7 +357,10 @@ class NotebookPanel {
     // xterm sends plain \r for both Enter and Shift-Enter; deliver Shift-Enter
     // as the kitty sequence the editor decodes as :shift-enter (submit).
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && e.key === 'Enter' && e.shiftKey) {
+      // Shift/Ctrl/Alt-Enter all submit; the modifier picks the post-run action.
+      if (e.type === 'keydown' && e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.altKey)) {
+        const entry = notebookCells.get(wrap.dataset.cellId);
+        if (entry) entry.postRun = e.ctrlKey ? 'inplace' : (e.altKey ? 'insert' : 'advance');
         ws.send(JSON.stringify({ type: 'cell-key', cellId: wrap.dataset.cellId, data: '\x1b[13;2u' }));
         return false;
       }
