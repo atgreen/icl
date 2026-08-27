@@ -591,6 +591,32 @@ class NotebookPanel {
 
   _markDirty() { this._dirty = true; if (this._dirtyEl) this._dirtyEl.textContent = '●'; }
 
+  // Render a cell's tag chips from its stored tags.
+  _renderTags(cellId) {
+    const e = notebookCells.get(cellId);
+    if (!e || !e.tagsEl) return;
+    e.tagsEl.innerHTML = '';
+    for (const t of (e.tags || [])) {
+      const chip = document.createElement('span');
+      chip.textContent = t;
+      chip.style.cssText = 'font:10px monospace;background:var(--bg-tertiary,#2a2a2a);' +
+        'color:var(--fg-secondary);border:1px solid var(--border);border-radius:8px;padding:0 6px;';
+      e.tagsEl.appendChild(chip);
+    }
+  }
+
+  // Edit a cell's tags (comma/space-separated); persists with the notebook.
+  _editTags(wrap) {
+    const e = notebookCells.get(wrap.dataset.cellId);
+    if (!e) return;
+    const current = (e.tags || []).join(', ');
+    const input = window.prompt('Cell tags (comma-separated) — e.g. parameters, hide-input, slide:', current);
+    if (input == null) return;
+    e.tags = Array.from(new Set(input.split(/[,\s]+/).map(s => s.trim()).filter(Boolean)));
+    this._renderTags(wrap.dataset.cellId);
+    this._markDirty();
+  }
+
   async _writeNotebook(path) {
     const cells = [];
     for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) {
@@ -601,6 +627,7 @@ class NotebookPanel {
       if (entry && entry.viewer && entry.viewer.save) {
         try { cell.viewConfig = JSON.stringify(await entry.viewer.save()); } catch (e) {}
       }
+      if (entry && entry.tags && entry.tags.length) cell.tags = entry.tags;
       cells.push(cell);
     }
     ws.send(JSON.stringify({ type: 'save-notebook', path, title: this._title, cells }));
@@ -703,10 +730,10 @@ class NotebookPanel {
     this._cellsEl.style.cssText = 'flex:1;padding:8px;';
     this._element.appendChild(this._cellsEl);
 
-    for (const c of cells) this._appendCell(c.kind || 'code', c.source || '', c.outputs || [], undefined, c.viewConfig);
+    for (const c of cells) this._appendCell(c.kind || 'code', c.source || '', c.outputs || [], undefined, c.viewConfig, c.tags);
   }
 
-  _appendCell(kind, source, outputs, afterEl, viewConfig) {
+  _appendCell(kind, source, outputs, afterEl, viewConfig, tags) {
     const cellId = nbNewCellId();
     const wrap = document.createElement('div');
     wrap.dataset.cellId = cellId;
@@ -728,9 +755,14 @@ class NotebookPanel {
     // Per-cell execution time (filled in on cell-result).
     const timeEl = document.createElement('span');
     timeEl.style.cssText = 'color:var(--fg-secondary);opacity:0.7;margin-right:6px;';
+    // Cell tags (chips) + editor.
+    const tagsEl = document.createElement('span');
+    tagsEl.style.cssText = 'display:inline-flex;gap:4px;margin-right:6px;';
     head.appendChild(exec);
     head.appendChild(kindLabel);
     head.appendChild(timeEl);
+    head.appendChild(tagsEl);
+    head.appendChild(this._button('🏷', () => this._editTags(wrap), 'Edit cell tags'));
     head.appendChild(this._button('Run', () => this._runCell(wrap), 'Run this cell'));
     head.appendChild(this._button('▾', (function () {
       const o = notebookCells.get(cellId).outputEl;
@@ -769,8 +801,10 @@ class NotebookPanel {
     wrap.appendChild(head);
     wrap.appendChild(ta);
     wrap.appendChild(out);
-    notebookCells.set(cellId, { outputEl: out, execEl: exec, timeEl, textarea: ta, wrap,
+    notebookCells.set(cellId, { outputEl: out, execEl: exec, timeEl, tagsEl,
+                                tags: Array.isArray(tags) ? tags.slice() : [], textarea: ta, wrap,
                                 viewer: null, savedViewConfig: viewConfig || null });
+    this._renderTags(cellId);
 
     if (kind === 'markdown') {
       out.style.cursor = 'pointer';

@@ -1154,6 +1154,8 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
           (gethash "outputs" h) (notebook-outputs->wire (notebook-cell-outputs cell)))
     (when (notebook-cell-view-config cell)
       (setf (gethash "viewConfig" h) (notebook-cell-view-config cell)))
+    (when (notebook-cell-tags cell)
+      (setf (gethash "tags" h) (coerce (notebook-cell-tags cell) 'vector)))
     h))
 
 (defun open-notebook-panel (nb)
@@ -1256,7 +1258,13 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
                             :markdown :code)
                   :source (or (gethash "source" c) "")
                   :view-config (let ((vc (gethash "viewConfig" c)))
-                                 (and vc (stringp vc) (plusp (length vc)) vc))))
+                                 (and vc (stringp vc) (plusp (length vc)) vc))
+                  :tags (let ((tg (gethash "tags" c)))
+                          (when (and tg (or (vectorp tg) (listp tg)))
+                            (remove-duplicates
+                             (loop for x across (coerce tg 'vector)
+                                   when (and (stringp x) (plusp (length x))) collect x)
+                             :test #'string=)))))
         (save-notebook nb path)
         (setf *current-notebook* nb)
         (let ((obj (make-hash-table :test 'equal)))

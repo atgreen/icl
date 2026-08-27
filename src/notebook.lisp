@@ -26,7 +26,8 @@
   (source "" :type string)                  ; Cell text
   (exec-count nil :type (or null fixnum))   ; Times a code cell has run, or NIL
   (outputs nil :type list)                  ; List of output blobs (see below)
-  (view-config nil))                        ; Perspective grid config (JSON string) or NIL
+  (view-config nil)                         ; Perspective grid config (JSON string) or NIL
+  (tags nil :type list))                    ; List of tag strings (e.g. "parameters", "hide-input")
 
 (defstruct (notebook (:constructor %make-notebook))
   "An ordered collection of cells plus document metadata."
@@ -83,13 +84,14 @@
   (setf (aref vec index) elt)
   vec)
 
-(defun notebook-add-cell (nb &key (kind :code) (source "") after-id view-config)
+(defun notebook-add-cell (nb &key (kind :code) (source "") after-id view-config tags)
   "Add a new cell to NB and return it. When AFTER-ID names an existing cell,
    insert directly after it; otherwise append."
   (let ((cell (%make-notebook-cell :id (notebook-next-id nb)
                                    :kind kind
                                    :source source
-                                   :view-config view-config))
+                                   :view-config view-config
+                                   :tags tags))
         (cells (notebook-cells nb)))
     (incf (notebook-next-id nb))
     (let ((idx (and after-id (notebook-cell-index nb after-id))))
@@ -181,9 +183,12 @@
          :source (notebook-cell-source cell)
          :exec-count (notebook-cell-exec-count cell)
          :outputs (notebook-cell-outputs cell)
-         ;; Only emit :view-config when set, to keep clean notebooks tidy.
-         (when (notebook-cell-view-config cell)
-           (list :view-config (notebook-cell-view-config cell)))))
+         ;; Only emit optional fields when set, to keep clean notebooks tidy.
+         (append
+          (when (notebook-cell-view-config cell)
+            (list :view-config (notebook-cell-view-config cell)))
+          (when (notebook-cell-tags cell)
+            (list :tags (notebook-cell-tags cell))))))
 
 (defun sexp->cell (plist)
   "Reconstruct a cell from a serialized PLIST."
@@ -192,7 +197,8 @@
                        :source (getf plist :source "")
                        :exec-count (getf plist :exec-count)
                        :outputs (getf plist :outputs)
-                       :view-config (getf plist :view-config)))
+                       :view-config (getf plist :view-config)
+                       :tags (getf plist :tags)))
 
 (defun notebook->sexp (nb)
   "Serialize NB to a readable s-expression."
