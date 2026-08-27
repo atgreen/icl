@@ -257,6 +257,30 @@ function nbRenderMarkdown(md) {
     }
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     if (h) { flushPara(); closeList(); const n = h[1].length; html += '<h' + n + '>' + nbMarkdownInline(h[2]) + '</h' + n + '>'; continue; }
+    // GitHub-style admonition: > [!NOTE] / TIP / IMPORTANT / WARNING / CAUTION
+    const adm = line.match(/^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i);
+    if (adm) {
+      flushPara(); closeList();
+      const type = adm[1].toUpperCase(), body = [];
+      if (adm[2].trim()) body.push(adm[2]);
+      while (i + 1 < lines.length && /^>\s?/.test(lines[i + 1])) body.push(lines[++i].replace(/^>\s?/, ''));
+      const colors = { NOTE: '#4098ff', TIP: '#2ea043', IMPORTANT: '#8957e5', WARNING: '#d29922', CAUTION: '#f85149' };
+      const c = colors[type];
+      html += '<div style="border-left:4px solid ' + c + ';background:var(--bg-tertiary,#2a2a2a);' +
+        'padding:6px 10px;margin:6px 0;border-radius:0 4px 4px 0;">' +
+        '<div style="font-weight:bold;color:' + c + ';font-size:0.82em;">' + type + '</div>' +
+        nbRenderMarkdown(body.join('\n')) + '</div>';
+      continue;
+    }
+    // Plain blockquote.
+    if (/^>\s?/.test(line)) {
+      flushPara(); closeList();
+      const body = [line.replace(/^>\s?/, '')];
+      while (i + 1 < lines.length && /^>\s?/.test(lines[i + 1])) body.push(lines[++i].replace(/^>\s?/, ''));
+      html += '<blockquote style="border-left:3px solid var(--border);margin:6px 0;padding:2px 10px;' +
+        'color:var(--fg-secondary);">' + nbRenderMarkdown(body.join('\n')) + '</blockquote>';
+      continue;
+    }
     if (/^\s*[-*]\s+/.test(line)) { flushPara(); if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + nbMarkdownInline(line.replace(/^\s*[-*]\s+/, '')) + '</li>'; continue; }
     if (/^\s*---+\s*$/.test(line)) { flushPara(); closeList(); html += '<hr>'; continue; }
     if (line.trim() === '') { flushPara(); closeList(); continue; }
