@@ -746,6 +746,7 @@ class NotebookPanel {
     bar.appendChild(this._button('⟳↓ below', () => { const c = this._selectedOrFirst(); if (c) this._restartRunBelow(c); }, 'Restart the image and run the selected cell and below'));
     bar.appendChild(this._button('Contents', () => this._toggleToc(), 'Toggle the table of contents'));
     bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs(), 'Clear all cell outputs'));
+    bar.appendChild(this._button('Find', () => this._openFind(), 'Find & replace across cells'));
     bar.appendChild(this._button('Save', () => this._save(), 'Save the notebook (.iclnb)'));
     bar.appendChild(this._button('→.lisp', () => this._exportLisp(), 'Export to a loadable .lisp file'));
     bar.appendChild(this._button('→html', () => this._exportHtml(), 'Export to a self-contained HTML file'));
@@ -931,6 +932,9 @@ class NotebookPanel {
 
   // Command-mode keyboard shortcuts (active only when no editor is focused).
   _onKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault(); this._openFind(); return;
+    }
     const editing = this._cells().some(w => notebookCells.get(w.dataset.cellId)?.term)
       || (document.activeElement && document.activeElement.tagName === 'TEXTAREA'
           && document.activeElement.style.display !== 'none');
@@ -1050,6 +1054,85 @@ class NotebookPanel {
   }
   // Selected cell, or the first cell as a sensible default.
   _selectedOrFirst() { return this._selected || this._cells()[0] || null; }
+
+  // ── Find & replace across cells ──
+  _ensureFindBar() {
+    if (this._findBar) return this._findBar;
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:none;gap:6px;align-items:center;padding:6px 8px;' +
+      'border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-secondary);z-index:2;';
+    const find = document.createElement('input'); find.placeholder = 'Find';
+    const repl = document.createElement('input'); repl.placeholder = 'Replace';
+    find.style.cssText = repl.style.cssText = 'flex:0 0 180px;padding:2px 6px;';
+    const count = document.createElement('span');
+    count.style.cssText = 'color:var(--fg-secondary);min-width:70px;font:11px monospace;';
+    const refresh = () => {
+      this._findRecompute(find.value);
+      count.textContent = find.value
+        ? (this._findMatches.length ? ((this._findIdx + 1) + '/' + this._findMatches.length + ' cells') : 'no matches')
+        : '';
+    };
+    find.addEventListener('input', () => { this._findIdx = 0; refresh(); });
+    find.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this._findNext(e.shiftKey ? -1 : 1); refresh(); }
+      else if (e.key === 'Escape') { e.preventDefault(); this._closeFind(); }
+    });
+    bar.appendChild(find);
+    bar.appendChild(this._button('◀', () => { this._findNext(-1); refresh(); }, 'Previous match'));
+    bar.appendChild(this._button('▶', () => { this._findNext(1); refresh(); }, 'Next match'));
+    bar.appendChild(count);
+    bar.appendChild(repl);
+    bar.appendChild(this._button('Replace all', () => { count.textContent = this._findReplaceAll(find.value, repl.value) + ' replaced'; }, 'Replace all matches across cells'));
+    bar.appendChild(this._button('✕', () => this._closeFind(), 'Close'));
+    this._findInput = find;
+    this._element.insertBefore(bar, this._cellsEl);
+    this._findBar = bar; this._findMatches = []; this._findIdx = 0;
+    return bar;
+  }
+  _openFind() { const b = this._ensureFindBar(); b.style.display = 'flex'; this._findInput.focus(); this._findInput.select(); }
+  _closeFind() { if (this._findBar) this._findBar.style.display = 'none'; this._element.focus(); }
+  _findRecompute(q) {
+    this._findMatches = [];
+    if (!q) return;
+    for (const w of this._cells()) {
+      const e = notebookCells.get(w.dataset.cellId);
+      if (e && e.textarea && e.textarea.value.includes(q)) this._findMatches.push(w);
+    }
+    if (this._findIdx >= this._findMatches.length) this._findIdx = 0;
+  }
+  _findScroll() {
+    const w = this._findMatches[this._findIdx];
+    if (!w) return;
+    w.scrollIntoView({ block: 'center' });
+    w.style.outline = '2px solid var(--accent)';
+    setTimeout(() => { w.style.outline = ''; }, 700);
+  }
+  _findNext(dir) {
+    if (!this._findMatches.length) this._findRecompute(this._findInput.value);
+    if (!this._findMatches.length) return;
+    this._findIdx = (this._findIdx + dir + this._findMatches.length) % this._findMatches.length;
+    this._findScroll();
+  }
+  _findReplaceAll(q, r) {
+    if (!q) return 0;
+    let n = 0;
+    for (const w of this._cells()) {
+      const e = notebookCells.get(w.dataset.cellId);
+      if (!e || !e.textarea || !e.textarea.value.includes(q)) continue;
+      const parts = e.textarea.value.split(q);
+      n += parts.length - 1;
+      e.textarea.value = parts.join(r);
+      // If the ICL editor is open on this cell it has the stale text; close it
+      // so the (now-updated) resting source shows.
+      if (e.term) { try { e.term.dispose(); } catch (x) {} e.term = null; }
+      if (e.termDiv) { e.termDiv.remove(); e.termDiv = null; }
+      e.textarea.style.display = (e.tags || []).includes('hide-input') ? 'none' : '';
+      if (w.dataset.kind === 'markdown') this._renderMarkdown(w);
+    }
+    if (n) this._markDirty();
+    this._findRecompute(q);
+    return n;
+  }
 
   _save() {
     const path = window.prompt('Save notebook to path:', this._path || 'notebook.iclnb');
