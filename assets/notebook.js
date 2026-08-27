@@ -46,7 +46,9 @@ function handleCellEdited(msg) {
     const action = e.postRun; e.postRun = null;
     if (action === 'advance') nbPanel._advanceFrom(e.wrap);
     else if (action === 'insert') nbPanel._insertAndEditAfter(e.wrap);
-    // 'inplace' (or none): stay put
+    else nbPanel._selectCell(e.wrap);          // inplace -> command mode on this cell
+  } else if (nbPanel) {
+    nbPanel._selectCell(e.wrap);               // cancelled edit -> command mode
   }
 }
 
@@ -328,8 +330,14 @@ class NotebookPanel {
     this._path = p.path || null;
     this._title = p.title || 'Untitled';
     this._dirty = false;
+    this._selected = null;
+    this._dPending = false;
     let cells = p.cells && p.cells.length ? p.cells : [{ kind: 'code', source: '', outputs: [] }];
     this._build(cells);
+    // Command-mode key handling: the panel is focusable and, when no cell
+    // editor is active, keys drive cell selection/insertion/deletion.
+    this._element.tabIndex = -1;
+    this._element.addEventListener('keydown', (e) => this._onKeyDown(e));
     // Autosave every 30s once the notebook has a path.
     if (!this._autosaveTimer) {
       this._autosaveTimer = setInterval(() => {
@@ -478,6 +486,8 @@ class NotebookPanel {
     head.appendChild(this._button('↓', () => this._moveCell(wrap, 1)));
     head.appendChild(this._button('⎘', () => this._duplicateCell(wrap)));
     head.appendChild(this._button('✕', () => this._removeCell(wrap)));
+    // Clicking the header (not a button — those stopPropagation) selects the cell.
+    head.addEventListener('click', () => this._selectCell(wrap));
 
     // input textarea
     const ta = document.createElement('textarea');
@@ -572,6 +582,64 @@ class NotebookPanel {
     const e = notebookCells.get(wrap.dataset.cellId);
     this._appendCell(wrap.dataset.kind, e.textarea.value, [], wrap);
     this._markDirty();
+  }
+
+  _cells() { return Array.from(this._cellsEl.querySelectorAll('[data-cell-id]')); }
+
+  // Select a cell for command mode (highlight + focus the panel for keys).
+  _selectCell(wrap) {
+    if (!wrap) return;
+    for (const w of this._cells()) w.style.outline = '';
+    wrap.style.outline = '2px solid var(--accent, #4098ff)';
+    this._selected = wrap;
+    wrap.scrollIntoView({ block: 'nearest' });
+    this._element.focus();
+  }
+
+  // Change a cell between :code and :markdown by rebuilding it in place.
+  _setCellKind(wrap, kind) {
+    if (wrap.dataset.kind === kind) return;
+    const src = notebookCells.get(wrap.dataset.cellId).textarea.value;
+    const w = this._appendCell(kind, src, [], wrap);
+    this._removeCell(wrap);
+    this._selectCell(w);
+    this._markDirty();
+  }
+
+  // Command-mode keyboard shortcuts (active only when no editor is focused).
+  _onKeyDown(e) {
+    const editing = this._cells().some(w => notebookCells.get(w.dataset.cellId)?.term)
+      || (document.activeElement && document.activeElement.tagName === 'TEXTAREA'
+          && document.activeElement.style.display !== 'none');
+    if (editing) return;
+    const sel = this._selected;
+    const list = this._cells();
+    const idx = sel ? list.indexOf(sel) : -1;
+    const k = e.key;
+    if (k === 'd') {
+      if (this._dPending) {                       // dd -> delete
+        this._dPending = false;
+        if (sel) { const nx = sel.nextElementSibling || sel.previousElementSibling; this._removeCell(sel); this._selectCell((nx && nx.dataset && nx.dataset.cellId) ? nx : this._cells()[0]); }
+        e.preventDefault();
+      } else { this._dPending = true; setTimeout(() => { this._dPending = false; }, 600); }
+      return;
+    }
+    this._dPending = false;
+    switch (k) {
+      case 'Enter':
+        if (sel) { e.preventDefault(); if (sel.dataset.kind === 'code') this._startIclEdit(sel); else this._editMarkdown(sel); }
+        break;
+      case 'ArrowDown': case 'j':
+        if (idx >= 0 && idx < list.length - 1) { this._selectCell(list[idx + 1]); e.preventDefault(); }
+        break;
+      case 'ArrowUp': case 'k':
+        if (idx > 0) { this._selectCell(list[idx - 1]); e.preventDefault(); }
+        break;
+      case 'a': { const w = this._appendCell('code', '', [], sel); if (sel) this._cellsEl.insertBefore(w, sel); this._selectCell(w); this._markDirty(); e.preventDefault(); break; }
+      case 'b': { const w = this._appendCell('code', '', [], sel); this._selectCell(w); this._markDirty(); e.preventDefault(); break; }
+      case 'm': if (sel) { this._setCellKind(sel, 'markdown'); e.preventDefault(); } break;
+      case 'y': if (sel) { this._setCellKind(sel, 'code'); e.preventDefault(); } break;
+    }
   }
 
   // Toggle a table of contents built from markdown-cell headings.
