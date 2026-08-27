@@ -789,6 +789,7 @@ class NotebookPanel {
     bar.appendChild(this._button('Save', () => this._save(), 'Save the notebook (.iclnb)'));
     bar.appendChild(this._button('→.lisp', () => this._exportLisp(), 'Export to a loadable .lisp file'));
     bar.appendChild(this._button('→html', () => this._exportHtml(), 'Export to a self-contained HTML file'));
+    bar.appendChild(this._button('→slides', () => this._exportSlides(), 'Export a reveal.js slide deck (use slide/subslide/fragment/notes/skip tags)'));
     this._dirtyEl = document.createElement('span');
     this._dirtyEl.title = 'Unsaved changes';
     this._dirtyEl.style.cssText = 'color:var(--accent,#4098ff);margin-left:auto;padding:0 8px;font-size:14px;';
@@ -1222,5 +1223,47 @@ class NotebookPanel {
     a.download = t + '.html';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  // Export a reveal.js slide deck. Slide breaks come from cell tags:
+  //   slide/subslide -> new slide, fragment -> incremental reveal within a
+  //   slide, notes -> speaker notes, skip -> omit. An untagged notebook makes
+  //   one slide per cell.
+  _exportSlides() {
+    const t = this._title || 'Notebook';
+    const cells = Array.from(this._cellsEl.querySelectorAll('[data-cell-id]')).map(w => {
+      const e = notebookCells.get(w.dataset.cellId);
+      return { kind: w.dataset.kind, e, tags: (e.tags || []) };
+    });
+    const SLIDE_TAGS = ['slide', 'subslide', 'fragment', 'notes', 'skip'];
+    const anyTagged = cells.some(c => c.tags.some(x => SLIDE_TAGS.includes(x)));
+    const cellHtml = (c) => c.kind === 'markdown'
+      ? nbRenderMarkdown(c.e.textarea.value)
+      : '<pre><code>' + nbEscapeHtml(c.e.textarea.value) + '</code></pre>' +
+        ((c.e.outputEl && c.e.outputEl.firstChild) ? '<div>' + c.e.outputEl.innerHTML + '</div>' : '');
+    const slides = []; let cur = null;
+    const start = (html) => { cur = { body: [html], notes: [] }; slides.push(cur); };
+    for (const c of cells) {
+      const st = SLIDE_TAGS.find(x => c.tags.includes(x)) || (anyTagged ? null : 'slide');
+      if (st === 'skip') continue;
+      if (st === 'notes') { if (!cur) start(''); cur.notes.push(cellHtml(c)); continue; }
+      if (st === 'slide' || st === 'subslide' || !cur) { start(cellHtml(c)); continue; }
+      if (st === 'fragment') { cur.body.push('<div class="fragment">' + cellHtml(c) + '</div>'); continue; }
+      cur.body.push(cellHtml(c));
+    }
+    const sections = slides.map(s =>
+      '<section>' + s.body.join('\n') +
+      (s.notes.length ? '<aside class="notes">' + s.notes.join('\n') + '</aside>' : '') +
+      '</section>').join('\n');
+    const cdn = 'https://cdn.jsdelivr.net/npm/reveal.js@5/dist';
+    const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + nbEscapeHtml(t) + '</title>' +
+      '<link rel="stylesheet" href="' + cdn + '/reveal.css">' +
+      '<link rel="stylesheet" href="' + cdn + '/theme/white.css">' +
+      '<style>.reveal pre{width:100%;font-size:0.6em;}.reveal section img{max-height:60vh;}' +
+      '.reveal table{font-size:0.6em;}</style></head>' +
+      '<body><div class="reveal"><div class="slides">' + sections + '</div></div>' +
+      '<script src="' + cdn + '/reveal.js"></script>' +
+      '<script>Reveal.initialize({hash:true});</script></body></html>';
+    nbDownload(t + '.slides.html', html, 'text/html');
   }
 }
