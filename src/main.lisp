@@ -120,6 +120,31 @@
    :key :notebook
    :description "Start a browser notebook (optionally: icl --notebook FILE.iclnb)"))
 
+(defun make-execute-option ()
+  "Create --execute option: run a notebook headlessly and save it, then exit."
+  (clingon:make-option
+   :flag
+   :long-name "execute"
+   :key :execute
+   :description "Run the --notebook FILE headlessly (parameterized) and save the result, then exit"))
+
+(defun make-param-option ()
+  "Create --param option: override a notebook parameter (repeatable)."
+  (clingon:make-option
+   :list
+   :long-name "param"
+   :key :param
+   :description "Set a notebook parameter NAME=VALUE for --execute (repeatable)"))
+
+(defun make-output-option ()
+  "Create --output option: where --execute writes the executed notebook."
+  (clingon:make-option
+   :string
+   :long-name "output"
+   :short-name #\o
+   :key :output
+   :description "Output path for --execute (default: overwrite the input notebook)"))
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Update Subcommand
 ;;; ─────────────────────────────────────────────────────────────────────────────
@@ -216,6 +241,41 @@
               (error "Invalid port in '~A': ~A" connect-str e))))
         (values connect-str *slynk-port*))))
 
+(defun run-notebook-headless (path params output)
+  "Load the notebook at PATH, inject PARAMS (a list of \"NAME=VALUE\" strings)
+as CL-USER bindings, run every code cell in order (assembling outputs the same
+way the browser does), and save the executed notebook to OUTPUT (or overwrite
+PATH). Because injected bindings are set before the run, notebook parameters
+declared with DEFVAR pick up the override. Returns the output path."
+  (let ((nb (load-notebook path)))
+    (dolist (p params)
+      (let ((eqpos (position #\= p)))
+        (when eqpos
+          (let* ((name (subseq p 0 eqpos))
+                 (valstr (subseq p (1+ eqpos)))
+                 (num (ignore-errors (let ((*read-eval* nil)) (read-from-string valstr))))
+                 (lit (if (numberp num) (princ-to-string num) (prin1-to-string valstr))))
+            (ignore-errors
+              (backend-eval-internal
+               (format nil "(setf (symbol-value (intern ~S (find-package :cl-user))) ~A)"
+                       (string-upcase name) lit)))))))
+    (let ((n 0))
+      (loop for cell across (notebook-cells nb)
+            when (eq (notebook-cell-kind cell) :code)
+            do (progn
+                 (incf n)
+                 (notebook-eval-cell cell :evaluator #'backend-eval-all-capture)
+                 (let* ((outs (notebook-cell-outputs cell))
+                        (stdout (remove-if-not (lambda (o) (eq (cell-output-kind o) :stdout)) outs))
+                        (value (remove-if-not (lambda (o) (eq (cell-output-kind o) :value)) outs))
+                        (displayed (ignore-errors (notebook-displayed-outputs)))
+                        (rich (when value (ignore-errors (notebook-value-output "*")))))
+                   (setf (notebook-cell-outputs cell)
+                         (append stdout displayed value (when rich (list rich)))
+                         (notebook-cell-exec-count cell) n)))))
+    (save-notebook nb (or output path))
+    (or output path)))
+
 (defun handle-cli (cmd)
   "Handle CLI command execution."
   (let ((eval-expr (clingon:getopt cmd :eval))
@@ -297,6 +357,20 @@
             (format *error-output* "~&No Lisp implementation found in PATH.~%")
             (format *error-output* "~&Checked: ~{~A~^, ~}~%" *lisp-implementation-order*)
             (uiop:quit 1))))))
+    ;; Headless notebook execution (papermill-style): run + save + exit.
+    (when (and notebook-mode (clingon:getopt cmd :execute))
+      (unless (and notebook-file (probe-file notebook-file))
+        (format *error-output* "~&--execute requires an existing --notebook FILE.~%")
+        (uiop:quit 1))
+      (handler-case
+          (let ((out (run-notebook-headless notebook-file
+                                            (clingon:getopt cmd :param)
+                                            (clingon:getopt cmd :output))))
+            (format t "~&; Executed notebook -> ~A~%" out)
+            (uiop:quit 0))
+        (error (e)
+          (format *error-output* "~&Error executing notebook: ~A~%" e)
+          (uiop:quit 1))))
     ;; Load file if specified
     (when load-file
       (handler-case
@@ -373,6 +447,9 @@ and an extensible command system."
                   (make-browser-option)
                   (make-no-open-option)
                   (make-notebook-option)
+                  (make-execute-option)
+                  (make-param-option)
+                  (make-output-option)
                   (make-unsafe-visualizations-option))
    :sub-commands (list (make-update-command))
    :handler #'handle-cli))

@@ -31,6 +31,16 @@ ICL includes a Jupyter-style notebook that runs in the browser interface. Open o
 icl --notebook                    # new, empty notebook
 icl --notebook analysis.iclnb     # open an existing notebook
 ```
+
+Notebooks can also be run **headlessly** (papermill-style) — parameterize and
+execute without a browser, then save the result:
+
+```sh
+icl --notebook report.iclnb --execute --param region=West -o report-west.iclnb
+```
+
+`--param NAME=VALUE` (repeatable) overrides bindings before the run, so
+parameters declared with `defvar` pick up the override.
 ```
 ,notebook                 ; new notebook (browser starts if needed)
 ,notebook analysis.iclnb  ; open a saved notebook (Tab completes filenames)
