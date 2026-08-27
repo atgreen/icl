@@ -134,7 +134,10 @@ function handleCellResult(msg) {
   const entry = notebookCells.get(msg.cellId);
   if (!entry) return;
   nbRenderOutputs(entry.outputEl, msg.outputs || []);
-  if (entry.execEl) entry.execEl.textContent = msg.execCount ? ('[' + msg.execCount + ']') : '';
+  if (entry.execEl) {
+    entry.execEl.textContent = msg.execCount ? ('[' + msg.execCount + ']') : '';
+    entry.execEl.style.color = '';   // clear the running indicator colour
+  }
 }
 
 function handleNotebookSaved(msg) {
@@ -534,6 +537,8 @@ class NotebookPanel {
       ws.send(JSON.stringify({ type: 'cell-key', cellId, data: '\x1b[13;2u' }));
       return;
     }
+    // Mark the cell running/queued until its result arrives.
+    if (entry && entry.execEl) { entry.execEl.textContent = '[*]'; entry.execEl.style.color = 'var(--accent, #4098ff)'; }
     ws.send(JSON.stringify({ type: 'run-cell', cellId, kind, source: wrap.querySelector('textarea').value }));
   }
 
