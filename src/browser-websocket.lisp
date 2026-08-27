@@ -486,6 +486,13 @@
            (bt:make-thread (lambda () (ignore-errors (interrupt-backend-eval)))
                            :name "notebook-interrupt-handler"))
 
+          ;; Notebook: a widget control changed -> set its bound CL-USER symbol.
+          ((string= type "widget-set")
+           (let ((sym (gethash "symbol" json))
+                 (val (gethash "value" json)))
+             (when (stringp sym)
+               (ignore-errors (notebook-widget-set sym val)))))
+
           ;; Notebook: export to a jupytext-style .lisp file
           ((string= type "export-notebook")
            (let ((path (gethash "path" json))
@@ -1138,6 +1145,12 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
              (gethash "rows" h)
              (coerce (mapcar (lambda (r) (coerce r 'vector)) (getf payload :rows))
                      'vector)))
+      ((eq kind :widget)
+       ;; Descriptor plist -> flat JSON fields (control/symbol/value/min/max/step/
+       ;; label/choices). List values (choices) become arrays.
+       (loop for (k v) on payload by #'cddr
+             do (setf (gethash (string-downcase (symbol-name k)) h)
+                      (if (and (consp v)) (coerce v 'vector) v))))
       (t
        (setf (gethash "payload" h) (or payload ""))))
     h))
@@ -1194,6 +1207,16 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
                   nil)"
            n)))
 
+(defun notebook-widget-set (symbol-name value)
+  "Set the CL-USER symbol named SYMBOL-NAME (a widget's binding) to VALUE."
+  (let ((lit (cond ((numberp value) (princ-to-string value))
+                   ((stringp value) (prin1-to-string value))
+                   ((eq value t) "t")
+                   (t "nil"))))
+    (backend-eval-internal
+     (format nil "(setf (symbol-value (intern ~S (find-package :cl-user))) ~A)"
+             (string-upcase symbol-name) lit))))
+
 (defun notebook-handle-run-cell (client cell-id kind source)
   "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
   (let ((cell (%make-notebook-cell
@@ -1216,10 +1239,11 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
         (let* ((outs (notebook-cell-outputs cell))
                (stdout (remove-if-not (lambda (o) (eq (cell-output-kind o) :stdout)) outs))
                (value (remove-if-not (lambda (o) (eq (cell-output-kind o) :value)) outs))
+               (widgets (ignore-errors (notebook-widget-outputs)))
                (displayed (ignore-errors (notebook-displayed-outputs)))
                (rich (when value (ignore-errors (notebook-value-output "*")))))
           (setf (notebook-cell-outputs cell)
-                (append stdout displayed value (when rich (list rich))))))
+                (append widgets stdout displayed value (when rich (list rich))))))
       ;; Remember the value under its execution index so later cells can (out N),
       ;; where N is the [count] shown on the cell.
       (when (eq (notebook-cell-kind cell) :code)

@@ -820,6 +820,39 @@ semantics). Does not print to the local REPL."
       (unless (fboundp 'cl-user::display)
         (setf (fdefinition 'cl-user::display)
               (lambda (o) (setf cl-user::*icl-displayed* (nconc cl-user::*icl-displayed* (list o))) o)))
+      (unless (boundp 'cl-user::*icl-widgets*) (defparameter cl-user::*icl-widgets* nil))
+      (setf cl-user::*icl-widgets* nil)
+      (unless (fboundp 'cl-user::%icl-widget)
+        (setf (fdefinition 'cl-user::%icl-widget)
+              (lambda (control sym params val)
+                (unless (boundp sym) (setf (symbol-value sym) val))
+                (setf cl-user::*icl-widgets*
+                      (nconc cl-user::*icl-widgets*
+                             (list (list* :control control :symbol (string sym)
+                                          :value (symbol-value sym) params))))
+                (symbol-value sym)))
+        (flet ((lbl (sym label) (or label (string-downcase (symbol-name sym)))))
+          (setf (fdefinition 'cl-user::slider)
+                (lambda (sym &key (min 0) (max 100) (step 1) (value min) label)
+                  (funcall (fdefinition 'cl-user::%icl-widget) \"slider\" sym
+                           (list :min min :max max :step step :label (lbl sym label)) value))
+                (fdefinition 'cl-user::dropdown)
+                (lambda (sym choices &key value label)
+                  (funcall (fdefinition 'cl-user::%icl-widget) \"dropdown\" sym
+                           (list :choices (mapcar #'princ-to-string choices) :label (lbl sym label))
+                           (if value (princ-to-string value) (and choices (princ-to-string (first choices))))))
+                (fdefinition 'cl-user::checkbox)
+                (lambda (sym &key value label)
+                  (funcall (fdefinition 'cl-user::%icl-widget) \"checkbox\" sym
+                           (list :label (lbl sym label)) (and value t)))
+                (fdefinition 'cl-user::text-input)
+                (lambda (sym &key (value \"\") label)
+                  (funcall (fdefinition 'cl-user::%icl-widget) \"text\" sym
+                           (list :label (lbl sym label)) value))
+                (fdefinition 'cl-user::button)
+                (lambda (sym &key label)
+                  (funcall (fdefinition 'cl-user::%icl-widget) \"button\" sym
+                           (list :label (lbl sym label)) 0)))))
       (loop for form = (read in nil eof)
             until (eq form eof)
             do (setf vals (multiple-value-list (eval form))))

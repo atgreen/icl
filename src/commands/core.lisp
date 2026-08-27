@@ -1542,6 +1542,17 @@ Injects cl-arrow lazily on first tabular value."
                                         (and (consp r) (first r) (read-from-string (first r)))))
                                     "")))))))
 
+(defun notebook-widget-outputs ()
+  "Return :widget output blobs for the controls (slider/dropdown/…) created
+during the last cell evaluation (backend cl-user::*icl-widgets*), in order.
+Each payload is the control's descriptor plist."
+  (let ((ws (ignore-errors
+              (let ((r (backend-eval-internal
+                        "(if (boundp 'cl-user::*icl-widgets*) cl-user::*icl-widgets* nil)")))
+                (and (consp r) (first r) (read-from-string (first r)))))))
+    (when (listp ws)
+      (loop for w in ws when (consp w) collect (make-cell-output :widget w)))))
+
 (defun viz-single-expression (trimmed)
   "Visualize a single expression - detect type and dispatch."
   (let ((parsed (classify-viz-value trimmed)))

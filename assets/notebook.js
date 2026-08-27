@@ -616,10 +616,82 @@ function nbRenderOutputs(outEl, outputs) {
   outEl.style.display = 'block';
   const hasRich = outputs.some(o => NB_RICH_KINDS.has(o.kind));
   for (const o of outputs) {
-    if (NB_RICH_KINDS.has(o.kind)) { nbRenderRich(outEl, o); }
+    if (o.kind === 'widget') { nbRenderWidget(outEl, o); }
+    else if (NB_RICH_KINDS.has(o.kind)) { nbRenderRich(outEl, o); }
     else if (hasRich && o.kind === 'value') { nbRenderValueToggle(outEl, o.payload); }
     else { nbRenderTextBlob(outEl, o); }
   }
+}
+
+// Debounced reactive re-run: after a widget changes its symbol, re-run every
+// cell whose source references that symbol (except the widget's own cell).
+const nbReactTimers = {};
+function nbReactToWidget(symbol, exceptCellId) {
+  if (!nbPanel) return;
+  clearTimeout(nbReactTimers[symbol]);
+  nbReactTimers[symbol] = setTimeout(() => {
+    const re = new RegExp('\\b' + symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+    for (const w of nbPanel._cells()) {
+      if (w.dataset.cellId === exceptCellId) continue;
+      const e = notebookCells.get(w.dataset.cellId);
+      if (e && e.textarea && re.test(e.textarea.value)) nbPanel._runCell(w);
+    }
+  }, 120);
+}
+
+// Render an interactive widget control (slider/dropdown/checkbox/text/button)
+// bound to a backend symbol; changes push widget-set + reactive re-run.
+function nbRenderWidget(outEl, o) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 8px;';
+  const wrap = outEl.closest && outEl.closest('[data-cell-id]');
+  const cellId = wrap ? wrap.dataset.cellId : null;
+  const send = (val) => {
+    ws.send(JSON.stringify({ type: 'widget-set', symbol: o.symbol, value: val }));
+    nbReactToWidget(o.symbol, cellId);
+  };
+  const label = document.createElement('label');
+  label.textContent = o.label || o.symbol;
+  label.style.cssText = 'font:12px monospace;color:var(--fg-secondary);min-width:60px;';
+  let control, valueEl = null;
+  switch (o.control) {
+    case 'slider':
+      control = document.createElement('input'); control.type = 'range';
+      control.min = o.min; control.max = o.max; control.step = o.step; control.value = o.value;
+      valueEl = document.createElement('span');
+      valueEl.textContent = o.value;
+      valueEl.style.cssText = 'font:12px monospace;min-width:40px;';
+      control.addEventListener('input', () => { valueEl.textContent = control.value; send(parseFloat(control.value)); });
+      break;
+    case 'dropdown':
+      control = document.createElement('select');
+      for (const c of (o.choices || [])) {
+        const opt = document.createElement('option');
+        opt.value = c; opt.textContent = c; if (c === o.value) opt.selected = true;
+        control.appendChild(opt);
+      }
+      control.addEventListener('change', () => send(control.value));
+      break;
+    case 'checkbox':
+      control = document.createElement('input'); control.type = 'checkbox'; control.checked = !!o.value;
+      control.addEventListener('change', () => send(control.checked));
+      break;
+    case 'text':
+      control = document.createElement('input'); control.type = 'text'; control.value = o.value || '';
+      control.addEventListener('change', () => send(control.value));
+      break;
+    case 'button': {
+      control = document.createElement('button'); control.textContent = o.label || o.symbol;
+      let n = (typeof o.value === 'number') ? o.value : 0;
+      control.addEventListener('click', () => { n++; send(n); });
+      break;
+    }
+    default:
+      control = document.createElement('span'); control.textContent = '[widget: ' + o.control + ']';
+  }
+  row.appendChild(label); row.appendChild(control);
+  if (valueEl) row.appendChild(valueEl);
+  outEl.appendChild(row);
 }
 
 // ── Panel ──
