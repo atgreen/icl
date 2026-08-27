@@ -41,6 +41,7 @@ Highlights:
 - **The real ICL editor in every code cell** - paredit, auto-indent, syntax highlighting, completion, inline hints, and click-to-inspect symbols, not a plain text box.
 - **Multi-form cells** - a cell may hold several forms; all are evaluated and the last is the cell's value.
 - **Rich output** - a returned hash-table renders as a table, a Vega-Lite spec as a chart, a Mermaid string as a diagram, plus SVG/HTML/JSON/images. `(display obj)` emits several rich outputs from one cell; diagrams fit to width with scroll-to-zoom and drag-to-pan.
+- **Interactive tables** - a list of plists/alists (or a Lisp-Stat `data-frame`) renders as a sortable, filterable, **pivotable** grid, powered by Apache Arrow and Perspective (bundled, so it works fully offline). Drag columns into *Group By* to pivot and aggregate; column types are preserved. The grid's layout is saved with the notebook, and any output can be maximized to fill the window (`Esc` restores).
 - **Markdown cells** with GitHub-flavored tables and **KaTeX math** (`$…$`, `$$…$$`).
 - **Run keys** - `Shift-Enter` runs and advances, `Alt-Enter` runs and inserts a cell below, `Ctrl-Enter` runs in place; plain `Enter` inserts a newline.
 - **Command mode** - press `Esc`, then `j`/`k` to move the selection, `a`/`b` to insert, `dd` to delete, `m`/`y` to switch markdown/code.
@@ -86,7 +87,7 @@ Profile any expression with `,flame` and explore the results in an interactive [
 - **Terminal-aware colors** - Automatically detects light/dark terminal background
 - **AI integration** - Use `,explain` to get AI-powered explanations of code, errors, and results
 - **Browser interface** - Web UI with package browser, symbol list, inspector, and xterm.js terminal
-- **Notebooks** - Browser notebooks with the full ICL editor per cell, multi-form evaluation, rich outputs (charts, tables, diagrams), markdown with KaTeX math, `display()`, command-mode shortcuts, and export to HTML / `.lisp`
+- **Notebooks** - Browser notebooks with the full ICL editor per cell, multi-form evaluation, rich outputs (charts, interactive pivot tables, diagrams), markdown with KaTeX math, `display()`, command-mode shortcuts, and export to HTML / `.lisp`
 - **Data visualization** - Visualize hash tables, classes, sets, SVG, HTML, JSON, Vega-Lite charts, Mermaid diagrams, regex railroad diagrams, and function disassembly
 - **Custom visualizations** - Define `icl-runtime:visualize` methods for your own classes
 - **Flame graph profiling** - Interactive Speedscope visualizations for performance analysis (SBCL)
