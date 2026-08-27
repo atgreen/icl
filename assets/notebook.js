@@ -345,6 +345,17 @@ function nbRenderRich(outEl, o) {
     if (['arrow', 'table', 'vega-lite', 'mermaid', 'svg', 'html', 'image'].includes(o.kind)) {
       nbAddMaximize(div);
     }
+    if (['svg', 'mermaid'].includes(o.kind)) {
+      nbAddDownload(div, 'Download SVG', () => {
+        const svg = div.querySelector('svg');
+        if (svg) nbDownload('diagram.svg', new XMLSerializer().serializeToString(svg), 'image/svg+xml');
+      });
+    } else if (o.kind === 'image') {
+      nbAddDownload(div, 'Download image', () => {
+        const img = div.querySelector('img');
+        if (img && img.src) { const a = document.createElement('a'); a.href = img.src; a.download = 'image'; a.click(); }
+      });
+    }
   } catch (e) { div.textContent = 'render error: ' + e; }
   outEl.appendChild(div);
 }
@@ -354,6 +365,29 @@ function nbRenderRich(outEl, o) {
 // Add a maximize/restore toggle to a rich-output CONTAINER.  Maximized, it fills
 // the window (fixed overlay) so a Perspective grid / chart is usable; restore
 // returns it to the in-cell size.  Esc also restores.
+// Trigger a browser download of DATA (string or Blob) as FILENAME.
+function nbDownload(filename, data, type) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: type || 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Add a ⬇ download button to a rich-output CONTAINER (sits left of maximize).
+// PRODUCER is an (async) callback that performs the download.
+function nbAddDownload(container, title, producer) {
+  container.style.position = 'relative';
+  const btn = document.createElement('button');
+  btn.textContent = '⬇'; btn.title = title || 'Download';
+  btn.style.cssText =
+    'position:absolute;top:4px;right:34px;z-index:6;cursor:pointer;line-height:1;' +
+    'border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);' +
+    'color:var(--fg-secondary);font-size:12px;padding:2px 5px;';
+  btn.addEventListener('click', async (e) => { e.stopPropagation(); try { await producer(); } catch (err) {} });
+  container.appendChild(btn);
+}
+
 function nbAddMaximize(container) {
   container.style.position = 'relative';
   const btn = document.createElement('button');
@@ -403,6 +437,11 @@ async function nbApplyViewerConfig(div, viewer, defaultConfig) {
     viewer.addEventListener('perspective-config-update', () => { if (nbPanel) nbPanel._markDirty(); });
   }
   nbFitViewer(div, viewer);
+  nbAddDownload(div, 'Download the current view as CSV', async () => {
+    const view = await viewer.getView();
+    const csv = await view.to_csv();
+    nbDownload('table.csv', csv, 'text/csv');
+  });
 }
 
 // Size a grid's container to its actual (post-pivot) row count so a small
