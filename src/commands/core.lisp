@@ -1436,6 +1436,25 @@ Checks for a custom icl-runtime:visualize method first, then built-in detection.
                            (format nil "data:~A;base64,~A" (second parsed) (third parsed))))
         (t nil)))))
 
+(defun notebook-displayed-outputs ()
+  "Return output blobs for each object passed to DISPLAY during the last cell
+   evaluation (backend cl-user::*icl-displayed*), in call order."
+  (let ((n (ignore-errors
+             (let ((r (backend-eval-internal
+                       "(if (boundp 'cl-user::*icl-displayed*) (length cl-user::*icl-displayed*) 0)")))
+               (and (consp r) (first r) (read-from-string (first r)))))))
+    (when (and (integerp n) (plusp n))
+      (loop for i from 0 below n
+            for expr = (format nil "(nth ~D cl-user::*icl-displayed*)" i)
+            for rich = (ignore-errors (notebook-value-output expr))
+            collect (or rich
+                        (make-cell-output
+                         :value (or (ignore-errors
+                                      (let ((r (backend-eval-internal
+                                                (format nil "(write-to-string ~A :readably nil :pretty nil)" expr))))
+                                        (and (consp r) (first r) (read-from-string (first r)))))
+                                    "")))))))
+
 (defun viz-single-expression (trimmed)
   "Visualize a single expression - detect type and dispatch."
   (let ((parsed (classify-viz-value trimmed)))

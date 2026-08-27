@@ -778,6 +778,11 @@ semantics). Does not print to the local REPL."
        (*query-io* *terminal-io*))
   (handler-case
     (let ((in (make-string-input-stream ~S)) (eof (list nil)) (vals nil))
+      (unless (boundp 'cl-user::*icl-displayed*) (defparameter cl-user::*icl-displayed* nil))
+      (setf cl-user::*icl-displayed* nil)
+      (unless (fboundp 'cl-user::display)
+        (setf (fdefinition 'cl-user::display)
+              (lambda (o) (setf cl-user::*icl-displayed* (nconc cl-user::*icl-displayed* (list o))) o)))
       (loop for form = (read in nil eof)
             until (eq form eof)
             do (setf vals (multiple-value-list (eval form))))

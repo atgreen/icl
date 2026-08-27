@@ -1165,15 +1165,18 @@ pre { margin: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono',
     (bt:with-lock-held (*notebook-eval-lock*)
       ;; Notebook cells may hold several forms: evaluate all, last is the value.
       (notebook-eval-cell cell :evaluator #'backend-eval-all-capture)
-      ;; For a code cell that produced a value, add a rich rendering of that
-      ;; value (classifying * — the value just computed — so side effects don't
-      ;; run twice). The plain printed value stays for the client's toggle.
-      (when (and (eq (notebook-cell-kind cell) :code)
-                 (find :value (notebook-cell-outputs cell) :key #'cell-output-kind))
-        (let ((rich (ignore-errors (notebook-value-output "*"))))
-          (when rich
-            (setf (notebook-cell-outputs cell)
-                  (append (notebook-cell-outputs cell) (list rich)))))))
+      ;; Assemble outputs for a code cell:
+      ;;   stdout, then each (display …) object in call order, then the value
+      ;;   (and a rich rendering of it). Classifying * / *icl-displayed* under the
+      ;;   lock keeps them this cell's own values.
+      (when (eq (notebook-cell-kind cell) :code)
+        (let* ((outs (notebook-cell-outputs cell))
+               (stdout (remove-if-not (lambda (o) (eq (cell-output-kind o) :stdout)) outs))
+               (value (remove-if-not (lambda (o) (eq (cell-output-kind o) :value)) outs))
+               (displayed (ignore-errors (notebook-displayed-outputs)))
+               (rich (when value (ignore-errors (notebook-value-output "*")))))
+          (setf (notebook-cell-outputs cell)
+                (append stdout displayed value (when rich (list rich)))))))
     (incf *notebook-exec-counter*)
     (let ((obj (make-hash-table :test 'equal)))
       (setf (gethash "type" obj) "cell-result"

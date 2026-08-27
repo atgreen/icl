@@ -299,10 +299,10 @@ function nbRenderOutputs(outEl, outputs) {
   outEl.innerHTML = '';
   if (!outputs || outputs.length === 0) { outEl.style.display = 'none'; return; }
   outEl.style.display = 'block';
-  const rich = outputs.find(o => NB_RICH_KINDS.has(o.kind));
+  const hasRich = outputs.some(o => NB_RICH_KINDS.has(o.kind));
   for (const o of outputs) {
-    if (o === rich) { nbRenderRich(outEl, o); }
-    else if (rich && o.kind === 'value') { nbRenderValueToggle(outEl, o.payload); }
+    if (NB_RICH_KINDS.has(o.kind)) { nbRenderRich(outEl, o); }
+    else if (hasRich && o.kind === 'value') { nbRenderValueToggle(outEl, o.payload); }
     else { nbRenderTextBlob(outEl, o); }
   }
 }
