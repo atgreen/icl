@@ -409,6 +409,7 @@ class NotebookPanel {
     bar.appendChild(this._button('⏹ Interrupt', () => ws.send(JSON.stringify({ type: 'notebook-interrupt' }))));
     bar.appendChild(this._button('⟳ Restart', () => ws.send(JSON.stringify({ type: 'notebook-restart' }))));
     bar.appendChild(this._button('⟳▶ Run all', () => ws.send(JSON.stringify({ type: 'notebook-restart', runAll: true }))));
+    bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs()));
     bar.appendChild(this._button('Save', () => this._save()));
     this._element.appendChild(bar);
 
@@ -441,6 +442,12 @@ class NotebookPanel {
     head.appendChild(exec);
     head.appendChild(kindLabel);
     head.appendChild(this._button('Run', () => this._runCell(wrap)));
+    head.appendChild(this._button('▾', (function () {
+      const o = notebookCells.get(cellId).outputEl;
+      o.dataset.collapsed = o.dataset.collapsed === '1' ? '' : '1';
+      o.style.display = (o.dataset.collapsed === '1' || !o.firstChild) ? 'none' : 'block';
+    })));
+    head.appendChild(this._button('∅', () => this._clearCellOutput(wrap)));
     head.appendChild(this._button('✕', () => this._removeCell(wrap)));
 
     // input textarea
@@ -459,9 +466,9 @@ class NotebookPanel {
     ta.addEventListener('input', grow);
     setTimeout(grow, 0);
 
-    // output
+    // output (scrollable, capped height for long stdout/tables)
     const out = document.createElement('div');
-    out.style.cssText = 'border-top:1px solid var(--border);display:none;';
+    out.style.cssText = 'border-top:1px solid var(--border);display:none;max-height:480px;overflow:auto;';
     nbRenderOutputs(out, outputs);
 
     wrap.appendChild(head);
@@ -509,6 +516,17 @@ class NotebookPanel {
   _removeCell(wrap) {
     notebookCells.delete(wrap.dataset.cellId);
     wrap.remove();
+  }
+
+  _clearCellOutput(wrap) {
+    const e = notebookCells.get(wrap.dataset.cellId);
+    if (!e) return;
+    e.outputEl.innerHTML = ''; e.outputEl.style.display = 'none';
+    if (e.execEl) { e.execEl.textContent = ''; e.execEl.style.color = ''; }
+  }
+
+  _clearAllOutputs() {
+    for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) this._clearCellOutput(w);
   }
 
   // Show the rendered markdown, hide the editor (Jupyter-style).
