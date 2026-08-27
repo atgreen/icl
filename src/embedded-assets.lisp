@@ -77,6 +77,25 @@
         (when (probe-file path)
           (setf (gethash filename *embedded-binary-assets*)
                 (alexandria:read-file-into-byte-vector path)))))
+    ;; KaTeX assets (math in markdown cells): js/css as text, fonts as binary
+    (let ((katex-dir (merge-pathnames "katex/" assets-dir)))
+      (when (probe-file katex-dir)
+        (labels ((collect-files (dir)
+                   (let ((files nil))
+                     (dolist (entry (uiop:directory-files dir)) (push entry files))
+                     (dolist (subdir (uiop:subdirectories dir))
+                       (setf files (nconc files (collect-files subdir))))
+                     files)))
+          (dolist (file (collect-files katex-dir))
+            (let* ((relative-path (enough-namestring file katex-dir))
+                   (key (concatenate 'string "katex/" relative-path))
+                   (extension (pathname-type file)))
+              (cond ((member extension '("woff2" "woff" "ttf") :test #'string=)
+                     (setf (gethash key *embedded-binary-assets*)
+                           (alexandria:read-file-into-byte-vector file)))
+                    ((member extension '("js" "css") :test #'string=)
+                     (setf (gethash key *embedded-assets*)
+                           (alexandria:read-file-into-string file)))))))))
     ;; Monaco editor assets - recursively embed all files
     ;; Monaco Editor is pre-built with vite, generating ~120+ hashed .js/.css files
     ;; Rather than manually listing each file, we recursively discover all Monaco files

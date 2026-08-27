@@ -31,6 +31,7 @@
   <link rel='stylesheet' href='/assets/dockview.css'>
   <link rel='stylesheet' href='/assets/xterm.css'>
   <link rel='stylesheet' href='/assets/browser.css'>
+  <link rel='stylesheet' href='/assets/katex/katex.min.css'>
 </head>
 <body data-ws-token='~A' data-version='~A' data-unsafe-visualizations='~A'>
   <div id='layout-container'></div>
@@ -44,6 +45,7 @@
   <script src='/assets/vega-lite.min.js'></script>
   <script src='/assets/vega-embed.min.js'></script>
   <script src='/assets/mermaid.min.js'></script>
+  <script src='/assets/katex/katex.min.js'></script>
 
   <!-- Monaco loader MUST be BEFORE regulex to avoid AMD conflicts.
        Load Monaco loader, configure and START loading immediately, then regulex can override AMD globals -->
