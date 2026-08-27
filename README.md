@@ -23,6 +23,32 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experi
 
 *Package browser, symbol inspector, data visualization, and class hierarchy graphs*
 
+## Notebooks
+
+ICL includes a Jupyter-style notebook that runs in the browser interface. Open one with the `,notebook` command or the `--notebook` flag:
+
+```sh
+icl --notebook                    # new, empty notebook
+icl --notebook analysis.iclnb     # open an existing notebook
+```
+```
+,notebook                 ; new notebook (browser starts if needed)
+,notebook analysis.iclnb  ; open a saved notebook (Tab completes filenames)
+```
+
+Highlights:
+
+- **The real ICL editor in every code cell** - paredit, auto-indent, syntax highlighting, completion, inline hints, and click-to-inspect symbols, not a plain text box.
+- **Multi-form cells** - a cell may hold several forms; all are evaluated and the last is the cell's value.
+- **Rich output** - a returned hash-table renders as a table, a Vega-Lite spec as a chart, a Mermaid string as a diagram, plus SVG/HTML/JSON/images. `(display obj)` emits several rich outputs from one cell; diagrams fit to width with scroll-to-zoom and drag-to-pan.
+- **Markdown cells** with GitHub-flavored tables and **KaTeX math** (`$…$`, `$$…$$`).
+- **Run keys** - `Shift-Enter` runs and advances, `Alt-Enter` runs and inserts a cell below, `Ctrl-Enter` runs in place; plain `Enter` inserts a newline.
+- **Command mode** - press `Esc`, then `j`/`k` to move the selection, `a`/`b` to insert, `dd` to delete, `m`/`y` to switch markdown/code.
+- **Manage the kernel** - interrupt a running cell, restart the backend image, or Restart & Run All.
+- **Save & export** - notebooks are plain-text `.iclnb` s-expressions; export to a self-contained HTML file or a loadable jupytext-style `.lisp`.
+
+See [`examples/notebook-tour.iclnb`](examples/notebook-tour.iclnb) for a guided tour of the features.
+
 ## Flame Graph Profiling
 
 <p align="center">
@@ -60,6 +86,7 @@ Profile any expression with `,flame` and explore the results in an interactive [
 - **Terminal-aware colors** - Automatically detects light/dark terminal background
 - **AI integration** - Use `,explain` to get AI-powered explanations of code, errors, and results
 - **Browser interface** - Web UI with package browser, symbol list, inspector, and xterm.js terminal
+- **Notebooks** - Browser notebooks with the full ICL editor per cell, multi-form evaluation, rich outputs (charts, tables, diagrams), markdown with KaTeX math, `display()`, command-mode shortcuts, and export to HTML / `.lisp`
 - **Data visualization** - Visualize hash tables, classes, sets, SVG, HTML, JSON, Vega-Lite charts, Mermaid diagrams, regex railroad diagrams, and function disassembly
 - **Custom visualizations** - Define `icl-runtime:visualize` methods for your own classes
 - **Flame graph profiling** - Interactive Speedscope visualizations for performance analysis (SBCL)
@@ -160,6 +187,12 @@ icl --no-config
 Start with browser interface (opens IDE alongside terminal REPL):
 ```sh
 icl -b
+```
+
+Open a browser notebook (a new one, or an existing `.iclnb` file):
+```sh
+icl --notebook
+icl --notebook analysis.iclnb
 ```
 
 ## Emacs Integration
@@ -319,6 +352,7 @@ The Symbol Info panel also includes a **[Source]** link next to [Inspect] for fu
 | Command | Description |
 |---------|-------------|
 | `,browser` | Start browser-based IDE interface |
+| `,notebook [file]` | Open a browser notebook (optionally an existing `.iclnb` file) |
 | `,viz <expr>` | Visualize data in browser (class hierarchies, hash-tables, images, JSON, and more) |
 
 The `,viz` command automatically detects the type and displays an appropriate visualization:
