@@ -427,6 +427,7 @@ class NotebookPanel {
     bar.appendChild(this._button('⏹ Interrupt', () => ws.send(JSON.stringify({ type: 'notebook-interrupt' }))));
     bar.appendChild(this._button('⟳ Restart', () => ws.send(JSON.stringify({ type: 'notebook-restart' }))));
     bar.appendChild(this._button('⟳▶ Run all', () => ws.send(JSON.stringify({ type: 'notebook-restart', runAll: true }))));
+    bar.appendChild(this._button('Contents', () => this._toggleToc()));
     bar.appendChild(this._button('Clear outputs', () => this._clearAllOutputs()));
     bar.appendChild(this._button('Save', () => this._save()));
     this._dirtyEl = document.createElement('span');
@@ -552,6 +553,38 @@ class NotebookPanel {
 
   _clearAllOutputs() {
     for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) this._clearCellOutput(w);
+  }
+
+  // Toggle a table of contents built from markdown-cell headings.
+  _toggleToc() {
+    const existing = this._element.querySelector('.nb-toc');
+    if (existing) { existing.remove(); return; }
+    const toc = document.createElement('div');
+    toc.className = 'nb-toc';
+    toc.style.cssText = 'padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary);font-family:system-ui,sans-serif;font-size:13px;';
+    const title = document.createElement('div');
+    title.textContent = 'Contents'; title.style.cssText = 'font-weight:bold;margin-bottom:4px;';
+    toc.appendChild(title);
+    let found = false;
+    for (const w of this._cellsEl.querySelectorAll('[data-cell-id]')) {
+      if (w.dataset.kind !== 'markdown') continue;
+      for (const line of (w.querySelector('textarea').value || '').split('\n')) {
+        const m = line.match(/^(#{1,6})\s+(.*)$/);
+        if (!m) continue;
+        found = true;
+        const a = document.createElement('a');
+        a.textContent = m[2]; a.href = '#';
+        a.style.cssText = 'display:block;padding-left:' + ((m[1].length - 1) * 14) + 'px;color:var(--fg-primary);text-decoration:none;cursor:pointer;';
+        a.onclick = (e) => { e.preventDefault(); w.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+        toc.appendChild(a);
+      }
+    }
+    if (!found) {
+      const n = document.createElement('div');
+      n.textContent = '(no markdown headings)'; n.style.color = 'var(--fg-secondary)';
+      toc.appendChild(n);
+    }
+    this._element.insertBefore(toc, this._cellsEl);
   }
 
   // Show the rendered markdown, hide the editor (Jupyter-style).
