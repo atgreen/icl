@@ -229,10 +229,15 @@
         (mcp-server (clingon:getopt cmd :mcp-server))
         (browser-mode (clingon:getopt cmd :browser))
         (notebook-mode (clingon:getopt cmd :notebook))
-        (notebook-file (first (clingon:command-arguments cmd)))
+        (notebook-file (and (clingon:getopt cmd :notebook)
+                            (first (clingon:command-arguments cmd))))
         (unsafe-viz (clingon:getopt cmd :unsafe-visualizations))
         (no-open (clingon:getopt cmd :no-open))
-        (inferior-args (clingon:command-arguments cmd)))
+        ;; With --notebook, the first free argument is the notebook file, not
+        ;; an inferior-Lisp argument — don't pass it through to SBCL.
+        (inferior-args (if (clingon:getopt cmd :notebook)
+                           (rest (clingon:command-arguments cmd))
+                           (clingon:command-arguments cmd))))
     ;; Disable image caching if requested
     (when no-cache
       (setf *use-image-cache* nil))
