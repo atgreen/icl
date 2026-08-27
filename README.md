@@ -48,7 +48,29 @@ Highlights:
 - **Manage the kernel** - interrupt a running cell, restart the backend image, or Restart & Run All.
 - **Save & export** - notebooks are plain-text `.iclnb` s-expressions; export to a self-contained HTML file or a loadable jupytext-style `.lisp`.
 
-See [`examples/notebook-tour.iclnb`](examples/notebook-tour.iclnb) for a guided tour of the features.
+### Interactive data views (Perspective)
+
+Tabular values — a list of plists/alists, or a Lisp-Stat `data-frame` — are
+encoded as typed Apache **Arrow** and handed to an embedded
+[Perspective](https://perspective.finos.org/) view. Perspective and its WebAssembly
+engine are **bundled** (Apache-2.0), so everything works fully offline. All of the
+following is point-and-click in the view's settings panel — no chart spec, and the
+same configuration drives whichever visualization you pick:
+
+- **Visualizations** — pivot **Datagrid** (with tree row/column groups and expand/collapse),
+  **Y/X Bar** (grouped & stacked), **Column**, **Y Line**, **Y Area**,
+  **Y/XY Scatter** (with color & size encodings), **Heatmap**, **Treemap**,
+  **Sunburst**, and financial **Candlestick** / **OHLC**.
+- **Pivot** — *Group By* (row pivots) and *Split By* (column pivots), nested to any depth.
+- **Aggregate** — sum, mean, count, count-distinct, min, max, median, first/last, and more, per value column.
+- **Filter & sort** — multiple per-column filter predicates and multi-column sorting.
+- **Computed columns** — derive new columns with Perspective's expression language.
+- **Column control** — show/hide and reorder columns; column types are preserved (numbers stay numeric, so aggregation is exact).
+- **Themes** — light/dark, following the notebook.
+- **Persisted & resizable** — the view configuration is saved with the notebook, and any output can be maximized to fill the window (`Esc` restores).
+
+See [`examples/notebook-tour.iclnb`](examples/notebook-tour.iclnb) for a guided tour, and
+[`examples/arrow-tables.iclnb`](examples/arrow-tables.iclnb) for table/pivot examples.
 
 ## Flame Graph Profiling
 
