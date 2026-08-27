@@ -1276,9 +1276,11 @@ Examples:
                                                       (loop for (k v) on row by #'cddr
                                                             collect (cons (princ-to-string k) v)))
                                                      (t nil))))
-                                          (when (and (consp obj) (listp obj)
-                                                     (ignore-errors (<= (length obj) 5000)))
-                                            (let ((arows (mapcar #'row->alist obj)))
+                                          (when (and (consp obj) (listp obj))
+                                            ;; Detect tabularity + columns from a bounded sample so
+                                            ;; large tables are still recognized; Arrow encodes all rows.
+                                            (let ((arows (loop for r in obj for i from 0 below 2000
+                                                               collect (row->alist r))))
                                               (when (and arows (every #'identity arows))
                                                 (let ((columns nil))
                                                   (dolist (r arows)
