@@ -389,6 +389,41 @@ function nbRenderRich(outEl, o) {
 // Add a maximize/restore toggle to a rich-output CONTAINER.  Maximized, it fills
 // the window (fixed overlay) so a Perspective grid / chart is usable; restore
 // returns it to the in-cell size.  Esc also restores.
+// Build a static HTML table from Perspective's to_json() rows.
+function nbRowsToHtmlTable(rows) {
+  if (!rows || !rows.length) return '<div>(empty)</div>';
+  const cols = Object.keys(rows[0]);
+  let h = '<table style="border-collapse:collapse;"><thead><tr>';
+  for (const c of cols) h += '<th style="border:1px solid #ccc;padding:3px 8px;">' + nbEscapeHtml(c) + '</th>';
+  h += '</tr></thead><tbody>';
+  for (const r of rows) {
+    h += '<tr>';
+    for (const c of cols) h += '<td style="border:1px solid #ccc;padding:3px 8px;">' + nbEscapeHtml(r[c] == null ? '' : String(r[c])) + '</td>';
+    h += '</tr>';
+  }
+  return h + '</tbody></table>';
+}
+
+// A static (JS-free) snapshot of a cell's output for export: Perspective grids
+// become an HTML table of the current view, charts become their rendered SVG,
+// everything else keeps its live innerHTML.
+async function nbSnapshotOutputHtml(entry) {
+  const el = entry && entry.outputEl;
+  if (!el) return '';
+  if (entry.viewer) {
+    try {
+      const cfg = await entry.viewer.save();
+      if (cfg.plugin && cfg.plugin !== 'Datagrid') {
+        const svg = entry.viewer.shadowRoot && entry.viewer.shadowRoot.querySelector('svg');
+        if (svg) return '<div>' + new XMLSerializer().serializeToString(svg) + '</div>';
+      }
+      const view = await entry.viewer.getView();
+      return nbRowsToHtmlTable(await view.to_json());
+    } catch (e) { /* fall back to live innerHTML */ }
+  }
+  return el.innerHTML;
+}
+
 // Trigger a browser download of DATA (string or Blob) as FILENAME.
 function nbDownload(filename, data, type) {
   const blob = data instanceof Blob ? data : new Blob([data], { type: type || 'text/plain' });
@@ -1294,7 +1329,7 @@ class NotebookPanel {
 
   // Export to a self-contained HTML file (downloaded), capturing the
   // rendered outputs currently in the DOM.
-  _exportHtml() {
+  async _exportHtml() {
     const t = this._title || 'Notebook';
     const parts = ['<!doctype html><html><head><meta charset="utf-8"><title>' + t + '</title>',
       '<style>body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;line-height:1.5;}',
@@ -1308,7 +1343,7 @@ class NotebookPanel {
         parts.push('<div class="cell">' + nbRenderMarkdown(e.textarea.value) + '</div>');
       } else {
         parts.push('<div class="cell"><pre><code>' + nbEscapeHtml(e.textarea.value) + '</code></pre>');
-        if (e.outputEl && e.outputEl.firstChild) parts.push('<div class="out">' + e.outputEl.innerHTML + '</div>');
+        if (e.outputEl && e.outputEl.firstChild) parts.push('<div class="out">' + (await nbSnapshotOutputHtml(e)) + '</div>');
         parts.push('</div>');
       }
     }
@@ -1325,7 +1360,7 @@ class NotebookPanel {
   //   slide/subslide -> new slide, fragment -> incremental reveal within a
   //   slide, notes -> speaker notes, skip -> omit. An untagged notebook makes
   //   one slide per cell.
-  _exportSlides() {
+  async _exportSlides() {
     const t = this._title || 'Notebook';
     const cells = Array.from(this._cellsEl.querySelectorAll('[data-cell-id]')).map(w => {
       const e = notebookCells.get(w.dataset.cellId);
@@ -1334,12 +1369,12 @@ class NotebookPanel {
     const SLIDE_TAGS = ['slide', 'subslide', 'fragment', 'notes', 'skip'];
     const anyTagged = cells.some(c => c.tags.some(x => SLIDE_TAGS.includes(x)));
     // Slides are output-forward (a presentation, not a code listing): show the
-    // cell's output first; include the code only when a cell opts in with a
-    // "show-input" tag, or when it has no output (and isn't hide-input).
-    const cellHtml = (c) => {
+    // cell's output first (a static snapshot of grids/charts); include the code
+    // only when a cell opts in with "show-input", or has no output.
+    const cellHtml = async (c) => {
       if (c.kind === 'markdown') return nbRenderMarkdown(c.e.textarea.value);
       const out = (c.e.outputEl && c.e.outputEl.firstChild)
-        ? '<div class="nb-out">' + c.e.outputEl.innerHTML + '</div>' : '';
+        ? '<div class="nb-out">' + (await nbSnapshotOutputHtml(c.e)) + '</div>' : '';
       const showCode = c.tags.includes('show-input') ||
         (!out && !c.tags.includes('hide-input'));
       const code = showCode
@@ -1351,10 +1386,11 @@ class NotebookPanel {
     for (const c of cells) {
       const st = SLIDE_TAGS.find(x => c.tags.includes(x)) || (anyTagged ? null : 'slide');
       if (st === 'skip') continue;
-      if (st === 'notes') { if (!cur) start(''); cur.notes.push(cellHtml(c)); continue; }
-      if (st === 'slide' || st === 'subslide' || !cur) { start(cellHtml(c)); continue; }
-      if (st === 'fragment') { cur.body.push('<div class="fragment">' + cellHtml(c) + '</div>'); continue; }
-      cur.body.push(cellHtml(c));
+      const html = await cellHtml(c);
+      if (st === 'notes') { if (!cur) start(''); cur.notes.push(html); continue; }
+      if (st === 'slide' || st === 'subslide' || !cur) { start(html); continue; }
+      if (st === 'fragment') { cur.body.push('<div class="fragment">' + html + '</div>'); continue; }
+      cur.body.push(html);
     }
     const sections = slides.map(s =>
       '<section>' + s.body.join('\n') +
