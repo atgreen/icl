@@ -465,6 +465,20 @@
              (when cell-id
                (notebook-stop-cell-editor cell-id))))
 
+          ;; Notebook: restart the backend image (optionally then Run all)
+          ((string= type "notebook-restart")
+           (let ((run-all (gethash "runAll" json)))
+             (bt:make-thread
+              (lambda ()
+                (ignore-errors (restart-backend))
+                (dolist (c (hunchensocket:clients *repl-resource*))
+                  (let ((obj (make-hash-table :test 'equal)))
+                    (setf (gethash "type" obj) "notebook-restarted"
+                          (gethash "runAll" obj) (and run-all t))
+                    (ignore-errors
+                      (hunchensocket:send-text-message c (com.inuoe.jzon:stringify obj))))))
+              :name "notebook-restart-handler")))
+
           ;; Notebook: interrupt the running cell evaluation
           ((string= type "notebook-interrupt")
            (bt:make-thread (lambda () (ignore-errors (interrupt-backend-eval)))

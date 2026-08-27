@@ -584,6 +584,16 @@
       (configure-backend-input-redirection))
     (setf *icl-runtime-injected* t)))
 
+(defun restart-backend ()
+  "Restart the inferior Lisp backend with a fresh image.
+   Refuses for external Slynk connections (not ours to restart)."
+  (when *external-slynk-connection*
+    (error "Cannot restart an external Slynk backend"))
+  (ignore-errors (stop-inferior-lisp))
+  (setf *icl-runtime-injected* nil)   ; re-inject runtime into the fresh image
+  (ensure-backend)
+  t)
+
 (defun backend-eval (string)
   "Evaluate STRING using the Slynk backend.
    Output streams to terminal. Returns result values.

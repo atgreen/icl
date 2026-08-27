@@ -363,6 +363,9 @@ ws.onmessage = (e) => {
     case 'notebook-error':
       handleNotebookError(msg);
       break;
+    case 'notebook-restarted':
+      handleNotebookRestarted(msg);
+      break;
     case 'refresh-visualizations':
       refreshAllVisualizations();
       break;

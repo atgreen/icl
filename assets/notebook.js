@@ -149,6 +149,13 @@ function handleNotebookError(msg) {
   }
 }
 
+function handleNotebookRestarted(msg) {
+  // Fresh image: clear the execution-count badges.
+  for (const [, e] of notebookCells) { if (e.execEl) e.execEl.textContent = ''; }
+  if (typeof terminal !== 'undefined' && terminal) terminal.write('\r\n; Backend image restarted\r\n');
+  if (msg.runAll && nbPanel) nbPanel._runAll();
+}
+
 // ── Minimal markdown → HTML (headings, emphasis, code, lists, links) ──
 
 function nbEscapeHtml(s) {
@@ -397,6 +404,8 @@ class NotebookPanel {
     bar.appendChild(this._button('+ Markdown', () => this._addCell('markdown')));
     bar.appendChild(this._button('Run all', () => this._runAll()));
     bar.appendChild(this._button('⏹ Interrupt', () => ws.send(JSON.stringify({ type: 'notebook-interrupt' }))));
+    bar.appendChild(this._button('⟳ Restart', () => ws.send(JSON.stringify({ type: 'notebook-restart' }))));
+    bar.appendChild(this._button('⟳▶ Run all', () => ws.send(JSON.stringify({ type: 'notebook-restart', runAll: true }))));
     bar.appendChild(this._button('Save', () => this._save()));
     this._element.appendChild(bar);
 
