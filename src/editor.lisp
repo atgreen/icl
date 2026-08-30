@@ -353,6 +353,13 @@
                                                          r1 c1 r2 c2)
                                   (apply-reverse-range hl-line from to))))))))
 
+(defun report-editor-height (buf)
+  "Fire *EDITOR-RENDER-HOOK* (if any) so the client can resize to fit BUF.
+   Call after rendering the completion menu: the hook accounts for the menu's
+   extra lines, and RENDER-CURRENT-LINE's single-line fast path never fires it."
+  (when *editor-render-hook*
+    (funcall *editor-render-hook* buf)))
+
 (defun render-buffer (buf)
   "Render the buffer to the terminal, using *screen-row* to know current position."
   (let ((line-count (buffer-line-count buf))
@@ -1397,11 +1404,13 @@
                        ;; Menu navigation - redraw line and menu
                        ((eql result :menu-nav)
                         (render-current-line buf)
-                        (render-completion-menu prompt-len (edit-buffer-col buf)))
+                        (render-completion-menu prompt-len (edit-buffer-col buf))
+                        (report-editor-height buf))
                        ;; Menu opened - render line and show menu
                        ((eql result :menu-opened)
                         (render-current-line buf)
-                        (render-completion-menu prompt-len (edit-buffer-col buf)))
+                        (render-completion-menu prompt-len (edit-buffer-col buf))
+                        (report-editor-height buf))
                        ;; Menu closed - clear menu area and redraw
                        ((eql result :menu-closed)
                         (clear-completion-menu 12)
@@ -1437,7 +1446,8 @@
                         (render-buffer buf)
                         ;; Re-render menu if still active
                         (when (completion-menu-active-p)
-                          (render-completion-menu prompt-len (edit-buffer-col buf))))
+                          (render-completion-menu prompt-len (edit-buffer-col buf))
+                          (report-editor-height buf)))
                        ((eql result :newline)
                         ;; Close menu on newline
                         (when (completion-menu-active-p)
@@ -1449,7 +1459,8 @@
                         (render-current-line buf)
                         ;; Re-render menu if still active
                         (when (completion-menu-active-p)
-                          (render-completion-menu prompt-len (edit-buffer-col buf))))
+                          (render-completion-menu prompt-len (edit-buffer-col buf))
+                          (report-editor-height buf)))
                        (t nil)))))))
         (exit-raw-mode)))))
 

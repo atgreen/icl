@@ -38,6 +38,19 @@
   "Return T if completion menu is currently active."
   (completion-menu-active *completion-menu*))
 
+(defun completion-menu-visible-line-count ()
+  "Number of terminal lines RENDER-COMPLETION-MENU draws below the cursor line
+   when the menu is active: the visible candidate rows plus the optional
+   [n/total] count line. Returns 0 when no menu is active. Used to size
+   notebook cells so the dropdown isn't clipped."
+  (let ((menu *completion-menu*))
+    (if (completion-menu-active menu)
+        (let* ((max-visible (completion-menu-max-visible menu))
+               (total (length (completion-menu-candidates menu)))
+               (visible-count (min max-visible total)))
+          (+ visible-count (if (> total max-visible) 1 0)))
+        0)))
+
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Completion Menu Navigation
 ;;; ─────────────────────────────────────────────────────────────────────────────

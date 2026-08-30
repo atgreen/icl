@@ -150,3 +150,29 @@
 (test find-common-prefix-full-match
   "Test when all strings are identical"
   (is (string= (icl::find-common-prefix '("test" "test" "test")) "test")))
+
+;;; completion-menu-visible-line-count tests
+;;; The notebook cell sizes itself to the reported editor height plus these
+;;; menu lines so the completion dropdown is not clipped (icl-7vs).
+
+(test completion-menu-visible-line-count-inactive
+  "No menu open -> zero extra lines"
+  (icl::reset-completion-menu)
+  (is (= 0 (icl::completion-menu-visible-line-count))))
+
+(test completion-menu-visible-line-count-fits
+  "Fewer candidates than max-visible -> one line per candidate, no count line"
+  (icl::reset-completion-menu)
+  (icl::open-completion-menu '("foo" "bar" "baz") "" 0)
+  (is (= 3 (icl::completion-menu-visible-line-count)))
+  (icl::reset-completion-menu))
+
+(test completion-menu-visible-line-count-overflow
+  "More candidates than max-visible -> max-visible rows plus the [n/total] line"
+  (icl::reset-completion-menu)
+  (let* ((max (icl::completion-menu-max-visible icl::*completion-menu*))
+         (candidates (loop for i from 0 below (+ max 5)
+                           collect (format nil "cand~D" i))))
+    (icl::open-completion-menu candidates "" 0)
+    (is (= (1+ max) (icl::completion-menu-visible-line-count))))
+  (icl::reset-completion-menu))

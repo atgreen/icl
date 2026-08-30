@@ -2138,14 +2138,22 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
                          ;; Report the editor's height so the client sizes the xterm.
                          (*editor-render-hook*
                           (lambda (b)
-                            (let ((rows (nth-value 0 (buffer-visual-info b (safe-term-width))))
-                                  (obj (make-hash-table :test 'equal)))
-                              (setf (gethash "type" obj) "cell-rows"
-                                    (gethash "cellId" obj) cell-id
-                                    (gethash "rows" obj) rows)
-                              (ignore-errors
-                                (hunchensocket:send-text-message
-                                 client (com.inuoe.jzon:stringify obj))))))
+                            (multiple-value-bind (rows cursor-visual-row)
+                                (buffer-visual-info b (safe-term-width))
+                              ;; When the completion dropdown is open it draws
+                              ;; extra lines below the cursor; grow the cell so
+                              ;; the menu isn't clipped.
+                              (let* ((menu-lines (completion-menu-visible-line-count))
+                                     (rows (if (plusp menu-lines)
+                                               (max rows (+ cursor-visual-row 1 menu-lines))
+                                               rows))
+                                     (obj (make-hash-table :test 'equal)))
+                                (setf (gethash "type" obj) "cell-rows"
+                                      (gethash "cellId" obj) cell-id
+                                      (gethash "rows" obj) rows)
+                                (ignore-errors
+                                  (hunchensocket:send-text-message
+                                   client (com.inuoe.jzon:stringify obj)))))))
                          ;; Isolate editor render state from the main REPL editor.
                          (*terminal-raw-p* nil)
                          (*want-mouse-tracking* nil)
