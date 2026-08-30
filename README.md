@@ -25,6 +25,12 @@ ICL is an enhanced REPL for Common Lisp. It provides a modern interactive experi
 
 ## Notebooks
 
+<p align="center">
+  <img src="assets/notebook-demo.gif" alt="ICL Notebook Demo">
+</p>
+
+*Jupyter-style notebooks with the full ICL editor per cell, rich outputs, interactive pivot tables, and reactive widgets*
+
 ICL includes a Jupyter-style notebook that runs in the browser interface. Open one with the `,notebook` command or the `--notebook` flag:
 
 ```sh

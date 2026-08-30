@@ -432,6 +432,10 @@ a:hover {
   align-items: center;
 }
 
+.showcase-item + .showcase-item {
+  margin-top: 6rem;
+}
+
 .showcase-content h3 {
   font-size: 1.75rem;
   font-weight: 700;
