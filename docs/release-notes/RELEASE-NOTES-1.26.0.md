@@ -68,6 +68,22 @@ joinable in one query.
   (`PGPASSWORD`) or `~/.pgpass`, never the notebook. Requires the `duckdb` CLI on
   PATH; the `sqlite`/`postgres` extensions auto-install on first use.
 
+### Notebook cell highlighting
+
+- Code cells now stay **syntax-highlighted when not being edited** — the resting
+  display is a colorized `<pre>` (click it to open the ICL editor as before), so
+  a cell looks the same whether or not it's focused.
+- Highlighting uses the **ICL editor's own theme colors** (Lisp *and* SQL) and
+  font, so the resting and editing views match. `,sql` cells are highlighted as
+  SQL. No Monaco dependency — a self-contained tokenizer.
+
+## Build
+
+- The Makefile and the `embedded-assets` ASDF component now treat
+  `assets/*.js`/`*.css` as build inputs, so editing a browser asset (e.g.
+  `notebook.js`) re-embeds it on the next `make` — previously a JS-only edit was
+  silently missed.
+
 ## Public API
 
 - `icl:register-notebook-template`, `icl:notebook-template-for`,
