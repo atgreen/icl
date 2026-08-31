@@ -323,9 +323,9 @@ Lisp-Stat dependency, so it works in any notebook.")
                  (string-trim " " (subseq rest (1+ p2))))))))))
 
 (defun sql-source-magic-p (source)
-  "When notebook cell SOURCE is a ,source declaration, return (NAME TYPE CONNINFO)."
+  "When notebook cell SOURCE is a ,attach declaration, return (NAME TYPE CONNINFO)."
   (let ((s (string-left-trim '(#\Space #\Tab #\Newline #\Return) (or source ""))))
-    (when (and (>= (length s) 8) (string-equal (subseq s 0 8) ",source "))
+    (when (and (>= (length s) 8) (string-equal (subseq s 0 8) ",attach "))
       (%parse-source-decl (subseq s 8)))))
 
 (defun notebook-sql-sources (nb)
@@ -390,18 +390,18 @@ Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
       (error (e)
         (format *error-output* "~&,sql: ~A~%" e)))))
 
-(define-command source (&rest tokens)
-  "Attach a SQL source for ,sql to query (SQLite, Postgres, or a DuckDB file).
+(define-command attach (&rest tokens)
+  "Attach a database for ,sql to query (SQLite, Postgres, or a DuckDB file).
 Examples:
-  ,source cache sqlite /var/tmp/cache.db
-  ,source pg postgres host=localhost dbname=app user=me
+  ,attach cache sqlite /var/tmp/cache.db
+  ,attach pg postgres host=localhost dbname=app user=me
 Then:  ,sql SELECT * FROM pg.public.users u JOIN cache.orders o USING (user_id)
 Conninfo may use ${ENV_VARS}; passwords come from the environment (PGPASSWORD) or
-~/.pgpass, not the command. In a NOTEBOOK use a ,source CELL instead — it's saved
-with the notebook and scoped to it. With no args, lists registered sources."
+~/.pgpass, not the command. In a NOTEBOOK use an ,attach CELL instead — it's saved
+with the notebook and scoped to it. With no args, lists attached databases."
   (if (null tokens)
       (if (zerop (hash-table-count *sql-sources*))
-          (format t "~&No SQL sources registered.  e.g.  ,source cache sqlite /tmp/x.db~%")
+          (format t "~&No databases attached.  e.g.  ,attach cache sqlite /tmp/x.db~%")
           (dolist (src (%global-sources))
             (destructuring-bind (name type conninfo) src
               (format t "~&  ~A  ~(~A~)  ~A~%" name type conninfo))))
@@ -409,6 +409,6 @@ with the notebook and scoped to it. With no args, lists registered sources."
         (if decl
             (destructuring-bind (name type conninfo) decl
               (register-sql-source name type conninfo)
-              (format t "~&; source ~A (~(~A~)) registered~%" name type))
+              (format t "~&; attached ~A (~(~A~))~%" name type))
             (format *error-output*
-                    "~&Usage: ,source NAME TYPE CONNINFO  (TYPE: sqlite | postgres | duckdb)~%")))))
+                    "~&Usage: ,attach NAME TYPE CONNINFO  (TYPE: sqlite | postgres | duckdb)~%")))))

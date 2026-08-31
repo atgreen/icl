@@ -51,11 +51,11 @@ joinable in one query.
     (icl:register-sql-source "cache" :sqlite "/var/tmp/cache.db")
     (icl:register-sql-source "pg" :postgres "host=localhost dbname=app user=me")
     ```
-    or the `,source` command: `,source cache sqlite /var/tmp/cache.db`.
-  - **Notebook-local**, as `,source` cells saved with the notebook and scoped to
+    or the `,attach` command: `,attach cache sqlite /var/tmp/cache.db`.
+  - **Notebook-local**, as `,attach` cells saved with the notebook and scoped to
     it:
     ```
-    ,source pg postgres host=localhost dbname=app user=me
+    ,attach pg postgres host=localhost dbname=app user=me
     ,sql SELECT u.name, o.total FROM pg.public.users u
          JOIN cache.orders o USING (user_id)
     ```

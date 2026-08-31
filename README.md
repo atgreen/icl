@@ -363,6 +363,34 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 | `,compile-file <file>` | Compile a file |
 | `,disassemble <fn>` | Disassemble a function |
 
+### Data / SQL
+
+| Command | Description |
+|---------|-------------|
+| `,sql <query>` | Query data with **DuckDB** — CSV/Parquet/JSON files, session data frames, and attached databases. Prints a table in the terminal (`-o NAME` binds the result to `*NAME*`); in a notebook cell it returns rows that render as an interactive grid. |
+| `,attach NAME TYPE CONNINFO` | Attach a **SQLite / Postgres / DuckDB** database so `,sql` can query it as `NAME.table` (joinable with files and data frames). No args lists attachments. |
+
+`,sql` needs the [`duckdb`](https://duckdb.org/) CLI on `PATH`; the `sqlite`/`postgres`
+extensions auto-install on first use. Attach databases in three scopes:
+
+```lisp
+;; Global, in ~/.iclrc:
+(icl:register-sql-source "cache" :sqlite "/var/tmp/cache.db")
+(icl:register-sql-source "pg" :postgres "host=localhost dbname=app user=me")
+```
+```
+;; Terminal, for this session:
+,attach cache sqlite /var/tmp/cache.db
+
+;; Notebook-local: an ,attach CELL, saved with the .iclnb and scoped to it:
+,attach pg postgres host=localhost dbname=app user=me
+,sql SELECT u.name, o.total
+     FROM pg.public.users u JOIN cache.orders o USING (user_id)
+```
+
+Conninfo may use `${ENV_VARS}`; passwords come from the environment (`PGPASSWORD`)
+or `~/.pgpass`, never the notebook file.
+
 ### Debugging
 
 | Command | Description |

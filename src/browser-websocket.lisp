@@ -1260,7 +1260,7 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
   "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
   ;; Cell magic. A `,sql <query>' code cell is rewritten to a backend form that
   ;; runs DuckDB and returns rows (rendered as a grid), with this notebook's
-  ;; `,source' declarations (plus any global ones) attached. A `,source' cell is
+  ;; `,attach' declarations (plus any global ones) attached. An `,attach' cell is
   ;; a notebook-local database declaration, gathered by the ,sql cells above/below
   ;; it; running it just shows a note.
   (unless (and kind (string-equal kind "markdown"))
@@ -1275,7 +1275,7 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
          (let ((decl (sql-source-magic-p source)))
            (when decl
              (setf source
-                   (format nil "\"source ~A (~(~A~)) - notebook-local; used by ,sql cells\""
+                   (format nil "\"attached ~A (~(~A~)) - notebook-local; used by ,sql cells\""
                            (first decl) (second decl)))))))))
   (let ((cell (%make-notebook-cell
                :kind (if (and kind (string-equal kind "markdown")) :markdown :code)
