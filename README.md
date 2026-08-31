@@ -367,7 +367,7 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 
 | Command | Description |
 |---------|-------------|
-| `,sql <query>` | Query data with **DuckDB** — CSV/Parquet/JSON files, session data frames, and attached databases. Prints a table in the terminal (`-o NAME` binds the result to `*NAME*`); in a notebook cell it returns rows that render as an interactive grid. |
+| `,sql <query>` | Query data with **DuckDB** — CSV/Parquet/JSON files, session data frames, and attached databases. Runs in the backend: prints a table and leaves the result (a list of plists) in `*`, usable by your next form (`-o NAME` also binds `*NAME*`). In a notebook cell it returns rows that render as an interactive grid. |
 | `,attach NAME TYPE CONNINFO` | Attach a **SQLite / Postgres / DuckDB** database so `,sql` can query it as `NAME.table` (joinable with files and data frames). No args lists attachments. |
 
 `,sql` needs the [`duckdb`](https://duckdb.org/) CLI on `PATH`; the `sqlite`/`postgres`

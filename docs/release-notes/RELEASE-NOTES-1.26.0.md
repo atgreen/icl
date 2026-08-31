@@ -39,9 +39,10 @@ joinable in one query.
 ### `,sql` — query data with DuckDB
 
 - `,sql <query>` runs SQL via DuckDB. It reads CSV/Parquet/JSON files directly
-  (`FROM 'data.csv'`) and can reference session data frames by name. In the
-  terminal it prints a table (`-o NAME` also binds the result to `*NAME*`); in a
-  notebook cell it returns rows that render as an interactive grid. Cells are
+  (`FROM 'data.csv'`) and can reference session data frames by name. It evaluates
+  in the backend, so the terminal prints a table and leaves the result (a list of
+  plists) in `*` for your next form (`-o NAME` also binds `*NAME*`); in a notebook
+  cell it returns rows that render as an interactive grid. Cells are
   syntax-highlighted as SQL.
 - **Attach other databases.** DuckDB federates, so one query can reach SQLite,
   Postgres, and DuckDB files alongside your files and data frames — joinable

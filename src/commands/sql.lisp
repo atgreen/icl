@@ -169,6 +169,20 @@
           (format stream "~&~[no rows~:;~:*~D row~:p~]~@[ (showing first ~D)~]~%"
                   (length rows) (when (> (length rows) max-rows) max-rows))))))
 
+(defun %format-plist-table (rows &key (stream *standard-output*) (max-rows 50))
+  "Print a list of plists (as returned by the backend ,sql form) as a table."
+  (if (null rows)
+      (format stream "~&no rows~%")
+      (let ((cols (loop for (k) on (first rows) by #'cddr collect k)))
+        (%format-table
+         (mapcar (lambda (k) (string-downcase (symbol-name k))) cols)
+         (mapcar (lambda (row)
+                   (mapcar (lambda (k) (let ((v (getf row k)))
+                                         (if (null v) "" (princ-to-string v))))
+                           cols))
+                 rows)
+         :stream stream :max-rows max-rows))))
+
 ;;; ─── Session data-frame bridge (best-effort) ─────────────────────────────────
 
 (defun %sql-identifiers (sql)
@@ -359,8 +373,11 @@ Examples:
   ,sql SELECT * FROM 'data.csv' LIMIT 5
   ,sql -o hot SELECT comm, count(*) AS n FROM df GROUP BY comm ORDER BY n DESC
 Reference a CSV/Parquet/JSON file in quotes, or a session data-frame by name.
-With -o NAME, the result is also bound to *NAME* in your session.
+The result is left in `*' (usable by your next form); -o NAME also binds *NAME*.
 Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
+  (unless *slynk-connected-p*
+    (format *error-output* "~&,sql needs a running backend.~%")
+    (return-from cmd-sql))
   (unless (duckdb-available-p)
     (format *error-output*
             "~&,sql needs the `duckdb' CLI on your PATH. Install it from ~
@@ -371,22 +388,19 @@ Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
       (format *error-output* "~&Usage: ,sql [-o NAME] <query>~%")
       (return-from cmd-sql))
     (handler-case
-        (let ((views (%dump-session-dataframes (%sql-identifiers sql))))
-          (multiple-value-bind (columns rows) (run-sql sql :views views
-                                                           :sources (%global-sources))
-            (%format-table columns rows)
-            (when (and out-name *slynk-connected-p*)
-              ;; Re-read the result into a backend data frame for reuse/rendering.
-              (let ((csv (format nil "/tmp/icl-sql-result.csv")))
-                (ignore-errors
-                 (with-open-file (s csv :direction :output :if-exists :supersede
-                                        :if-does-not-exist :create)
-                   (format s "~{~A~^,~}~%" columns)
-                   (dolist (r rows) (format s "~{~A~^,~}~%" r)))
-                 (backend-eval-internal
-                  (format nil "(defparameter *~A* (lisp-stat:read-csv #P~S))"
-                          out-name csv))
-                 (format t "~&; bound to *~A*~%" out-name))))))
+        ;; Run the query IN THE BACKEND (same self-contained form the notebook
+        ;; uses): session data-frames are read in-process, and the result — a
+        ;; list of plists — lands in the backend's `*' (backend-eval updates
+        ;; history). We read the printed value back only to render the table.
+        (let* ((form (sql-cell-form sql (%sources-prologue (%global-sources))))
+               (vals (backend-eval form))
+               (rows (ignore-errors
+                      (let ((*read-eval* nil)) (read-from-string (or (first vals) ""))))))
+          (%format-plist-table (and (listp rows) rows))
+          (when out-name
+            (ignore-errors
+             (backend-eval-internal (format nil "(defparameter *~A* *)" out-name))
+             (format t "~&; bound to *~A*~%" out-name))))
       (error (e)
         (format *error-output* "~&,sql: ~A~%" e)))))
 
