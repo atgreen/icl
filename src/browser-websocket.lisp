@@ -1268,10 +1268,15 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
       (cond
         (sqlp
          (handler-case
-             (let ((prologue (%sources-prologue
-                              (append (%global-sources)
-                                      (notebook-sql-sources *current-notebook*)))))
-               (setf source (sql-cell-form (%interpolate-sql query) prologue)))
+             (if (duckdb-available-p)
+                 (let ((prologue (%sources-prologue
+                                  (append (%global-sources)
+                                          (notebook-sql-sources *current-notebook*)))))
+                   (setf source (sql-cell-form (%interpolate-sql query) prologue)))
+                 ;; Same guidance as the terminal ,sql command, shown as the
+                 ;; cell's error rather than a raw exec failure.
+                 (setf source
+                       "(error \",sql needs the `duckdb' CLI on your PATH. Install it from https://duckdb.org/ and retry.\")"))
            ;; a bad ${...} form shows as the cell's error rather than crashing.
            (error (e) (setf source (format nil "(error ~S)" (princ-to-string e))))))
         (t
