@@ -2,8 +2,10 @@
 
 ## Summary
 
-Feature release: `--notebook` now scaffolds a notebook straight from a data
-file, and the scaffolding is user-extensible per file extension.
+Feature release: `--notebook` scaffolds a notebook straight from a data file
+(extensible per extension), and a new `,sql` command queries data with DuckDB —
+files, session data frames, and attached SQLite/Postgres/DuckDB databases,
+joinable in one query.
 
 ## New Features
 
@@ -34,8 +36,37 @@ file, and the scaffolding is user-extensible per file extension.
   longer forwarded to the inferior Lisp — so `icl -b data.csv` just works
   instead of failing to start.
 
+### `,sql` — query data with DuckDB
+
+- `,sql <query>` runs SQL via DuckDB. It reads CSV/Parquet/JSON files directly
+  (`FROM 'data.csv'`) and can reference session data frames by name. In the
+  terminal it prints a table (`-o NAME` also binds the result to `*NAME*`); in a
+  notebook cell it returns rows that render as an interactive grid. Cells are
+  syntax-highlighted as SQL.
+- **Attach other databases.** DuckDB federates, so one query can reach SQLite,
+  Postgres, and DuckDB files alongside your files and data frames — joinable
+  together. Register sources two ways:
+  - **Global** (all sessions), in `~/.iclrc`:
+    ```lisp
+    (icl:register-sql-source "cache" :sqlite "/var/tmp/cache.db")
+    (icl:register-sql-source "pg" :postgres "host=localhost dbname=app user=me")
+    ```
+    or the `,source` command: `,source cache sqlite /var/tmp/cache.db`.
+  - **Notebook-local**, as `,source` cells saved with the notebook and scoped to
+    it:
+    ```
+    ,source pg postgres host=localhost dbname=app user=me
+    ,sql SELECT u.name, o.total FROM pg.public.users u
+         JOIN cache.orders o USING (user_id)
+    ```
+  Conninfo may use `${ENV_VARS}`; passwords come from the environment
+  (`PGPASSWORD`) or `~/.pgpass`, never the notebook. Requires the `duckdb` CLI on
+  PATH; the `sqlite`/`postgres` extensions auto-install on first use.
+
 ## Public API
 
 - `icl:register-notebook-template`, `icl:notebook-template-for`,
   `icl:make-notebook-from-template`, and `icl:*notebook-templates*` are
   exported for use from `~/.iclrc`.
+- `icl:register-sql-source` and `icl:*sql-sources*` register global `,sql`
+  sources from `~/.iclrc`.

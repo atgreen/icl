@@ -57,13 +57,81 @@
         (values (%parse-csv-line (first lines))
                 (mapcar #'%parse-csv-line (rest lines))))))
 
+;;; ─── SQL sources: attach SQLite / Postgres / DuckDB databases ────────────────
+;;;
+;;; DuckDB federates: it can ATTACH other databases and query them as local
+;;; tables, so one `,sql' reaches SQLite, Postgres, DuckDB files, CSV/Parquet, and
+;;; your session data frames — joinable in a single query. Sources come from two
+;;; scopes: global (registered in ~/.iclrc via REGISTER-SQL-SOURCE) and
+;;; notebook-local (`,source' cells, gathered per notebook). A source is a list
+;;; (NAME TYPE CONNINFO); TYPE is :postgres | :sqlite | :duckdb.
+
+(defvar *sql-sources* (make-hash-table :test 'equal)
+  "Global named SQL sources: NAME -> (TYPE . CONNINFO). Populated from ~/.iclrc.")
+
+(defun %source-type (type)
+  "Normalize a source TYPE designator to :postgres | :sqlite | :duckdb."
+  (let ((s (string-downcase (string type))))
+    (cond ((member s '("postgres" "postgresql" "pg") :test #'string=) :postgres)
+          ((member s '("sqlite" "sqlite3") :test #'string=) :sqlite)
+          ((member s '("duckdb" "ddb") :test #'string=) :duckdb)
+          (t (error "unknown SQL source type ~S (use postgres, sqlite, or duckdb)" type)))))
+
+(defun register-sql-source (name type conninfo)
+  "Register a global SQL source NAME (string) of TYPE (:postgres/:sqlite/:duckdb)
+   with CONNINFO (a connection string or file path). Intended for ~/.iclrc.
+   `,sql' then reaches it as tables under NAME (e.g. NAME.schema.table)."
+  (setf (gethash (string name) *sql-sources*) (cons (%source-type type) conninfo))
+  name)
+
+(defun %global-sources ()
+  "The globally-registered sources as (NAME TYPE CONNINFO) triples."
+  (loop for name being the hash-keys of *sql-sources* using (hash-value tc)
+        collect (list name (car tc) (cdr tc))))
+
+(defun %expand-env (str)
+  "Expand ${VAR} references in STR from the environment (empty if unset) — so a
+   source's conninfo carries the shape of a connection, not embedded secrets."
+  (with-output-to-string (o)
+    (loop with i = 0 with n = (length str)
+          while (< i n)
+          do (let ((c (char str i)))
+               (cond ((and (char= c #\$) (< (1+ i) n) (char= (char str (1+ i)) #\{)
+                           (position #\} str :start (+ i 2)))
+                      (let ((close (position #\} str :start (+ i 2))))
+                        (write-string (or (uiop:getenv (subseq str (+ i 2) close)) "") o)
+                        (setf i (1+ close))))
+                     (t (write-char c o) (incf i)))))))
+
+(defun %sql-quote (str)
+  "STR with single quotes doubled, for embedding in a SQL string literal."
+  (with-output-to-string (o)
+    (loop for c across str do (when (char= c #\') (write-char #\' o)) (write-char c o))))
+
+(defun %source-attach-sql (name type conninfo)
+  "The INSTALL/LOAD/ATTACH statements that make source NAME available in DuckDB."
+  (let ((ci (%sql-quote (%expand-env conninfo))))
+    (ecase type
+      (:postgres (format nil "INSTALL postgres; LOAD postgres; ATTACH '~A' AS ~A (TYPE POSTGRES);~%" ci name))
+      (:sqlite   (format nil "INSTALL sqlite; LOAD sqlite; ATTACH '~A' AS ~A (TYPE SQLITE);~%" ci name))
+      (:duckdb   (format nil "ATTACH '~A' AS ~A;~%" ci name)))))
+
+(defun %sources-prologue (sources)
+  "DuckDB prologue (a string) attaching each SOURCE, a (NAME TYPE CONNINFO) triple."
+  (with-output-to-string (s)
+    (dolist (src sources)
+      (destructuring-bind (name type conninfo) src
+        (write-string (%source-attach-sql name type conninfo) s)))))
+
 ;;; ─── The engine ──────────────────────────────────────────────────────────────
 
-(defun run-sql (sql &key views (program *duckdb-program*))
+(defun run-sql (sql &key views sources (program *duckdb-program*))
   "Run SQL through the DuckDB CLI and return (values columns rows). VIEWS is an
-   alist of (view-name . csv-pathname) registered with CREATE VIEW before the
-   query. Signals an error carrying DuckDB's stderr on failure."
+   alist of (view-name . csv-pathname) registered with CREATE VIEW; SOURCES is a
+   list of (NAME TYPE CONNINFO) attached before the query. Signals an error
+   carrying DuckDB's stderr on failure."
   (let ((script (with-output-to-string (s)
+                  (write-string (%sources-prologue sources) s)
                   (loop for (name . path) in views do
                     (format s "CREATE OR REPLACE VIEW ~A AS ~
                                SELECT * FROM read_csv_auto('~A');~%"
@@ -195,6 +263,7 @@
            (names '@@NAMES@@)
            (script
             (with-output-to-string (s)
+              (write-string @@PROLOGUE@@ s)
               (dolist (nm names)
                 (let ((sym (ignore-errors (find-symbol (string-upcase nm)))))
                   (when (and sym (boundp sym) (find-package :data-frame)
@@ -239,10 +308,41 @@ Lisp-Stat dependency, so it works in any notebook.")
                t)
       (values t (string-trim '(#\Space #\Tab #\Newline #\Return) (subseq s 5))))))
 
-(defun sql-cell-form (query)
-  "Backend Lisp source (string) that runs QUERY and returns a data frame."
-  (%replace-all (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
-                "@@NAMES@@" (prin1-to-string (%sql-identifiers query))))
+(defun %parse-source-decl (text)
+  "Parse a `NAME TYPE CONNINFO' declaration into (NAME TYPE CONNINFO), or NIL.
+   CONNINFO is the rest of the line and may contain spaces."
+  (let* ((s (string-trim '(#\Space #\Tab) text))
+         (p1 (position #\Space s)))
+    (when (and p1 (plusp p1))
+      (let* ((name (subseq s 0 p1))
+             (rest (string-left-trim " " (subseq s p1)))
+             (p2 (position #\Space rest)))
+        (when p2
+          (ignore-errors
+           (list name (%source-type (subseq rest 0 p2))
+                 (string-trim " " (subseq rest (1+ p2))))))))))
+
+(defun sql-source-magic-p (source)
+  "When notebook cell SOURCE is a ,source declaration, return (NAME TYPE CONNINFO)."
+  (let ((s (string-left-trim '(#\Space #\Tab #\Newline #\Return) (or source ""))))
+    (when (and (>= (length s) 8) (string-equal (subseq s 0 8) ",source "))
+      (%parse-source-decl (subseq s 8)))))
+
+(defun notebook-sql-sources (nb)
+  "The (NAME TYPE CONNINFO) sources declared by NB's `,source' cells."
+  (when nb
+    (loop for cell across (notebook-cells nb)
+          for decl = (sql-source-magic-p (notebook-cell-source cell))
+          when decl collect decl)))
+
+(defun sql-cell-form (query &optional (prologue ""))
+  "Backend Lisp source (string) that runs QUERY (after any source-attach PROLOGUE)
+   and returns rows as plists."
+  (%replace-all
+   (%replace-all
+    (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
+    "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
+   "@@PROLOGUE@@" (%lisp-string (or prologue ""))))
 
 ;;; ─── The command ─────────────────────────────────────────────────────────────
 
@@ -272,7 +372,8 @@ Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
       (return-from cmd-sql))
     (handler-case
         (let ((views (%dump-session-dataframes (%sql-identifiers sql))))
-          (multiple-value-bind (columns rows) (run-sql sql :views views)
+          (multiple-value-bind (columns rows) (run-sql sql :views views
+                                                           :sources (%global-sources))
             (%format-table columns rows)
             (when (and out-name *slynk-connected-p*)
               ;; Re-read the result into a backend data frame for reuse/rendering.
@@ -288,3 +389,26 @@ Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
                  (format t "~&; bound to *~A*~%" out-name))))))
       (error (e)
         (format *error-output* "~&,sql: ~A~%" e)))))
+
+(define-command source (&rest tokens)
+  "Attach a SQL source for ,sql to query (SQLite, Postgres, or a DuckDB file).
+Examples:
+  ,source cache sqlite /var/tmp/cache.db
+  ,source pg postgres host=localhost dbname=app user=me
+Then:  ,sql SELECT * FROM pg.public.users u JOIN cache.orders o USING (user_id)
+Conninfo may use ${ENV_VARS}; passwords come from the environment (PGPASSWORD) or
+~/.pgpass, not the command. In a NOTEBOOK use a ,source CELL instead — it's saved
+with the notebook and scoped to it. With no args, lists registered sources."
+  (if (null tokens)
+      (if (zerop (hash-table-count *sql-sources*))
+          (format t "~&No SQL sources registered.  e.g.  ,source cache sqlite /tmp/x.db~%")
+          (dolist (src (%global-sources))
+            (destructuring-bind (name type conninfo) src
+              (format t "~&  ~A  ~(~A~)  ~A~%" name type conninfo))))
+      (let ((decl (%parse-source-decl (format nil "~{~A~^ ~}" tokens))))
+        (if decl
+            (destructuring-bind (name type conninfo) decl
+              (register-sql-source name type conninfo)
+              (format t "~&; source ~A (~(~A~)) registered~%" name type))
+            (format *error-output*
+                    "~&Usage: ,source NAME TYPE CONNINFO  (TYPE: sqlite | postgres | duckdb)~%")))))

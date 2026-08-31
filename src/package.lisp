@@ -19,6 +19,10 @@
    #:notebook-template-for
    #:make-notebook-from-template
 
+   ;; ,sql sources — attach SQLite/Postgres/DuckDB (global sources via ~/.iclrc)
+   #:*sql-sources*
+   #:register-sql-source
+
    ;; Configuration
    #:*icl-package*
    #:*icl-package-name*
