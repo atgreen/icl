@@ -216,17 +216,25 @@
   "A clean, absolute namestring for PATH to embed in generated cell source."
   (namestring (or (ignore-errors (truename path)) (merge-pathnames path))))
 
-;;; Built-in template: CSV (and TSV) -> Lisp-Stat data frame.
+;;; Built-in template: CSV (and TSV) -> a table, via the ICL-SQL read adaptor.
+;;; The reader is adaptor-driven: `auto' reads into a Lisp-Stat data-frame if
+;;; Lisp-Stat is loaded, a vellum table if vellum is loaded, else plain plists —
+;;; so the same template serves whichever table library you prefer.
 (flet ((csv-cells (path)
          (let ((ns (%template-data-namestring path)))
            (list
-            ;; 1. Bring in Lisp-Stat (ocicl fetches it on first use).
+            ;; 1. Choose a table library (fetched on first use). Lisp-Stat gives
+            ;;    a data-frame; swap in vellum, or delete this cell for plists.
             (list :kind :code
-                  :source (format nil ";; Load Lisp-Stat (fetched on first use).~%~
+                  :source (format nil ";; Load a table library (data-frame by default).~%~
+                                       ;; Swap for (asdf:load-system \"vellum\"), or delete for plists.~%~
                                        (asdf:load-system \"lisp-stat\")"))
-            ;; 2. Read the file into *df* and return it so the cell renders it.
+            ;; 2. Read the file into *df* via the adaptor and return it to render.
             (list :kind :code
-                  :source (format nil "(progn~%  (defvar *df* (lisp-stat:read-csv #P~S))~%  *df*)"
+                  :source (format nil "(progn~%~
+                                       ~2t(defparameter *df*~%~
+                                       ~4t(icl-sql:read-source (icl-sql:find-adaptor \"auto\") #P~S))~%~
+                                       ~2t*df*)"
                                   ns))))))
   (register-notebook-template "csv" #'csv-cells)
   (register-notebook-template "tsv" #'csv-cells))

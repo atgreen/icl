@@ -1486,6 +1486,14 @@ Checks for a custom icl-runtime:visualize method first, then built-in detection.
     (ignore-errors (inject-cl-arrow))
     (setf *cl-arrow-injected* t)))
 
+(defun ensure-sql-adaptors-injected ()
+  "Inject the ICL-SQL adaptor protocol (and any user adaptors) into the inferior
+on first use (once per backend session)."
+  (unless *sql-adaptors-injected*
+    (ignore-errors (inject-sql-adaptors))
+    (ignore-errors (inject-user-sql-adaptors))
+    (setf *sql-adaptors-injected* t)))
+
 (defun notebook-arrow-output (expr-string)
   "If EXPR-STRING's value is tabular and cl-arrow is available in the inferior,
 return an :arrow cell-output carrying a base64 Arrow IPC stream, else NIL.

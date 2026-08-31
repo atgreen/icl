@@ -15,9 +15,11 @@ joinable in one query.
   data.csv` — scaffolds a fresh notebook wired to load it, chosen by the
   file's extension, and saves it as a sibling `.iclnb` (the data file itself
   is never touched).
-- `csv` and `tsv` ship built-in: the generated notebook loads
-  [Lisp-Stat](https://lisp-stat.dev/) and reads the file into `*df*`, which
-  renders as an interactive, pivotable grid.
+- `csv` and `tsv` ship built-in: the generated notebook reads the file into
+  `*df*` through the `,sql` read adaptor (`icl-sql:read-source`), so it becomes a
+  Lisp-Stat `data-frame`, a vellum table, or plists depending on which library
+  the first cell loads (Lisp-Stat by default) — rendered as an interactive,
+  pivotable grid either way.
 - **Extensible.** Register your own template for any extension in `~/.iclrc`
   with `icl:register-notebook-template`. A template is just a function of the
   data file's pathname returning a list of cell specs, each a plist
@@ -48,8 +50,18 @@ joinable in one query.
   or a [vellum](https://github.com/sirherrbatka/vellum) table if either is loaded
   (ready to pipe straight into those libraries), else a list of plists; `df`,
   `vellum`, and `plist` force a specific form. All render as the same grid.
-  Neither library is a dependency — availability is detected at runtime. Adaptors
-  are extensible: register your own with `icl:register-sql-adaptor` in `~/.iclrc`.
+  Neither library is a dependency — availability is detected at runtime.
+- **Adaptors are an extension point.** The adaptors are a small CLOS protocol
+  (`icl-sql:build-result` / `result->rows` / `read-source`) that ICL injects into
+  the backend on first use. Register your own from `~/.iclrc` with
+  `icl:register-sql-adaptor` — the shortest form is a one-liner via
+  `icl-sql:define-simple-adaptor`:
+
+  ```lisp
+  (icl:register-sql-adaptor "names"
+    "(icl-sql:define-simple-adaptor \"names\" (rows)
+       (mapcar (lambda (r) (getf r :name)) rows))")
+  ```
 - **Parameterize with Lisp values.** `${LISP-FORM}` in a query is evaluated in
   the backend and spliced as a SQL literal (numbers inline, strings quoted, lists
   as `(a, b)` for `IN`) — always a literal, so a string value can't inject SQL:

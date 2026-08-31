@@ -590,8 +590,9 @@
   (when *external-slynk-connection*
     (error "Cannot restart an external Slynk backend"))
   (ignore-errors (stop-inferior-lisp))
-  (setf *icl-runtime-injected* nil    ; re-inject runtime into the fresh image
-        *cl-arrow-injected* nil)      ; and re-inject cl-arrow lazily on next use
+  (setf *icl-runtime-injected* nil       ; re-inject runtime into the fresh image
+        *cl-arrow-injected* nil          ; and re-inject cl-arrow lazily on next use
+        *sql-adaptors-injected* nil)     ; and re-inject the ICL-SQL protocol lazily
   (ensure-backend)
   t)
 

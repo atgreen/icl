@@ -46,8 +46,10 @@ icl --notebook data.csv           # scaffold a notebook that loads the data file
 **Data-file templates.** Pointing `--notebook` (or `-b`) at a *data* file scaffolds
 a fresh notebook wired to load it, chosen by the file's extension, and saves it as a
 sibling `.iclnb` (your data file is never touched). `csv` and `tsv` ship built-in
-(they load [Lisp-Stat](https://lisp-stat.dev/) and `read-csv` the file into `*df*`).
-Register your own for any extension in `~/.iclrc`:
+(they read the file into `*df*` through the `,sql` read adaptor, so it becomes a
+[Lisp-Stat](https://lisp-stat.dev/) `data-frame`, a vellum table, or plists
+depending on which library the first cell loads). Register your own for any
+extension in `~/.iclrc`:
 
 ```lisp
 (icl:register-notebook-template "json"
@@ -399,6 +401,19 @@ as `(a, b)` for `IN` (always a literal, so a string value can't inject SQL):
 (defparameter *min-age* 40)
 ,sql SELECT * FROM 'people.csv' WHERE age > ${*min-age*}
 ,sql SELECT * FROM 'people.csv' WHERE city IN ${(list "London" "NYC")}
+```
+
+**Custom adaptors.** The result types (`df`, `vellum`, `plist`, `auto`) are a
+small CLOS protocol — `icl-sql:build-result` / `result->rows` / `read-source` —
+that ICL injects into the backend. Register your own with
+`icl:register-sql-adaptor`, giving the backend source that defines it (simplest
+via `icl-sql:define-simple-adaptor`), then select it with `--adaptor NAME`:
+
+```lisp
+(icl:register-sql-adaptor "names"
+  "(icl-sql:define-simple-adaptor \"names\" (rows)
+     (mapcar (lambda (r) (getf r :name)) rows))")
+;; then:  ,sql --adaptor names SELECT * FROM 'people.csv'
 ```
 
 ### Debugging

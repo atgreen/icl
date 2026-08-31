@@ -1264,6 +1264,10 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
   ;; a notebook-local database declaration, gathered by the ,sql cells above/below
   ;; it; running it just shows a note.
   (unless (and kind (string-equal kind "markdown"))
+    ;; Make the ICL-SQL protocol available to any code cell (,sql magic, or a
+    ;; data-file template's icl-sql:read-source call). Guarded, so it injects at
+    ;; most once per backend session.
+    (ensure-sql-adaptors-injected)
     (multiple-value-bind (sqlp query) (sql-cell-magic-p source)
       (cond
         (sqlp

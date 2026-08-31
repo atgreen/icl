@@ -15,6 +15,9 @@
   "Source text of the cl-arrow bundle, injected into the inferior Lisp.")
 (defparameter *icl-arrow-adapter-source* nil
   "Source text of the ICL cl-arrow adapter, injected after the bundle.")
+(defparameter *icl-sql-adaptor-source* nil
+  "Source text of the ICL-SQL result-adaptor protocol, injected into the inferior
+Lisp on demand (for the ,sql command and data-file notebooks).")
 
 ;; Slurp the vendored sources at build time; guarded so a delivered binary
 ;; (no vendor/ tree) keeps the value baked in at compile/load, exactly like
@@ -28,6 +31,8 @@
                         (n (read-sequence s in)))
                    (subseq s 0 n)))))))
     (let ((bundle  (slurp "vendor/cl-arrow-bundle.lisp"))
-          (adapter (slurp "vendor/icl-arrow-adapter.lisp")))
+          (adapter (slurp "vendor/icl-arrow-adapter.lisp"))
+          (sql     (slurp "vendor/icl-sql-adaptors.lisp")))
       (when bundle  (setf *cl-arrow-bundle-source* bundle))
-      (when adapter (setf *icl-arrow-adapter-source* adapter)))))
+      (when adapter (setf *icl-arrow-adapter-source* adapter))
+      (when sql     (setf *icl-sql-adaptor-source* sql)))))

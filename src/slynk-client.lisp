@@ -42,6 +42,10 @@
 the inferior Lisp.  Set even on failure so we don't retry every table; reset by
 RESTART-BACKEND for a fresh image.")
 
+(defvar *sql-adaptors-injected* nil
+  "T once the ICL-SQL result-adaptor protocol has been (attempted) injected into
+the inferior Lisp.  Reset by RESTART-BACKEND for a fresh image.")
+
 (defun slynk-verify-connection (connection &optional (timeout-seconds 15))
   "Verify that CONNECTION is responsive by doing a simple eval with timeout.
    Returns T if the connection is responsive, NIL otherwise.
@@ -248,6 +252,26 @@ unavailable and ICL falls back to its JSON table rendering."
           t)
       (error (e)
         (format *error-output* "~&; Note: cl-arrow injection unavailable: ~A~%" e)
+        nil))))
+
+(defun inject-sql-adaptors ()
+  "Load the ICL-SQL result-adaptor protocol into the inferior Lisp (best effort).
+Idempotent: the module is skipped if the ICL-SQL package already exists.  On any
+failure the ,sql command reports it rather than silently misbehaving."
+  (when (and *slynk-connected-p* *icl-sql-adaptor-source*)
+    (handler-case
+        (progn
+          (slynk-client:slime-eval
+           `(cl:unless (cl:find-package :icl-sql)
+              (cl:with-input-from-string (cl-user::icl-sql-stream
+                                          ,*icl-sql-adaptor-source*)
+                (cl:handler-bind ((cl:warning #'cl:muffle-warning))
+                  (cl:load cl-user::icl-sql-stream))
+                t))
+           *slynk-connection*)
+          t)
+      (error (e)
+        (format *error-output* "~&; Note: ICL-SQL injection unavailable: ~A~%" e)
         nil))))
 
 (defun package-excluded-p (package-name)

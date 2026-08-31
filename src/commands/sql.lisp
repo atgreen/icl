@@ -269,94 +269,10 @@
 ;;;
 ;;; A notebook cell evaluates its source as Lisp in the backend, so the terminal
 ;;; ,sql command (which prints text) does nothing there. Instead we rewrite a
-;;; `,sql <query>' cell into a backend form that runs DuckDB and returns the
-;;; result as a Lisp-Stat data frame — which the notebook already renders as an
-;;; interactive Perspective grid. The form registers any bound data frame named
-;;; in the query as a view, then reads the result back with lisp-stat:read-csv.
-
-(defun %lisp-string (s)
-  "S as a readable Lisp string literal (escaping \\ and \")."
-  (with-output-to-string (o)
-    (write-char #\" o)
-    (loop for c across s do
-      (when (or (char= c #\") (char= c #\\)) (write-char #\\ o))
-      (write-char c o))
-    (write-char #\" o)))
-
-(defun %replace-all (string part replacement)
-  "Every occurrence of PART in STRING replaced by REPLACEMENT."
-  (with-output-to-string (o)
-    (loop with plen = (length part) with i = 0
-          for pos = (search part string :start2 i)
-          do (cond (pos (write-string string o :start i :end pos)
-                        (write-string replacement o)
-                        (setf i (+ pos plen)))
-                   (t (write-string string o :start i) (loop-finish))))))
-
-(defparameter +sql-cell-template+
-  "(labels ((split-line (line)
-             (let ((fields '()) (buf (make-string-output-stream)) (inq nil)
-                   (i 0) (n (length line)))
-               (loop while (< i n) for c = (char line i) do
-                 (cond (inq (cond ((char= c #\\\")
-                                   (if (and (< (1+ i) n) (char= (char line (1+ i)) #\\\"))
-                                       (progn (write-char #\\\" buf) (incf i))
-                                       (setf inq nil)))
-                                  (t (write-char c buf))))
-                       ((char= c #\\\") (setf inq t))
-                       ((char= c #\\,) (push (get-output-stream-string buf) fields))
-                       (t (write-char c buf)))
-                 (incf i))
-               (push (get-output-stream-string buf) fields)
-               (nreverse fields)))
-           (coerce-val (s)
-             (if (zerop (length s)) nil
-                 (let ((*read-eval* nil))
-                   (multiple-value-bind (v pos) (ignore-errors (read-from-string s nil nil))
-                     (if (and (realp v) (eql pos (length s))) v s))))))
-    (let* ((query @@QUERY@@)
-           (names '@@NAMES@@)
-           (script
-            (with-output-to-string (s)
-              (write-string @@PROLOGUE@@ s)
-              (dolist (nm names)
-                (let ((sym (ignore-errors (find-symbol (string-upcase nm)))))
-                  (when (and sym (boundp sym) (find-package :data-frame)
-                             (ignore-errors
-                              (typep (symbol-value sym)
-                                     (find-symbol \"DATA-FRAME\" :data-frame))))
-                    (let ((p (format nil \"/tmp/icl-sql-~A.csv\" nm))
-                          (w (and (find-package :lisp-stat)
-                                  (find-symbol \"WRITE-CSV\" :lisp-stat))))
-                      (when (and w (fboundp w)
-                                 (ignore-errors (funcall w (symbol-value sym) p) t))
-                        (format s \"CREATE OR REPLACE VIEW ~A AS SELECT * FROM read_csv_auto('~A');~%\"
-                                nm p))))))
-              (write-string query s)
-              (unless (and (plusp (length query))
-                           (char= (char query (1- (length query))) #\\;))
-                (write-char #\\; s)))))
-      (multiple-value-bind (out err code)
-          (uiop:run-program (list \"duckdb\" \"-csv\" \"-c\" script)
-                            :output :string :error-output :string :ignore-error-status t)
-        (unless (eql code 0)
-          (error \"duckdb: ~A\" (string-trim '(#\\Newline #\\Space) (or err \"\"))))
-        (let* ((lines (remove-if (lambda (l) (zerop (length l)))
-                                 (uiop:split-string
-                                  (string-right-trim '(#\\Newline #\\Return) out)
-                                  :separator (string #\\Newline))))
-               (cols (and lines (mapcar (lambda (c) (intern (string-upcase c) :keyword))
-                                        (split-line (first lines))))))
-          (let ((rows (mapcar (lambda (line)
-                                (loop for k in cols for v in (split-line line)
-                                      append (list k (coerce-val v))))
-                              (rest lines))))
-            @@BUILD@@)))))"
-  "Backend form template for a ,sql cell. @@QUERY@@/@@NAMES@@/@@PROLOGUE@@ are
-filled in, and @@BUILD@@ is replaced by the selected adaptor's builder — an
-expression over ROWS (the result as a list of plists) that yields the value ,sql
-returns. The default `plist' builder is just ROWS, so it works in any notebook
-with no external dependency.")
+;;; `,sql <query>' cell into a backend form — (icl-sql:run ...) — that runs DuckDB
+;;; via the injected ICL-SQL protocol and returns the result through the selected
+;;; adaptor (a data-frame, vellum table, or plists), which the notebook renders as
+;;; an interactive Perspective grid.
 
 (defun sql-cell-magic-p (source)
   "T when notebook cell SOURCE is a ,sql magic; returns (values t query) then."
@@ -393,116 +309,89 @@ with no external dependency.")
           for decl = (sql-source-magic-p (notebook-cell-source cell))
           when decl collect decl)))
 
-;;; ─── Result adaptors (extensible) ────────────────────────────────────────────
+;;; ─── Result adaptors (backend CLOS protocol, extensible) ─────────────────────
 ;;;
-;;; A ,sql result adaptor turns the query result — a list of plists bound to the
-;;; variable ROWS in the backend — into the value ,sql yields. Built-ins: `plist'
-;;; (identity), `df' (Lisp-Stat data-frame), `vellum' (vellum table), and `auto'
-;;; (the default: df if Lisp-Stat is loaded, else vellum if vellum is loaded, else
-;;; plists). Add your own from ~/.iclrc with `register-sql-adaptor'.
+;;; The adaptor protocol lives in the inferior Lisp as the ICL-SQL package
+;;; (vendor/icl-sql-adaptors.lisp), injected on first use. An adaptor turns a
+;;; query result (a list of plists) into a table object, back into rows (for the
+;;; terminal table), and can read a data file directly (for data-file notebooks).
+;;; Built-ins: `plist', `df' (Lisp-Stat data-frame), `vellum' (vellum table), and
+;;; `auto' (the default: df if Lisp-Stat is loaded, else vellum if vellum is
+;;; loaded, else plists). Register your own with `register-sql-adaptor'.
 
-(defparameter +sql-df-builder+
-  "(let ((f (and rows (find-package \"DATA-FRAME\")
-                 (find-symbol \"MAKE-DF\" \"DATA-FRAME\"))))
-     (when (and f (fboundp f))
-       (let ((keys (loop for (k v) on (first rows) by #'cddr collect k)))
-         (funcall f keys (mapcar (lambda (k) (map 'vector (lambda (r) (getf r k)) rows)) keys)))))"
-  "Backend expression over ROWS yielding a Lisp-Stat DATA-FRAME, or NIL if the
-data-frame system is not loaded.")
-
-(defparameter +sql-vellum-builder+
-  "(let ((f (and rows (find-package \"VELLUM\")
-                 (find-symbol \"TO-TABLE\" \"VELLUM\"))))
-     (when (and f (fboundp f))
-       (let ((keys (loop for (k v) on (first rows) by #'cddr collect k)))
-         (funcall f (mapcar (lambda (r) (mapcar (lambda (k) (getf r k)) keys)) rows)
-                  :columns keys))))"
-  "Backend expression over ROWS yielding a vellum table, or NIL if vellum is not
-loaded.")
+(defparameter +builtin-sql-adaptors+ '("auto" "df" "vellum" "plist")
+  "Adaptor names defined by the injected ICL-SQL base module.")
 
 (defvar *sql-adaptors* (make-hash-table :test 'equal)
-  "Registry of ,sql result adaptors, keyed by lowercase name.")
+  "User-registered ,sql adaptors: lowercase name -> backend source (a string)
+that defines and registers the adaptor in the inferior Lisp. Built-ins are not
+listed here; they come from the injected ICL-SQL module.")
 
-(defun register-sql-adaptor (name &key build to-rows)
-  "Register a ,sql result adaptor, selectable with `--adaptor NAME'.
-BUILD is backend Lisp source (a string): an expression over the variable ROWS
- (the result as a list of plists) that returns the value ,sql yields.
-TO-ROWS is optional backend source: an expression over the variable OBJ that
- turns the adaptor's value back into a list of plists for the terminal's text
- table. It defaults to the built-in normalizer, which understands data-frames,
- vellum tables, and plists — provide TO-ROWS if your adaptor returns some other
- object you want rendered as a table in the terminal."
+(defun %inject-sql-adaptor-source (source)
+  "Load one adaptor SOURCE string into the inferior Lisp (best effort)."
+  (when (and *slynk-connected-p* source)
+    (slynk-client:slime-eval
+     `(cl:with-input-from-string (cl-user::icl-sql-stream ,source)
+        (cl:handler-bind ((cl:warning #'cl:muffle-warning))
+          (cl:load cl-user::icl-sql-stream))
+        t)
+     *slynk-connection*)))
+
+(defun inject-user-sql-adaptors ()
+  "Inject every user-registered adaptor source into the inferior Lisp."
+  (maphash (lambda (name source)
+             (declare (ignore name))
+             (ignore-errors (%inject-sql-adaptor-source source)))
+           *sql-adaptors*))
+
+(defun register-sql-adaptor (name source)
+  "Register a ,sql result adaptor NAME, selectable with `--adaptor NAME' (`-a').
+SOURCE is backend Lisp source (a string) that defines and registers an
+ICL-SQL:ADAPTOR in the inferior Lisp — most simply with ICL-SQL:DEFINE-SIMPLE-ADAPTOR:
+
+  (icl:register-sql-adaptor \"firsts\"
+    \"(icl-sql:define-simple-adaptor \\\"firsts\\\" (rows)
+       (mapcar (lambda (r) (getf r :name)) rows))\")
+
+It is injected once the backend protocol is up (immediately if it already is)."
   (check-type name (or string symbol))
-  (setf (gethash (string-downcase (string name)) *sql-adaptors*)
-        (list :name (string-downcase (string name)) :build build :to-rows to-rows))
-  (string-downcase (string name)))
-
-(defun find-sql-adaptor (name)
-  "The registered adaptor plist for NAME (case-insensitive), or NIL."
-  (and name (gethash (string-downcase (string name)) *sql-adaptors*)))
+  (check-type source string)
+  (let ((key (string-downcase (string name))))
+    (setf (gethash key *sql-adaptors*) source)
+    (when (and *slynk-connected-p* *sql-adaptors-injected*)
+      (ignore-errors (%inject-sql-adaptor-source source)))
+    key))
 
 (defun list-sql-adaptors ()
-  "Sorted names of the registered ,sql adaptors."
-  (sort (loop for k being the hash-keys of *sql-adaptors* collect k) #'string<))
+  "Sorted names of all known ,sql adaptors (built-ins plus user-registered)."
+  (sort (union (copy-list +builtin-sql-adaptors+)
+               (loop for k being the hash-keys of *sql-adaptors* collect k)
+               :test #'string=)
+        #'string<))
 
-(register-sql-adaptor "plist"  :build "rows")
-(register-sql-adaptor "df"     :build (format nil "(or ~A rows)" +sql-df-builder+))
-(register-sql-adaptor "vellum" :build (format nil "(or ~A rows)" +sql-vellum-builder+))
-(register-sql-adaptor "auto"
-                      :build (format nil "(or ~A ~A rows)"
-                                     +sql-df-builder+ +sql-vellum-builder+))
+(defun %known-sql-adaptor-p (name)
+  "T if NAME is a built-in or user-registered ,sql adaptor."
+  (let ((n (string-downcase (string (or name "auto")))))
+    (or (member n +builtin-sql-adaptors+ :test #'string=)
+        (nth-value 1 (gethash n *sql-adaptors*)))))
 
 (defun sql-cell-form (query &optional (prologue "") (adaptor "auto"))
   "Backend Lisp source (string) that runs QUERY (after any source-attach PROLOGUE)
-   and returns the result via the named result ADAPTOR (default \"auto\"; see
-   `register-sql-adaptor'). Signals an error if ADAPTOR is not registered."
-  (let ((ad (or (find-sql-adaptor (or adaptor "auto"))
-                (error "unknown ,sql adaptor ~S (known: ~{~A~^, ~})"
-                       adaptor (list-sql-adaptors)))))
-    (%replace-all
-     (%replace-all
-      (%replace-all
-       (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
-       "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
-      "@@PROLOGUE@@" (%lisp-string (or prologue "")))
-     "@@BUILD@@" (getf ad :build))))
-
-(defparameter +sql-display-rows-form+
-  "(let* ((v *)
-         (dfc (and (find-package \"DATA-FRAME\")
-                   (find-symbol \"DATA-FRAME\" \"DATA-FRAME\")))
-         (vtc (and (find-package \"VELLUM.TABLE\")
-                   (find-symbol \"STANDARD-TABLE\" \"VELLUM.TABLE\"))))
-     (cond
-       ((and dfc (find-class dfc nil) (typep v (find-class dfc nil)))
-        (let* ((keys (coerce (funcall (find-symbol \"KEYS\" \"DATA-FRAME\") v) 'list))
-               (cols (coerce (funcall (find-symbol \"COLUMNS\" \"DATA-FRAME\") v) 'list))
-               (n (if cols (length (elt cols 0)) 0)))
-          (loop for i below n
-                collect (loop for k in keys for col in cols
-                              append (list k (elt col i))))))
-       ((and vtc (find-class vtc nil) (typep v (find-class vtc nil)))
-        (let* ((names (funcall (find-symbol \"COLUMN-NAMES\" \"VELLUM\") v))
-               (nc (length names))
-               (nr (funcall (find-symbol \"ROW-COUNT\" \"VELLUM\") v))
-               (at (find-symbol \"AT\" \"VELLUM\")))
-          (loop for i below nr
-                collect (loop for j below nc for nm in names
-                              append (list (intern (string-upcase (princ-to-string nm)) :keyword)
-                                           (funcall at v i j))))))
-       (t v)))"
-  "Backend form: read `*' and return its rows as a list of plists — converting a
-DATA-FRAME or vellum table back to plists so the terminal can render a text table.
-Evaluated with backend-eval-internal so it does not disturb `*'.")
+   through the injected ICL-SQL protocol and returns the result via the named
+   ADAPTOR (default \"auto\"). Signals an error if ADAPTOR is unknown."
+  (unless (%known-sql-adaptor-p adaptor)
+    (error "unknown ,sql adaptor ~S (known: ~{~A~^, ~})" adaptor (list-sql-adaptors)))
+  (format nil "(icl-sql:run ~A ~A (quote ~A) ~A)"
+          (prin1-to-string (or prologue ""))
+          (prin1-to-string query)
+          (prin1-to-string (%sql-identifiers query))
+          (prin1-to-string (string-downcase (string (or adaptor "auto"))))))
 
 (defun %sql-display-form (adaptor)
-  "Backend form (string) that turns `*' into display plists for ADAPTOR: the
-adaptor's TO-ROWS over `*' if it has one, else the built-in normalizer."
-  (let* ((ad (find-sql-adaptor (or adaptor "auto")))
-         (to-rows (and ad (getf ad :to-rows))))
-    (if to-rows
-        (format nil "(let ((obj *)) ~A)" to-rows)
-        +sql-display-rows-form+)))
+  "Backend form (string) that turns `*' into a list of plists for the terminal
+table, via ADAPTOR's ICL-SQL:RESULT->ROWS method."
+  (format nil "(icl-sql:result->rows (icl-sql:find-adaptor ~A) *)"
+          (prin1-to-string (string-downcase (string (or adaptor "auto"))))))
 
 (defun %strip-adaptor-flag (query)
   "Strip a leading `--adaptor NAME' (or `-a NAME') from QUERY; returns
@@ -562,25 +451,27 @@ you register with icl:register-sql-adaptor. Needs the `duckdb' CLI."
       (format *error-output* "~&Usage: ,sql [-o NAME] [--adaptor|-a NAME] <query>~%")
       (return-from cmd-sql))
     (handler-case
-        ;; Run the query IN THE BACKEND (same self-contained form the notebook
-        ;; uses): session data-frames are read in-process, and the result lands
-        ;; in the backend's `*' (backend-eval updates history) — whatever the
-        ;; chosen ADAPTOR yields (data-frame, vellum table, plists, ...). For the
-        ;; text table we normalize `*' back to plists via an internal eval, since
-        ;; those tables do not print readably.
-        (let* ((form (sql-cell-form (%interpolate-sql sql)
-                                    (%sources-prologue (%global-sources))
-                                    adaptor))
-               (vals (backend-eval form))
-               (disp (if (string-equal adaptor "plist") vals
-                         (ignore-errors (backend-eval-internal (%sql-display-form adaptor)))))
-               (rows (ignore-errors
-                      (let ((*read-eval* nil)) (read-from-string (or (first disp) ""))))))
-          (%format-plist-table (and (listp rows) rows))
-          (when out-name
-            (ignore-errors
-             (backend-eval-internal (format nil "(defparameter *~A* *)" out-name))
-             (format t "~&; bound to *~A*~%" out-name))))
+        ;; Run the query IN THE BACKEND via the injected ICL-SQL protocol: session
+        ;; data-frames are read in-process, and the result lands in the backend's
+        ;; `*' (backend-eval updates history) — whatever the chosen ADAPTOR yields
+        ;; (data-frame, vellum table, plists, ...). For the text table we ask the
+        ;; adaptor to turn `*' back into rows, since those tables do not print
+        ;; readably.
+        (progn
+          (ensure-sql-adaptors-injected)
+          (let* ((form (sql-cell-form (%interpolate-sql sql)
+                                      (%sources-prologue (%global-sources))
+                                      adaptor))
+                 (disp (progn (backend-eval form)
+                              (ignore-errors
+                               (backend-eval-internal (%sql-display-form adaptor)))))
+                 (rows (ignore-errors
+                        (let ((*read-eval* nil)) (read-from-string (or (first disp) ""))))))
+            (%format-plist-table (and (listp rows) rows))
+            (when out-name
+              (ignore-errors
+               (backend-eval-internal (format nil "(defparameter *~A* *)" out-name))
+               (format t "~&; bound to *~A*~%" out-name)))))
       (error (e)
         (format *error-output* "~&,sql: ~A~%" e)))))
 
