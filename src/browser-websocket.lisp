@@ -1258,6 +1258,11 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
 
 (defun notebook-handle-run-cell (client cell-id kind source)
   "Evaluate SOURCE as a cell and send a cell-result back to CLIENT."
+  ;; Cell magic: a `,sql <query>' code cell is rewritten to a backend form that
+  ;; runs DuckDB and returns a data frame (which renders as an interactive grid).
+  (unless (and kind (string-equal kind "markdown"))
+    (multiple-value-bind (magicp query) (sql-cell-magic-p source)
+      (when magicp (setf source (sql-cell-form query)))))
   (let ((cell (%make-notebook-cell
                :kind (if (and kind (string-equal kind "markdown")) :markdown :code)
                :source source))

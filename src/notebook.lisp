@@ -164,6 +164,74 @@
   nb)
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
+;;; Data-file templates
+;;; ─────────────────────────────────────────────────────────────────────────────
+;;;
+;;; `icl --notebook data.csv' scaffolds a *fresh* notebook that loads the data
+;;; file, chosen by the file's extension. A template is just a function of the
+;;; data file's pathname that returns a list of cell specs — each a plist
+;;;   (:kind :code|:markdown :source STRING)
+;;; Users register their own for any extension in ~/.iclrc, e.g.:
+;;;
+;;;   (icl:register-notebook-template "parquet"
+;;;     (lambda (path)
+;;;       (list (list :kind :code
+;;;                   :source (format nil "(load-parquet ~S)" (namestring path))))))
+
+(defvar *notebook-templates* (make-hash-table :test 'equalp)
+  "Maps a lowercase file-extension string (no dot) to a template function.
+   A template function takes the data file's pathname and returns a list of
+   cell specs, each a plist (:kind :code|:markdown :source STRING). Consulted
+   by `icl --notebook DATAFILE' to scaffold a new notebook that loads the file.")
+
+(defun register-notebook-template (extension fn)
+  "Register FN as the notebook template for EXTENSION (a string or keyword such
+   as \"csv\" or :csv). FN receives the data file's pathname and returns a list
+   of cell specs. Returns EXTENSION."
+  (setf (gethash (string-downcase (string extension)) *notebook-templates*) fn)
+  extension)
+
+(defun notebook-template-for (path)
+  "The template function registered for PATH's extension, or NIL."
+  (let ((ext (pathname-type (pathname path))))
+    (and ext (gethash (string-downcase ext) *notebook-templates*))))
+
+(defun make-notebook-from-template (data-path &key template)
+  "Build a fresh notebook scaffolded to load DATA-PATH, using its extension's
+   registered template (or TEMPLATE when supplied). The new notebook's path is a
+   sibling *.iclnb, so saving never clobbers the data file. Signals when no
+   template applies."
+  (let ((tpl (or template (notebook-template-for data-path)))
+        (p (pathname data-path)))
+    (unless tpl
+      (error "No notebook template for ~A (extension .~A). Register one with ~
+              ICL:REGISTER-NOTEBOOK-TEMPLATE." data-path (pathname-type p)))
+    (let ((nb (make-notebook :title (pathname-name p)
+                             :path (make-pathname :type "iclnb" :defaults p))))
+      (dolist (spec (funcall tpl p) nb)
+        (notebook-add-cell nb :kind (getf spec :kind :code)
+                              :source (getf spec :source ""))))))
+
+(defun %template-data-namestring (path)
+  "A clean, absolute namestring for PATH to embed in generated cell source."
+  (namestring (or (ignore-errors (truename path)) (merge-pathnames path))))
+
+;;; Built-in template: CSV (and TSV) -> Lisp-Stat data frame.
+(flet ((csv-cells (path)
+         (let ((ns (%template-data-namestring path)))
+           (list
+            ;; 1. Bring in Lisp-Stat (ocicl fetches it on first use).
+            (list :kind :code
+                  :source (format nil ";; Load Lisp-Stat (fetched on first use).~%~
+                                       (asdf:load-system \"lisp-stat\")"))
+            ;; 2. Read the file into *df* and return it so the cell renders it.
+            (list :kind :code
+                  :source (format nil "(progn~%  (defvar *df* (lisp-stat:read-csv #P~S))~%  *df*)"
+                                  ns))))))
+  (register-notebook-template "csv" #'csv-cells)
+  (register-notebook-template "tsv" #'csv-cells))
+
+;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Serialization — Format A (.iclnb s-expression)
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;;

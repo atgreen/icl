@@ -14,6 +14,24 @@
 ;;; HTTP Handlers
 ;;; ─────────────────────────────────────────────────────────────────────────────
 
+(defun %hl-color (accessor default)
+  "The active theme's ACCESSOR colour as a #RRGGBB string, or DEFAULT."
+  (let ((v (and *current-terminal-theme* (funcall accessor *current-terminal-theme*))))
+    (if (and (stringp v) (plusp (length v)) (char= (char v 0) #\#)) v default)))
+
+(defun %hl-colors-json ()
+  "JSON of the active theme's syntax-highlight colours, for the browser's resting
+   cell highlighter so it matches the ICL editor's colours."
+  (format nil "{\"keyword\":\"~A\",\"string\":\"~A\",\"comment\":\"~A\",~
+               \"number\":\"~A\",\"package\":\"~A\",\"special\":\"~A\",\"paren\":\"~A\"}"
+          (%hl-color #'terminal-theme-hl-keyword "#FF79C6")
+          (%hl-color #'terminal-theme-hl-string  "#50FA7B")
+          (%hl-color #'terminal-theme-hl-comment "#6272A4")
+          (%hl-color #'terminal-theme-hl-number  "#FFB86C")
+          (%hl-color #'terminal-theme-hl-package "#8BE9FD")
+          (%hl-color #'terminal-theme-hl-special "#BD93F9")
+          (%hl-color #'terminal-theme-hl-paren   "#A8A8A8")))
+
 (defun browser-html ()
   "Return the main HTML page for the browser.
    Loads external CSS and JavaScript from assets directory."
@@ -33,7 +51,7 @@
   <link rel='stylesheet' href='/assets/browser.css'>
   <link rel='stylesheet' href='/assets/katex/katex.min.css'>
 </head>
-<body data-ws-token='~A' data-version='~A' data-unsafe-visualizations='~A'>
+<body data-ws-token='~A' data-version='~A' data-unsafe-visualizations='~A' data-hl-colors='~A'>
   <div id='layout-container'></div>
 
   <!-- External library scripts -->
@@ -57,4 +75,5 @@
   <script src='/assets/browser.js'></script>
   <script src='/assets/notebook.js'></script>
 </body>
-</html>" *browser-token* +version+ (if *unsafe-visualizations* "true" "false")))
+</html>" *browser-token* +version+ (if *unsafe-visualizations* "true" "false")
+          (%hl-colors-json)))

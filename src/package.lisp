@@ -13,6 +13,12 @@
    #:run-repl
    #:start-repl
 
+   ;; Notebook data-file templates (extensible via ~/.iclrc)
+   #:*notebook-templates*
+   #:register-notebook-template
+   #:notebook-template-for
+   #:make-notebook-from-template
+
    ;; Configuration
    #:*icl-package*
    #:*icl-package-name*

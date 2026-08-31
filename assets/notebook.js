@@ -39,7 +39,14 @@ function handleCellEdited(msg) {
   if (e.term) { try { e.term.dispose(); } catch (x) {} e.term = null; }
   if (e.termDiv) { e.termDiv.remove(); e.termDiv = null; }
   e.textarea.value = msg.source || '';
-  e.textarea.style.display = '';
+  if (e.disp) {
+    // Code cell: keep the source-store hidden; show the re-highlighted display.
+    e.textarea.style.display = 'none';
+    e.disp.style.display = '';
+    if (nbPanel) nbPanel._colorizeCode(e);
+  } else {
+    e.textarea.style.display = '';
+  }
   if (nbPanel) nbPanel._markDirty();
   if (msg.submitted && nbPanel) {
     nbPanel._runCell(e.wrap);
@@ -848,7 +855,11 @@ class NotebookPanel {
     const e = notebookCells.get(wrap.dataset.cellId);
     if (!e) return;
     const hide = (e.tags || []).includes('hide-input');
-    if (e.textarea) e.textarea.style.display = hide ? 'none' : '';
+    // Resting display is the highlighted <pre> for code cells, the textarea for
+    // markdown; the code cell's textarea stays hidden (it's just the source store).
+    const restEl = e.disp || e.textarea;
+    if (restEl) restEl.style.display = hide ? 'none' : '';
+    if (e.disp && e.textarea) e.textarea.style.display = 'none';
     if (e.termDiv) e.termDiv.style.display = hide ? 'none' : '';
   }
 
@@ -892,6 +903,7 @@ class NotebookPanel {
     const entry = notebookCells.get(wrap.dataset.cellId);
     if (!entry || entry.term) return;
     entry.textarea.style.display = 'none';
+    if (entry.disp) entry.disp.style.display = 'none';
     const termDiv = document.createElement('div');
     termDiv.style.cssText = 'padding:4px 8px;background:var(--bg-primary);';
     wrap.insertBefore(termDiv, entry.outputEl);
@@ -921,6 +933,60 @@ class NotebookPanel {
     entry.term = term;
     entry.termDiv = termDiv;
     ws.send(JSON.stringify({ type: 'edit-cell', cellId: wrap.dataset.cellId, source: entry.textarea.value }));
+  }
+
+  // Syntax-highlight a code cell's resting display via the Monaco colorizer.
+  // ,sql cells use SQL highlighting; everything else uses Lisp (scheme mode).
+  _colorizeCode(entry) {
+    const disp = entry && entry.disp;
+    if (!disp) return;
+    const src = entry.textarea.value || '';
+    if (!src.trim()) { disp.textContent = ''; return; }
+    const lang = /^\s*,sql\b/i.test(src) ? 'sql' : 'lisp';
+    disp.innerHTML = this._highlight(src, lang);
+  }
+
+  // Self-contained tokenizer highlighter (no Monaco — it isn't a page global
+  // here). Uses the ICL editor's own theme colours (sent on <body> as
+  // data-hl-colors) so a resting cell matches the editor. Walks SRC with a
+  // per-language regex, wrapping tokens in coloured spans, escaping the rest.
+  _hlColors() {
+    if (this.__hlc) return this.__hlc;
+    let c = {};
+    try { c = JSON.parse(document.body.dataset.hlColors || '{}'); } catch (e) { c = {}; }
+    this.__hlc = Object.assign(
+      { keyword: '#FF79C6', string: '#50FA7B', comment: '#6272A4', number: '#FFB86C',
+        package: '#8BE9FD', special: '#BD93F9', paren: '#A8A8A8' }, c);
+    return this.__hlc;
+  }
+  _highlight(src, lang) {
+    const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const C = this._hlColors();
+    const walk = (text, re, styleFor) => {
+      let out = '', last = 0, m;
+      re.lastIndex = 0;
+      while ((m = re.exec(text)) !== null) {
+        out += esc(text.slice(last, m.index));
+        let gi = 1; while (gi < m.length && m[gi] === undefined) gi++;
+        const st = styleFor(gi);
+        out += st ? '<span style="' + st + '">' + esc(m[0]) + '</span>' : esc(m[0]);
+        last = m.index + m[0].length;
+        if (m[0].length === 0) re.lastIndex++;
+      }
+      return out + esc(text.slice(last));
+    };
+    const com = 'color:' + C.comment + ';font-style:italic';
+    if (lang === 'sql') {
+      let mark = '', body = src;
+      const mm = /^(\s*,sql\b)/i.exec(src);
+      if (mm) { mark = '<span style="color:' + C.special + '">' + esc(mm[1]) + '</span>'; body = src.slice(mm[1].length); }
+      const re = /(--[^\n]*)|('(?:''|[^'])*')|(\b\d+(?:\.\d+)?\b)|(\b(?:select|from|where|group|by|order|limit|offset|join|inner|left|right|outer|full|cross|on|using|as|and|or|not|in|is|null|distinct|count|sum|avg|min|max|create|replace|view|table|insert|into|update|delete|values|set|having|union|all|case|when|then|else|end|asc|desc|with|over|partition|between|like)\b)/gi;
+      return mark + walk(body, re, gi => ({ 1: com, 2: 'color:' + C.string, 3: 'color:' + C.number, 4: 'color:' + C.keyword }[gi]));
+    }
+    // Lisp: comment | string | keyword-symbol(:foo) | package-prefix(pkg:) |
+    //       number | defining/special forms | parens
+    const re = /(;[^\n]*)|("(?:\\.|[^"\\])*")|((?<![\w:.\-]):[A-Za-z0-9\-*+!?/<>=]+)|(\b[A-Za-z][A-Za-z0-9\-*+!?/<>=.]*:)|(\b-?\d+(?:\.\d+)?\b)|(\b(?:defun|defmacro|defvar|defparameter|defmethod|defgeneric|defclass|defstruct|defpackage|in-package|lambda|let\*?|flet|labels|progn|prog1|if|when|unless|cond|case|ecase|typecase|loop|dolist|dotimes|do|setf|setq|push|pop|incf|decf|return-from|block|multiple-value-bind|destructuring-bind|handler-case|handler-bind|unwind-protect|ignore-errors|with-open-file|quote|function)\b)|([()])/g;
+    return walk(src, re, gi => ({ 1: com, 2: 'color:' + C.string, 3: 'color:' + C.special, 4: 'color:' + C.package, 5: 'color:' + C.number, 6: 'color:' + C.keyword, 7: 'color:' + C.paren }[gi]));
   }
 
   _button(label, fn, title) {
@@ -1056,12 +1122,23 @@ class NotebookPanel {
       ta.addEventListener('blur', () => { if (ta.value.trim() !== '') this._renderMarkdown(wrap); });
       if (source.trim() !== '') this._renderMarkdown(wrap);
     } else {
-      // Code cell: the textarea is a resting display of the source; clicking it
-      // opens the real ICL editor (paredit, indent, highlighting, completion).
+      // Code cell: a syntax-highlighted <pre> is the resting display (so cells
+      // stay highlighted when not being edited); clicking it opens the real ICL
+      // editor. The hidden textarea remains the source-of-truth.
       ta.readOnly = true;
-      ta.style.cursor = 'text';
-      ta.title = 'Click to edit in the ICL editor';
-      ta.addEventListener('mousedown', (e) => { e.preventDefault(); this._startIclEdit(wrap); });
+      ta.style.display = 'none';
+      const disp = document.createElement('pre');
+      disp.className = 'nb-code-display';
+      disp.style.cssText =
+        "margin:0;padding:6px 8px;font-family:'JetBrains Mono', monospace;font-size:13px;" +
+        'line-height:1.2;white-space:pre-wrap;word-break:break-word;' +
+        'background:var(--bg-primary);color:var(--fg-primary);' +
+        'cursor:text;min-height:1.4em;overflow:auto;';
+      disp.title = 'Click to edit in the ICL editor';
+      disp.addEventListener('mousedown', (e) => { e.preventDefault(); this._startIclEdit(wrap); });
+      wrap.insertBefore(disp, out);
+      const entry = notebookCells.get(cellId);
+      if (entry) { entry.disp = disp; this._colorizeCode(entry); }
     }
 
     if (afterEl && afterEl.nextSibling) {

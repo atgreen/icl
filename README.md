@@ -36,10 +36,27 @@ ICL includes a Jupyter-style notebook that runs in the browser interface. Open o
 ```sh
 icl --notebook                    # new, empty notebook
 icl --notebook analysis.iclnb     # open an existing notebook
+icl --notebook data.csv           # scaffold a notebook that loads the data file
 ```
 ```
 ,notebook                 ; new notebook (browser starts if needed)
 ,notebook analysis.iclnb  ; open a saved notebook (Tab completes filenames)
+```
+
+**Data-file templates.** Pointing `--notebook` (or `-b`) at a *data* file scaffolds
+a fresh notebook wired to load it, chosen by the file's extension, and saves it as a
+sibling `.iclnb` (your data file is never touched). `csv` and `tsv` ship built-in
+(they load [Lisp-Stat](https://lisp-stat.dev/) and `read-csv` the file into `*df*`).
+Register your own for any extension in `~/.iclrc`:
+
+```lisp
+(icl:register-notebook-template "json"
+  ;; A template is a function of the data file's pathname returning a list of
+  ;; cell specs, each a plist (:kind :code|:markdown :source STRING).
+  (lambda (path)
+    (list (list :kind :code
+                :source (format nil "(defparameter *data* (load-json ~S))"
+                                (namestring path))))))
 ```
 
 Notebooks can also be run **headlessly** (papermill-style) — parameterize and
@@ -231,10 +248,12 @@ Start with browser interface (opens IDE alongside terminal REPL):
 icl -b
 ```
 
-Open a browser notebook (a new one, or an existing `.iclnb` file):
+Open a browser notebook (a new one, an existing `.iclnb` file, or a data file
+scaffolded from its extension template):
 ```sh
 icl --notebook
 icl --notebook analysis.iclnb
+icl --notebook data.csv
 ```
 
 ## Emacs Integration

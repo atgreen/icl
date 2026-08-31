@@ -13,6 +13,20 @@
     (asdf:load-system :pure-tls/cl+ssl-compat)
     (asdf:register-immutable-system "cl+ssl")))
 
+;;; The `embedded-assets' source file bakes assets/*.js and assets/*.css into the
+;;; image (read at compile/load time). asdf only tracks .lisp inputs by default,
+;;; so a pure-asset edit (e.g. assets/notebook.js) wouldn't invalidate the fasl.
+;;; Declare the asset files as extra compile inputs so editing one forces
+;;; embedded-assets.lisp to recompile — and thus re-embed — on the next build.
+(defclass asset-embedding-file (asdf:cl-source-file) ())
+(defmethod asdf:input-files ((op asdf:compile-op) (c asset-embedding-file))
+  (append (call-next-method)
+          (ignore-errors
+            (let ((dir (asdf:system-relative-pathname (asdf:component-system c)
+                                                      "assets/")))
+              (append (directory (merge-pathnames "*.js" dir))
+                      (directory (merge-pathnames "*.css" dir)))))))
+
 (asdf:defsystem "icl"
   :description "Interactive Common Lisp: An enhanced REPL"
   :author      "Anthony Green <green@moxielogic.com>"
@@ -80,9 +94,10 @@
                  (:module "commands"
                   :components
                   ((:file "registry")
-                   (:file "core")))
+                   (:file "core")
+                   (:file "sql")))
                  (:file "mcp-server")
-                 (:file "embedded-assets")
+                 (asset-embedding-file "embedded-assets")
                  (:file "browser")
                  (:file "browser-query")
                  (:file "browser-websocket")

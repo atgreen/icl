@@ -118,7 +118,7 @@
    :flag
    :long-name "notebook"
    :key :notebook
-   :description "Start a browser notebook (optionally: icl --notebook FILE.iclnb)"))
+   :description "Start a browser notebook (icl --notebook FILE.iclnb, or a data file like FILE.csv to scaffold one)"))
 
 (defun make-execute-option ()
   "Create --execute option: run a notebook headlessly and save it, then exit."
@@ -276,6 +276,18 @@ declared with DEFVAR pick up the override. Returns the output path."
     (save-notebook nb (or output path))
     (or output path)))
 
+(defun %notebook-openable-arg (cmd)
+  "The first free argument of CMD when it names a file ICL can open as a notebook
+   — an existing .iclnb, or a data file with a registered template — else NIL.
+   Lets `icl -b data.csv' scaffold a notebook, and keeps that path from being
+   forwarded to the inferior Lisp (where it would break startup)."
+  (let ((arg (first (clingon:command-arguments cmd))))
+    (when (and arg (probe-file arg))
+      (let ((ext (pathname-type (pathname arg))))
+        (when (or (and ext (string-equal ext "iclnb"))
+                  (notebook-template-for arg))
+          arg)))))
+
 (defun handle-cli (cmd)
   "Handle CLI command execution."
   (let ((eval-expr (clingon:getopt cmd :eval))
@@ -288,14 +300,24 @@ declared with DEFVAR pick up the override. Returns the output path."
         (verbose (clingon:getopt cmd :verbose))
         (mcp-server (clingon:getopt cmd :mcp-server))
         (browser-mode (clingon:getopt cmd :browser))
-        (notebook-mode (clingon:getopt cmd :notebook))
-        (notebook-file (and (clingon:getopt cmd :notebook)
-                            (first (clingon:command-arguments cmd))))
+        ;; Notebook mode is on with --notebook, OR when -b/--browser is given a
+        ;; positional that names a notebook-openable file (an .iclnb or a data
+        ;; file with a template), so `icl -b data.csv' just works.
+        (notebook-mode (or (clingon:getopt cmd :notebook)
+                           (and (clingon:getopt cmd :browser)
+                                (%notebook-openable-arg cmd))))
+        (notebook-file (cond ((clingon:getopt cmd :notebook)
+                              (first (clingon:command-arguments cmd)))
+                             ((and (clingon:getopt cmd :browser)
+                                   (%notebook-openable-arg cmd)))
+                             (t nil)))
         (unsafe-viz (clingon:getopt cmd :unsafe-visualizations))
         (no-open (clingon:getopt cmd :no-open))
-        ;; With --notebook, the first free argument is the notebook file, not
-        ;; an inferior-Lisp argument — don't pass it through to SBCL.
-        (inferior-args (if (clingon:getopt cmd :notebook)
+        ;; The notebook file is not an inferior-Lisp argument — don't forward it
+        ;; to SBCL, where a stray path breaks startup (Slynk never comes up).
+        (inferior-args (if (or (clingon:getopt cmd :notebook)
+                               (and (clingon:getopt cmd :browser)
+                                    (%notebook-openable-arg cmd)))
                            (rest (clingon:command-arguments cmd))
                            (clingon:command-arguments cmd))))
     ;; Disable image caching if requested
@@ -398,11 +420,31 @@ declared with DEFVAR pick up the override. Returns the output path."
       ;; (see the terminal-ready websocket handler).
       (when notebook-mode
         (setf *current-notebook*
-              (if (and notebook-file (probe-file notebook-file))
-                  (load-notebook notebook-file)
-                  (let ((nb (make-notebook :path notebook-file)))
-                    (notebook-add-cell nb :kind :code :source "")
-                    nb))))
+              (let ((ext (and notebook-file
+                              (pathname-type (pathname notebook-file)))))
+                (cond
+                  ;; An existing .iclnb notebook: open it.
+                  ((and notebook-file (probe-file notebook-file)
+                        ext (string-equal ext "iclnb"))
+                   (load-notebook notebook-file))
+                  ;; An existing data file with a registered template: scaffold a
+                  ;; fresh notebook that loads it (saved as a sibling *.iclnb).
+                  ((and notebook-file (probe-file notebook-file)
+                        (notebook-template-for notebook-file))
+                   (make-notebook-from-template notebook-file))
+                  ;; An existing file we don't recognise: point the user at the
+                  ;; template mechanism instead of failing obscurely.
+                  ((and notebook-file (probe-file notebook-file))
+                   (format *error-output*
+                           "~&icl: no notebook template for .~A files. Register one ~
+                            in ~~/.iclrc, e.g.~%  (icl:register-notebook-template ~
+                            ~S (lambda (path) ...))~%" ext ext)
+                   (uiop:quit 1))
+                  ;; Nothing (or a not-yet-existing path): a new empty notebook.
+                  (t
+                   (let ((nb (make-notebook :path notebook-file)))
+                     (notebook-add-cell nb :kind :code :source "")
+                     nb))))))
       (format t "Starting ICL browser interface...~%")
       (let ((url (start-browser :open-browser (not no-open))))
         (if no-open
