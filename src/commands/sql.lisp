@@ -347,10 +347,19 @@
                                   :separator (string #\\Newline))))
                (cols (and lines (mapcar (lambda (c) (intern (string-upcase c) :keyword))
                                         (split-line (first lines))))))
-          (mapcar (lambda (line)
-                    (loop for k in cols for v in (split-line line)
-                          append (list k (coerce-val v))))
-                  (rest lines))))))"
+          (let* ((rows (mapcar (lambda (line)
+                                 (loop for k in cols for v in (split-line line)
+                                       append (list k (coerce-val v))))
+                               (rest lines)))
+                 (mk (and @@AS-DF@@ rows (find-package \"DATA-FRAME\")
+                          (find-symbol \"MAKE-DF\" \"DATA-FRAME\"))))
+            (if (and mk (fboundp mk))
+                (let ((ks (loop for (k v) on (first rows) by #'cddr collect k)))
+                  (funcall mk ks
+                           (mapcar (lambda (k)
+                                     (map 'vector (lambda (r) (getf r k)) rows))
+                                   ks)))
+                rows))))))"
   "Backend form template for a ,sql notebook cell; @@QUERY@@/@@NAMES@@ filled in.
 Returns a list of plists (rows) — which the notebook renders as a grid — with no
 Lisp-Stat dependency, so it works in any notebook.")
@@ -390,23 +399,59 @@ Lisp-Stat dependency, so it works in any notebook.")
           for decl = (sql-source-magic-p (notebook-cell-source cell))
           when decl collect decl)))
 
-(defun sql-cell-form (query &optional (prologue ""))
+(defun sql-cell-form (query &optional (prologue "") (as-df t))
   "Backend Lisp source (string) that runs QUERY (after any source-attach PROLOGUE)
-   and returns rows as plists."
+   and returns the result rows. When AS-DF is true and the backend has the
+   `data-frame' system loaded (Lisp-Stat), the rows are returned as a DATA-FRAME
+   (usable with Lisp-Stat, and rendered as a grid); otherwise, and always when
+   AS-DF is nil, they are returned as a list of plists."
   (%replace-all
    (%replace-all
-    (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
-    "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
-   "@@PROLOGUE@@" (%lisp-string (or prologue ""))))
+    (%replace-all
+     (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
+     "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
+    "@@PROLOGUE@@" (%lisp-string (or prologue "")))
+   "@@AS-DF@@" (if as-df "t" "nil")))
+
+(defparameter +sql-display-rows-form+
+  "(let ((v *))
+     (let ((c (and (find-package \"DATA-FRAME\")
+                   (find-symbol \"DATA-FRAME\" \"DATA-FRAME\"))))
+       (if (and c (find-class c nil) (typep v (find-class c nil)))
+           (let* ((keys (coerce (funcall (find-symbol \"KEYS\" \"DATA-FRAME\") v) 'list))
+                  (cols (coerce (funcall (find-symbol \"COLUMNS\" \"DATA-FRAME\") v) 'list))
+                  (n (if cols (length (elt cols 0)) 0)))
+             (loop for i below n
+                   collect (loop for k in keys for col in cols
+                                 append (list k (elt col i)))))
+           v)))"
+  "Backend form: read `*' and return its rows as a list of plists — converting a
+DATA-FRAME back to plists so the terminal can render a text table. Evaluated with
+backend-eval-internal so it does not disturb `*'.")
+
+(defun %strip-plist-flag (query)
+  "Strip a leading `--plist' flag from QUERY string; returns (values plistp query)."
+  (let ((s (string-left-trim '(#\Space #\Tab) (or query ""))))
+    (if (and (>= (length s) 7) (string-equal (subseq s 0 7) "--plist")
+             (or (= (length s) 7) (member (char s 7) '(#\Space #\Tab))))
+        (values t (string-left-trim '(#\Space #\Tab) (subseq s 7)))
+        (values nil query))))
 
 ;;; ─── The command ─────────────────────────────────────────────────────────────
 
 (defun %parse-sql-tokens (tokens)
-  "Split TOKENS into (values out-name sql-string). A leading `-o NAME' captures
-   the output variable name; the rest is rejoined as the query."
-  (if (and (stringp (first tokens)) (string= (first tokens) "-o") (second tokens))
-      (values (second tokens) (format nil "~{~A~^ ~}" (cddr tokens)))
-      (values nil (format nil "~{~A~^ ~}" tokens))))
+  "Split TOKENS into (values out-name plistp sql-string). Leading `-o NAME'
+   captures the output variable name; leading `--plist' forces a list-of-plists
+   result (no data-frame). The rest is rejoined as the query."
+  (let ((out-name nil) (plistp nil) (toks tokens))
+    (loop
+      (cond
+        ((and (stringp (first toks)) (string= (first toks) "-o") (second toks))
+         (setf out-name (second toks) toks (cddr toks)))
+        ((and (stringp (first toks)) (string= (first toks) "--plist"))
+         (setf plistp t toks (cdr toks)))
+        (t (return))))
+    (values out-name plistp (format nil "~{~A~^ ~}" toks))))
 
 (define-command sql (&rest tokens)
   "Query data with SQL (DuckDB).
@@ -417,7 +462,9 @@ Examples:
 Reference a CSV/Parquet/JSON file in quotes, or a session data-frame by name.
 ${LISP-FORM} evaluates in the backend and is spliced as a SQL literal (numbers
 inline, strings quoted, lists as (a, b) for IN). The result is left in `*'
-(usable by your next form); -o NAME also binds *NAME*. Needs the `duckdb' CLI."
+(usable by your next form); -o NAME also binds *NAME*. When Lisp-Stat is loaded
+the result is a data-frame (usable with Lisp-Stat); `--plist' forces a list of
+plists instead. Needs the `duckdb' CLI."
   (unless *slynk-connected-p*
     (format *error-output* "~&,sql needs a running backend.~%")
     (return-from cmd-sql))
@@ -426,20 +473,25 @@ inline, strings quoted, lists as (a, b) for IN). The result is left in `*'
             "~&,sql needs the `duckdb' CLI on your PATH. Install it from ~
              https://duckdb.org/ and retry.~%")
     (return-from cmd-sql))
-  (multiple-value-bind (out-name sql) (%parse-sql-tokens tokens)
+  (multiple-value-bind (out-name plistp sql) (%parse-sql-tokens tokens)
     (when (zerop (length (string-trim '(#\Space #\Tab) sql)))
-      (format *error-output* "~&Usage: ,sql [-o NAME] <query>~%")
+      (format *error-output* "~&Usage: ,sql [-o NAME] [--plist] <query>~%")
       (return-from cmd-sql))
     (handler-case
         ;; Run the query IN THE BACKEND (same self-contained form the notebook
-        ;; uses): session data-frames are read in-process, and the result — a
-        ;; list of plists — lands in the backend's `*' (backend-eval updates
-        ;; history). We read the printed value back only to render the table.
+        ;; uses): session data-frames are read in-process, and the result lands
+        ;; in the backend's `*' (backend-eval updates history) — a data-frame
+        ;; when Lisp-Stat is loaded (unless --plist), else a list of plists. For
+        ;; the text table we normalize `*' back to plists via an internal eval,
+        ;; since a data-frame does not print readably.
         (let* ((form (sql-cell-form (%interpolate-sql sql)
-                                    (%sources-prologue (%global-sources))))
+                                    (%sources-prologue (%global-sources))
+                                    (not plistp)))
                (vals (backend-eval form))
+               (disp (if plistp vals
+                         (ignore-errors (backend-eval-internal +sql-display-rows-form+))))
                (rows (ignore-errors
-                      (let ((*read-eval* nil)) (read-from-string (or (first vals) ""))))))
+                      (let ((*read-eval* nil)) (read-from-string (or (first disp) ""))))))
           (%format-plist-table (and (listp rows) rows))
           (when out-name
             (ignore-errors

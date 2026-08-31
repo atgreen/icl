@@ -1269,10 +1269,12 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
         (sqlp
          (handler-case
              (if (duckdb-available-p)
-                 (let ((prologue (%sources-prologue
-                                  (append (%global-sources)
-                                          (notebook-sql-sources *current-notebook*)))))
-                   (setf source (sql-cell-form (%interpolate-sql query) prologue)))
+                 (multiple-value-bind (plistp q) (%strip-plist-flag query)
+                   (let ((prologue (%sources-prologue
+                                    (append (%global-sources)
+                                            (notebook-sql-sources *current-notebook*)))))
+                     (setf source (sql-cell-form (%interpolate-sql q) prologue
+                                                 (not plistp)))))
                  ;; Same guidance as the terminal ,sql command, shown as the
                  ;; cell's error rather than a raw exec failure.
                  (setf source

@@ -40,10 +40,13 @@ joinable in one query.
 
 - `,sql <query>` runs SQL via DuckDB. It reads CSV/Parquet/JSON files directly
   (`FROM 'data.csv'`) and can reference session data frames by name. It evaluates
-  in the backend, so the terminal prints a table and leaves the result (a list of
-  plists) in `*` for your next form (`-o NAME` also binds `*NAME*`); in a notebook
-  cell it returns rows that render as an interactive grid. Cells are
-  syntax-highlighted as SQL.
+  in the backend, so the terminal prints a table and leaves the result in `*` for
+  your next form (`-o NAME` also binds `*NAME*`); in a notebook cell the result
+  renders as an interactive grid. Cells are syntax-highlighted as SQL.
+- **Result as a data-frame.** When [Lisp-Stat](https://lisp-stat.dev/) is loaded
+  in the backend, the result is a `data-frame` — ready to pipe straight into
+  Lisp-Stat (filter, summarise, plot) — instead of a list of plists; both render
+  as the same grid. Pass `--plist` to force the list-of-plists form.
 - **Parameterize with Lisp values.** `${LISP-FORM}` in a query is evaluated in
   the backend and spliced as a SQL literal (numbers inline, strings quoted, lists
   as `(a, b)` for `IN`) — always a literal, so a string value can't inject SQL:
