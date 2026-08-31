@@ -347,39 +347,16 @@
                                   :separator (string #\\Newline))))
                (cols (and lines (mapcar (lambda (c) (intern (string-upcase c) :keyword))
                                         (split-line (first lines))))))
-          (let* ((rows (mapcar (lambda (line)
-                                 (loop for k in cols for v in (split-line line)
-                                       append (list k (coerce-val v))))
-                               (rest lines)))
-                 (fmt @@FMT@@))
-            (labels ((ks () (loop for (k v) on (first rows) by #'cddr collect k))
-                     (mk-df ()
-                       (let ((f (and rows (find-package \"DATA-FRAME\")
-                                     (find-symbol \"MAKE-DF\" \"DATA-FRAME\"))))
-                         (when (and f (fboundp f))
-                           (let ((keys (ks)))
-                             (funcall f keys
-                                      (mapcar (lambda (k)
-                                                (map 'vector (lambda (r) (getf r k)) rows))
-                                              keys))))))
-                     (mk-vellum ()
-                       (let ((f (and rows (find-package \"VELLUM\")
-                                     (find-symbol \"TO-TABLE\" \"VELLUM\"))))
-                         (when (and f (fboundp f))
-                           (let ((keys (ks)))
-                             (funcall f
-                                      (mapcar (lambda (r)
-                                                (mapcar (lambda (k) (getf r k)) keys))
-                                              rows)
-                                      :columns keys))))))
-              (case fmt
-                (:plist rows)
-                (:df (or (mk-df) rows))
-                (:vellum (or (mk-vellum) rows))
-                (t (or (mk-df) (mk-vellum) rows)))))))))"
-  "Backend form template for a ,sql notebook cell; @@QUERY@@/@@NAMES@@ filled in.
-Returns a list of plists (rows) — which the notebook renders as a grid — with no
-Lisp-Stat dependency, so it works in any notebook.")
+          (let ((rows (mapcar (lambda (line)
+                                (loop for k in cols for v in (split-line line)
+                                      append (list k (coerce-val v))))
+                              (rest lines))))
+            @@BUILD@@)))))"
+  "Backend form template for a ,sql cell. @@QUERY@@/@@NAMES@@/@@PROLOGUE@@ are
+filled in, and @@BUILD@@ is replaced by the selected adaptor's builder — an
+expression over ROWS (the result as a list of plists) that yields the value ,sql
+returns. The default `plist' builder is just ROWS, so it works in any notebook
+with no external dependency.")
 
 (defun sql-cell-magic-p (source)
   "T when notebook cell SOURCE is a ,sql magic; returns (values t query) then."
@@ -416,22 +393,79 @@ Lisp-Stat dependency, so it works in any notebook.")
           for decl = (sql-source-magic-p (notebook-cell-source cell))
           when decl collect decl)))
 
-(defun sql-cell-form (query &optional (prologue "") (fmt :auto))
+;;; ─── Result adaptors (extensible) ────────────────────────────────────────────
+;;;
+;;; A ,sql result adaptor turns the query result — a list of plists bound to the
+;;; variable ROWS in the backend — into the value ,sql yields. Built-ins: `plist'
+;;; (identity), `df' (Lisp-Stat data-frame), `vellum' (vellum table), and `auto'
+;;; (the default: df if Lisp-Stat is loaded, else vellum if vellum is loaded, else
+;;; plists). Add your own from ~/.iclrc with `register-sql-adaptor'.
+
+(defparameter +sql-df-builder+
+  "(let ((f (and rows (find-package \"DATA-FRAME\")
+                 (find-symbol \"MAKE-DF\" \"DATA-FRAME\"))))
+     (when (and f (fboundp f))
+       (let ((keys (loop for (k v) on (first rows) by #'cddr collect k)))
+         (funcall f keys (mapcar (lambda (k) (map 'vector (lambda (r) (getf r k)) rows)) keys)))))"
+  "Backend expression over ROWS yielding a Lisp-Stat DATA-FRAME, or NIL if the
+data-frame system is not loaded.")
+
+(defparameter +sql-vellum-builder+
+  "(let ((f (and rows (find-package \"VELLUM\")
+                 (find-symbol \"TO-TABLE\" \"VELLUM\"))))
+     (when (and f (fboundp f))
+       (let ((keys (loop for (k v) on (first rows) by #'cddr collect k)))
+         (funcall f (mapcar (lambda (r) (mapcar (lambda (k) (getf r k)) keys)) rows)
+                  :columns keys))))"
+  "Backend expression over ROWS yielding a vellum table, or NIL if vellum is not
+loaded.")
+
+(defvar *sql-adaptors* (make-hash-table :test 'equal)
+  "Registry of ,sql result adaptors, keyed by lowercase name.")
+
+(defun register-sql-adaptor (name &key build to-rows)
+  "Register a ,sql result adaptor, selectable with `--adaptor NAME'.
+BUILD is backend Lisp source (a string): an expression over the variable ROWS
+ (the result as a list of plists) that returns the value ,sql yields.
+TO-ROWS is optional backend source: an expression over the variable OBJ that
+ turns the adaptor's value back into a list of plists for the terminal's text
+ table. It defaults to the built-in normalizer, which understands data-frames,
+ vellum tables, and plists — provide TO-ROWS if your adaptor returns some other
+ object you want rendered as a table in the terminal."
+  (check-type name (or string symbol))
+  (setf (gethash (string-downcase (string name)) *sql-adaptors*)
+        (list :name (string-downcase (string name)) :build build :to-rows to-rows))
+  (string-downcase (string name)))
+
+(defun find-sql-adaptor (name)
+  "The registered adaptor plist for NAME (case-insensitive), or NIL."
+  (and name (gethash (string-downcase (string name)) *sql-adaptors*)))
+
+(defun list-sql-adaptors ()
+  "Sorted names of the registered ,sql adaptors."
+  (sort (loop for k being the hash-keys of *sql-adaptors* collect k) #'string<))
+
+(register-sql-adaptor "plist"  :build "rows")
+(register-sql-adaptor "df"     :build (format nil "(or ~A rows)" +sql-df-builder+))
+(register-sql-adaptor "vellum" :build (format nil "(or ~A rows)" +sql-vellum-builder+))
+(register-sql-adaptor "auto"
+                      :build (format nil "(or ~A ~A rows)"
+                                     +sql-df-builder+ +sql-vellum-builder+))
+
+(defun sql-cell-form (query &optional (prologue "") (adaptor "auto"))
   "Backend Lisp source (string) that runs QUERY (after any source-attach PROLOGUE)
-   and returns the result rows in the requested FMT:
-     :auto   - a DATA-FRAME if Lisp-Stat is loaded, else a vellum table if vellum
-               is loaded, else a list of plists (the default);
-     :df     - force a Lisp-Stat DATA-FRAME (falls back to plists if unavailable);
-     :vellum - force a vellum table (falls back to plists if unavailable);
-     :plist  - always a list of plists.
-   Both a data-frame and a vellum table render as a grid."
-  (%replace-all
-   (%replace-all
+   and returns the result via the named result ADAPTOR (default \"auto\"; see
+   `register-sql-adaptor'). Signals an error if ADAPTOR is not registered."
+  (let ((ad (or (find-sql-adaptor (or adaptor "auto"))
+                (error "unknown ,sql adaptor ~S (known: ~{~A~^, ~})"
+                       adaptor (list-sql-adaptors)))))
     (%replace-all
-     (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
-     "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
-    "@@PROLOGUE@@" (%lisp-string (or prologue "")))
-   "@@FMT@@" (prin1-to-string (if (member fmt '(:plist :df :vellum)) fmt :auto))))
+     (%replace-all
+      (%replace-all
+       (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
+       "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
+      "@@PROLOGUE@@" (%lisp-string (or prologue "")))
+     "@@BUILD@@" (getf ad :build))))
 
 (defparameter +sql-display-rows-form+
   "(let* ((v *)
@@ -461,37 +495,46 @@ Lisp-Stat dependency, so it works in any notebook.")
 DATA-FRAME or vellum table back to plists so the terminal can render a text table.
 Evaluated with backend-eval-internal so it does not disturb `*'.")
 
-(defun %strip-sql-flags (query)
-  "Strip a leading result-format flag (--plist / --df / --vellum) from QUERY;
-   returns (values fmt query) where FMT is :plist, :df, :vellum, or :auto."
+(defun %sql-display-form (adaptor)
+  "Backend form (string) that turns `*' into display plists for ADAPTOR: the
+adaptor's TO-ROWS over `*' if it has one, else the built-in normalizer."
+  (let* ((ad (find-sql-adaptor (or adaptor "auto")))
+         (to-rows (and ad (getf ad :to-rows))))
+    (if to-rows
+        (format nil "(let ((obj *)) ~A)" to-rows)
+        +sql-display-rows-form+)))
+
+(defun %strip-adaptor-flag (query)
+  "Strip a leading `--adaptor NAME' (or `-a NAME') from QUERY; returns
+   (values adaptor query), with ADAPTOR defaulting to \"auto\"."
   (let ((s (string-left-trim '(#\Space #\Tab) (or query ""))))
-    (dolist (spec '(("--vellum" . :vellum) ("--plist" . :plist) ("--df" . :df))
-                  (values :auto query))
-      (let* ((flag (car spec)) (n (length flag)))
+    (dolist (flag '("--adaptor" "-a") (values "auto" query))
+      (let ((n (length flag)))
         (when (and (>= (length s) n) (string-equal (subseq s 0 n) flag)
                    (or (= (length s) n) (member (char s n) '(#\Space #\Tab))))
-          (return (values (cdr spec)
-                          (string-left-trim '(#\Space #\Tab) (subseq s n)))))))))
+          (let* ((rest (string-left-trim '(#\Space #\Tab) (subseq s n)))
+                 (sp (position-if (lambda (c) (member c '(#\Space #\Tab))) rest)))
+            (return (if sp
+                        (values (subseq rest 0 sp)
+                                (string-left-trim '(#\Space #\Tab) (subseq rest sp)))
+                        (values rest "")))))))))
 
 ;;; ─── The command ─────────────────────────────────────────────────────────────
 
 (defun %parse-sql-tokens (tokens)
-  "Split TOKENS into (values out-name fmt sql-string). Leading `-o NAME' captures
-   the output variable name; a leading result-format flag (`--plist', `--df', or
-   `--vellum') sets FMT (default :auto). The rest is rejoined as the query."
-  (let ((out-name nil) (fmt :auto) (toks tokens))
+  "Split TOKENS into (values out-name adaptor sql-string). Leading `-o NAME'
+   captures the output variable name; leading `--adaptor NAME' selects the result
+   adaptor (default \"auto\"). The rest is rejoined as the query."
+  (let ((out-name nil) (adaptor "auto") (toks tokens))
     (loop
       (cond
         ((and (stringp (first toks)) (string= (first toks) "-o") (second toks))
          (setf out-name (second toks) toks (cddr toks)))
-        ((and (stringp (first toks)) (string= (first toks) "--plist"))
-         (setf fmt :plist toks (cdr toks)))
-        ((and (stringp (first toks)) (string= (first toks) "--df"))
-         (setf fmt :df toks (cdr toks)))
-        ((and (stringp (first toks)) (string= (first toks) "--vellum"))
-         (setf fmt :vellum toks (cdr toks)))
+        ((and (stringp (first toks))
+              (member (first toks) '("--adaptor" "-a") :test #'string=) (second toks))
+         (setf adaptor (second toks) toks (cddr toks)))
         (t (return))))
-    (values out-name fmt (format nil "~{~A~^ ~}" toks))))
+    (values out-name adaptor (format nil "~{~A~^ ~}" toks))))
 
 (define-command sql (&rest tokens)
   "Query data with SQL (DuckDB).
@@ -502,10 +545,10 @@ Examples:
 Reference a CSV/Parquet/JSON file in quotes, or a session data-frame by name.
 ${LISP-FORM} evaluates in the backend and is spliced as a SQL literal (numbers
 inline, strings quoted, lists as (a, b) for IN). The result is left in `*'
-(usable by your next form); -o NAME also binds *NAME*. When Lisp-Stat is loaded
-the result is a data-frame (or a vellum table if vellum is loaded), ready for
-those libraries; `--df'/`--vellum' force one, `--plist' forces a list of plists.
-Needs the `duckdb' CLI."
+(usable by your next form); -o NAME also binds *NAME*. `--adaptor NAME' (short
+`-a') picks the result type: `auto' (default) yields a Lisp-Stat data-frame or
+vellum table if either is loaded, else plists; `df', `vellum', `plist', or one
+you register with icl:register-sql-adaptor. Needs the `duckdb' CLI."
   (unless *slynk-connected-p*
     (format *error-output* "~&,sql needs a running backend.~%")
     (return-from cmd-sql))
@@ -514,23 +557,23 @@ Needs the `duckdb' CLI."
             "~&,sql needs the `duckdb' CLI on your PATH. Install it from ~
              https://duckdb.org/ and retry.~%")
     (return-from cmd-sql))
-  (multiple-value-bind (out-name fmt sql) (%parse-sql-tokens tokens)
+  (multiple-value-bind (out-name adaptor sql) (%parse-sql-tokens tokens)
     (when (zerop (length (string-trim '(#\Space #\Tab) sql)))
-      (format *error-output* "~&Usage: ,sql [-o NAME] [--plist|--df|--vellum] <query>~%")
+      (format *error-output* "~&Usage: ,sql [-o NAME] [--adaptor|-a NAME] <query>~%")
       (return-from cmd-sql))
     (handler-case
         ;; Run the query IN THE BACKEND (same self-contained form the notebook
         ;; uses): session data-frames are read in-process, and the result lands
-        ;; in the backend's `*' (backend-eval updates history) — a data-frame or
-        ;; vellum table when that library is loaded (per FMT), else a list of
-        ;; plists. For the text table we normalize `*' back to plists via an
-        ;; internal eval, since those tables do not print readably.
+        ;; in the backend's `*' (backend-eval updates history) — whatever the
+        ;; chosen ADAPTOR yields (data-frame, vellum table, plists, ...). For the
+        ;; text table we normalize `*' back to plists via an internal eval, since
+        ;; those tables do not print readably.
         (let* ((form (sql-cell-form (%interpolate-sql sql)
                                     (%sources-prologue (%global-sources))
-                                    fmt))
+                                    adaptor))
                (vals (backend-eval form))
-               (disp (if (eq fmt :plist) vals
-                         (ignore-errors (backend-eval-internal +sql-display-rows-form+))))
+               (disp (if (string-equal adaptor "plist") vals
+                         (ignore-errors (backend-eval-internal (%sql-display-form adaptor)))))
                (rows (ignore-errors
                       (let ((*read-eval* nil)) (read-from-string (or (first disp) ""))))))
           (%format-plist-table (and (listp rows) rows))

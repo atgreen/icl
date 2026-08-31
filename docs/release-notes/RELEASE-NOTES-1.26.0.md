@@ -43,14 +43,13 @@ joinable in one query.
   in the backend, so the terminal prints a table and leaves the result in `*` for
   your next form (`-o NAME` also binds `*NAME*`); in a notebook cell the result
   renders as an interactive grid. Cells are syntax-highlighted as SQL.
-- **Result as a data-frame (or vellum table).** When [Lisp-Stat](https://lisp-stat.dev/)
-  is loaded in the backend, the result is a `data-frame` — ready to pipe straight
-  into Lisp-Stat (filter, summarise, plot) — instead of a list of plists; or a
-  [vellum](https://github.com/sirherrbatka/vellum) table if vellum is loaded. All
-  three render as the same grid. By default the format follows whichever library
-  is loaded (data-frame preferred); `--df` / `--vellum` / `--plist` force a
-  specific form. Neither library is a dependency — the format is detected at
-  runtime.
+- **Result adaptors.** `--adaptor NAME` (short `-a`) chooses the result type:
+  `auto` (the default) yields a [Lisp-Stat](https://lisp-stat.dev/) `data-frame`
+  or a [vellum](https://github.com/sirherrbatka/vellum) table if either is loaded
+  (ready to pipe straight into those libraries), else a list of plists; `df`,
+  `vellum`, and `plist` force a specific form. All render as the same grid.
+  Neither library is a dependency — availability is detected at runtime. Adaptors
+  are extensible: register your own with `icl:register-sql-adaptor` in `~/.iclrc`.
 - **Parameterize with Lisp values.** `${LISP-FORM}` in a query is evaluated in
   the backend and spliced as a SQL literal (numbers inline, strings quoted, lists
   as `(a, b)` for `IN`) — always a literal, so a string value can't inject SQL:
@@ -98,3 +97,5 @@ joinable in one query.
   exported for use from `~/.iclrc`.
 - `icl:register-sql-source` and `icl:*sql-sources*` register global `,sql`
   sources from `~/.iclrc`.
+- `icl:register-sql-adaptor`, `icl:list-sql-adaptors`, and `icl:*sql-adaptors*`
+  register and inspect `,sql` result adaptors.

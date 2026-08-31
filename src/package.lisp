@@ -23,6 +23,12 @@
    #:*sql-sources*
    #:register-sql-source
 
+   ;; ,sql result adaptors — df/vellum/plist built in, extensible via ~/.iclrc
+   #:*sql-adaptors*
+   #:register-sql-adaptor
+   #:find-sql-adaptor
+   #:list-sql-adaptors
+
    ;; Configuration
    #:*icl-package*
    #:*icl-package-name*
