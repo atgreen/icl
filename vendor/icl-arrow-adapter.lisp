@@ -103,9 +103,26 @@ column NAME and its NA-substituted VALUES."
                                        (if cell (cdr cell) *icl-arrow-na*)))
                                    rows)))))))))
 
+;;; --- vellum table ----------------------------------------------------------
+
+(defun %icl-arrow-vellum-columns (obj)
+  "Column specs for a vellum table, or NIL if OBJ is not one."
+  (let ((vtc (and (find-package "VELLUM.TABLE")
+                  (find-symbol "STANDARD-TABLE" "VELLUM.TABLE"))))
+    (when (and vtc (find-class vtc nil) (typep obj (find-class vtc nil)))
+      (let ((names (funcall (find-symbol "COLUMN-NAMES" "VELLUM") obj))
+            (nr (funcall (find-symbol "ROW-COUNT" "VELLUM") obj))
+            (at (find-symbol "AT" "VELLUM")))
+        (loop for j from 0
+              for nm in names
+              collect (%icl-arrow-column-spec
+                       (princ-to-string nm)
+                       (loop for i below nr collect (funcall at obj i j))))))))
+
 (defun icl-arrow-columns (obj)
   "Generic cl-arrow column specs for a tabular OBJ, or NIL."
   (or (ignore-errors (%icl-arrow-df-columns obj))
+      (ignore-errors (%icl-arrow-vellum-columns obj))
       (ignore-errors (%icl-arrow-plist-columns obj))))
 
 (defun icl-arrow-encode (obj)

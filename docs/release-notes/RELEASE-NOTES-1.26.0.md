@@ -43,10 +43,14 @@ joinable in one query.
   in the backend, so the terminal prints a table and leaves the result in `*` for
   your next form (`-o NAME` also binds `*NAME*`); in a notebook cell the result
   renders as an interactive grid. Cells are syntax-highlighted as SQL.
-- **Result as a data-frame.** When [Lisp-Stat](https://lisp-stat.dev/) is loaded
-  in the backend, the result is a `data-frame` — ready to pipe straight into
-  Lisp-Stat (filter, summarise, plot) — instead of a list of plists; both render
-  as the same grid. Pass `--plist` to force the list-of-plists form.
+- **Result as a data-frame (or vellum table).** When [Lisp-Stat](https://lisp-stat.dev/)
+  is loaded in the backend, the result is a `data-frame` — ready to pipe straight
+  into Lisp-Stat (filter, summarise, plot) — instead of a list of plists; or a
+  [vellum](https://github.com/sirherrbatka/vellum) table if vellum is loaded. All
+  three render as the same grid. By default the format follows whichever library
+  is loaded (data-frame preferred); `--df` / `--vellum` / `--plist` force a
+  specific form. Neither library is a dependency — the format is detected at
+  runtime.
 - **Parameterize with Lisp values.** `${LISP-FORM}` in a query is evaluated in
   the backend and spliced as a SQL literal (numbers inline, strings quoted, lists
   as `(a, b)` for `IN`) — always a literal, so a string value can't inject SQL:

@@ -27,6 +27,17 @@
               (append (directory (merge-pathnames "*.js" dir))
                       (directory (merge-pathnames "*.css" dir)))))))
 
+;;; Likewise, `embedded-cl-arrow' bakes vendor/*.lisp (the cl-arrow bundle and the
+;;; ICL adapter) into the image at compile/load time; declare them as extra compile
+;;; inputs so editing a vendored source re-embeds it on the next build.
+(defclass vendor-embedding-file (asdf:cl-source-file) ())
+(defmethod asdf:input-files ((op asdf:compile-op) (c vendor-embedding-file))
+  (append (call-next-method)
+          (ignore-errors
+            (let ((dir (asdf:system-relative-pathname (asdf:component-system c)
+                                                      "vendor/")))
+              (directory (merge-pathnames "*.lisp" dir))))))
+
 (asdf:defsystem "icl"
   :description "Interactive Common Lisp: An enhanced REPL"
   :author      "Anthony Green <green@moxielogic.com>"
@@ -67,7 +78,7 @@
                 :components
                 ((:file "package")
                  (:file "specials")
-                 (:file "embedded-cl-arrow")
+                 (vendor-embedding-file "embedded-cl-arrow")
                  (:file "themes")
                  (:file "terminal-posix" :if-feature (:not :windows))
                  (:file "terminal-windows" :if-feature :windows)

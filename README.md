@@ -367,7 +367,7 @@ The interactive inspector (`,i` or `,inspect`) provides a TUI for exploring obje
 
 | Command | Description |
 |---------|-------------|
-| `,sql <query>` | Query data with **DuckDB** — CSV/Parquet/JSON files, session data frames, and attached databases. Runs in the backend: prints a table and leaves the result in `*`, usable by your next form (`-o NAME` also binds `*NAME*`). When [Lisp-Stat](https://lisp-stat.dev/) is loaded the result is a `data-frame` (ready for Lisp-Stat); otherwise it is a list of plists. `--plist` forces the plist form. In a notebook cell the result renders as an interactive grid either way. |
+| `,sql <query>` | Query data with **DuckDB** — CSV/Parquet/JSON files, session data frames, and attached databases. Runs in the backend: prints a table and leaves the result in `*`, usable by your next form (`-o NAME` also binds `*NAME*`). When [Lisp-Stat](https://lisp-stat.dev/) is loaded the result is a `data-frame`, or a [vellum](https://github.com/sirherrbatka/vellum) table if vellum is loaded — ready for those libraries; otherwise a list of plists. `--df` / `--vellum` / `--plist` force a specific form. In a notebook cell the result renders as an interactive grid regardless. |
 | `,attach NAME TYPE CONNINFO` | Attach a **SQLite / Postgres / DuckDB** database so `,sql` can query it as `NAME.table` (joinable with files and data frames). No args lists attachments. |
 
 `,sql` needs the [`duckdb`](https://duckdb.org/) CLI on `PATH`; the `sqlite`/`postgres`

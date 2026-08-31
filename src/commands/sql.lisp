@@ -351,15 +351,32 @@
                                  (loop for k in cols for v in (split-line line)
                                        append (list k (coerce-val v))))
                                (rest lines)))
-                 (mk (and @@AS-DF@@ rows (find-package \"DATA-FRAME\")
-                          (find-symbol \"MAKE-DF\" \"DATA-FRAME\"))))
-            (if (and mk (fboundp mk))
-                (let ((ks (loop for (k v) on (first rows) by #'cddr collect k)))
-                  (funcall mk ks
-                           (mapcar (lambda (k)
-                                     (map 'vector (lambda (r) (getf r k)) rows))
-                                   ks)))
-                rows))))))"
+                 (fmt @@FMT@@))
+            (labels ((ks () (loop for (k v) on (first rows) by #'cddr collect k))
+                     (mk-df ()
+                       (let ((f (and rows (find-package \"DATA-FRAME\")
+                                     (find-symbol \"MAKE-DF\" \"DATA-FRAME\"))))
+                         (when (and f (fboundp f))
+                           (let ((keys (ks)))
+                             (funcall f keys
+                                      (mapcar (lambda (k)
+                                                (map 'vector (lambda (r) (getf r k)) rows))
+                                              keys))))))
+                     (mk-vellum ()
+                       (let ((f (and rows (find-package \"VELLUM\")
+                                     (find-symbol \"TO-TABLE\" \"VELLUM\"))))
+                         (when (and f (fboundp f))
+                           (let ((keys (ks)))
+                             (funcall f
+                                      (mapcar (lambda (r)
+                                                (mapcar (lambda (k) (getf r k)) keys))
+                                              rows)
+                                      :columns keys))))))
+              (case fmt
+                (:plist rows)
+                (:df (or (mk-df) rows))
+                (:vellum (or (mk-vellum) rows))
+                (t (or (mk-df) (mk-vellum) rows)))))))))"
   "Backend form template for a ,sql notebook cell; @@QUERY@@/@@NAMES@@ filled in.
 Returns a list of plists (rows) — which the notebook renders as a grid — with no
 Lisp-Stat dependency, so it works in any notebook.")
@@ -399,59 +416,82 @@ Lisp-Stat dependency, so it works in any notebook.")
           for decl = (sql-source-magic-p (notebook-cell-source cell))
           when decl collect decl)))
 
-(defun sql-cell-form (query &optional (prologue "") (as-df t))
+(defun sql-cell-form (query &optional (prologue "") (fmt :auto))
   "Backend Lisp source (string) that runs QUERY (after any source-attach PROLOGUE)
-   and returns the result rows. When AS-DF is true and the backend has the
-   `data-frame' system loaded (Lisp-Stat), the rows are returned as a DATA-FRAME
-   (usable with Lisp-Stat, and rendered as a grid); otherwise, and always when
-   AS-DF is nil, they are returned as a list of plists."
+   and returns the result rows in the requested FMT:
+     :auto   - a DATA-FRAME if Lisp-Stat is loaded, else a vellum table if vellum
+               is loaded, else a list of plists (the default);
+     :df     - force a Lisp-Stat DATA-FRAME (falls back to plists if unavailable);
+     :vellum - force a vellum table (falls back to plists if unavailable);
+     :plist  - always a list of plists.
+   Both a data-frame and a vellum table render as a grid."
   (%replace-all
    (%replace-all
     (%replace-all
      (%replace-all +sql-cell-template+ "@@QUERY@@" (%lisp-string query))
      "@@NAMES@@" (prin1-to-string (%sql-identifiers query)))
     "@@PROLOGUE@@" (%lisp-string (or prologue "")))
-   "@@AS-DF@@" (if as-df "t" "nil")))
+   "@@FMT@@" (prin1-to-string (if (member fmt '(:plist :df :vellum)) fmt :auto))))
 
 (defparameter +sql-display-rows-form+
-  "(let ((v *))
-     (let ((c (and (find-package \"DATA-FRAME\")
-                   (find-symbol \"DATA-FRAME\" \"DATA-FRAME\"))))
-       (if (and c (find-class c nil) (typep v (find-class c nil)))
-           (let* ((keys (coerce (funcall (find-symbol \"KEYS\" \"DATA-FRAME\") v) 'list))
-                  (cols (coerce (funcall (find-symbol \"COLUMNS\" \"DATA-FRAME\") v) 'list))
-                  (n (if cols (length (elt cols 0)) 0)))
-             (loop for i below n
-                   collect (loop for k in keys for col in cols
-                                 append (list k (elt col i)))))
-           v)))"
+  "(let* ((v *)
+         (dfc (and (find-package \"DATA-FRAME\")
+                   (find-symbol \"DATA-FRAME\" \"DATA-FRAME\")))
+         (vtc (and (find-package \"VELLUM.TABLE\")
+                   (find-symbol \"STANDARD-TABLE\" \"VELLUM.TABLE\"))))
+     (cond
+       ((and dfc (find-class dfc nil) (typep v (find-class dfc nil)))
+        (let* ((keys (coerce (funcall (find-symbol \"KEYS\" \"DATA-FRAME\") v) 'list))
+               (cols (coerce (funcall (find-symbol \"COLUMNS\" \"DATA-FRAME\") v) 'list))
+               (n (if cols (length (elt cols 0)) 0)))
+          (loop for i below n
+                collect (loop for k in keys for col in cols
+                              append (list k (elt col i))))))
+       ((and vtc (find-class vtc nil) (typep v (find-class vtc nil)))
+        (let* ((names (funcall (find-symbol \"COLUMN-NAMES\" \"VELLUM\") v))
+               (nc (length names))
+               (nr (funcall (find-symbol \"ROW-COUNT\" \"VELLUM\") v))
+               (at (find-symbol \"AT\" \"VELLUM\")))
+          (loop for i below nr
+                collect (loop for j below nc for nm in names
+                              append (list (intern (string-upcase (princ-to-string nm)) :keyword)
+                                           (funcall at v i j))))))
+       (t v)))"
   "Backend form: read `*' and return its rows as a list of plists — converting a
-DATA-FRAME back to plists so the terminal can render a text table. Evaluated with
-backend-eval-internal so it does not disturb `*'.")
+DATA-FRAME or vellum table back to plists so the terminal can render a text table.
+Evaluated with backend-eval-internal so it does not disturb `*'.")
 
-(defun %strip-plist-flag (query)
-  "Strip a leading `--plist' flag from QUERY string; returns (values plistp query)."
+(defun %strip-sql-flags (query)
+  "Strip a leading result-format flag (--plist / --df / --vellum) from QUERY;
+   returns (values fmt query) where FMT is :plist, :df, :vellum, or :auto."
   (let ((s (string-left-trim '(#\Space #\Tab) (or query ""))))
-    (if (and (>= (length s) 7) (string-equal (subseq s 0 7) "--plist")
-             (or (= (length s) 7) (member (char s 7) '(#\Space #\Tab))))
-        (values t (string-left-trim '(#\Space #\Tab) (subseq s 7)))
-        (values nil query))))
+    (dolist (spec '(("--vellum" . :vellum) ("--plist" . :plist) ("--df" . :df))
+                  (values :auto query))
+      (let* ((flag (car spec)) (n (length flag)))
+        (when (and (>= (length s) n) (string-equal (subseq s 0 n) flag)
+                   (or (= (length s) n) (member (char s n) '(#\Space #\Tab))))
+          (return (values (cdr spec)
+                          (string-left-trim '(#\Space #\Tab) (subseq s n)))))))))
 
 ;;; ─── The command ─────────────────────────────────────────────────────────────
 
 (defun %parse-sql-tokens (tokens)
-  "Split TOKENS into (values out-name plistp sql-string). Leading `-o NAME'
-   captures the output variable name; leading `--plist' forces a list-of-plists
-   result (no data-frame). The rest is rejoined as the query."
-  (let ((out-name nil) (plistp nil) (toks tokens))
+  "Split TOKENS into (values out-name fmt sql-string). Leading `-o NAME' captures
+   the output variable name; a leading result-format flag (`--plist', `--df', or
+   `--vellum') sets FMT (default :auto). The rest is rejoined as the query."
+  (let ((out-name nil) (fmt :auto) (toks tokens))
     (loop
       (cond
         ((and (stringp (first toks)) (string= (first toks) "-o") (second toks))
          (setf out-name (second toks) toks (cddr toks)))
         ((and (stringp (first toks)) (string= (first toks) "--plist"))
-         (setf plistp t toks (cdr toks)))
+         (setf fmt :plist toks (cdr toks)))
+        ((and (stringp (first toks)) (string= (first toks) "--df"))
+         (setf fmt :df toks (cdr toks)))
+        ((and (stringp (first toks)) (string= (first toks) "--vellum"))
+         (setf fmt :vellum toks (cdr toks)))
         (t (return))))
-    (values out-name plistp (format nil "~{~A~^ ~}" toks))))
+    (values out-name fmt (format nil "~{~A~^ ~}" toks))))
 
 (define-command sql (&rest tokens)
   "Query data with SQL (DuckDB).
@@ -463,8 +503,9 @@ Reference a CSV/Parquet/JSON file in quotes, or a session data-frame by name.
 ${LISP-FORM} evaluates in the backend and is spliced as a SQL literal (numbers
 inline, strings quoted, lists as (a, b) for IN). The result is left in `*'
 (usable by your next form); -o NAME also binds *NAME*. When Lisp-Stat is loaded
-the result is a data-frame (usable with Lisp-Stat); `--plist' forces a list of
-plists instead. Needs the `duckdb' CLI."
+the result is a data-frame (or a vellum table if vellum is loaded), ready for
+those libraries; `--df'/`--vellum' force one, `--plist' forces a list of plists.
+Needs the `duckdb' CLI."
   (unless *slynk-connected-p*
     (format *error-output* "~&,sql needs a running backend.~%")
     (return-from cmd-sql))
@@ -473,22 +514,22 @@ plists instead. Needs the `duckdb' CLI."
             "~&,sql needs the `duckdb' CLI on your PATH. Install it from ~
              https://duckdb.org/ and retry.~%")
     (return-from cmd-sql))
-  (multiple-value-bind (out-name plistp sql) (%parse-sql-tokens tokens)
+  (multiple-value-bind (out-name fmt sql) (%parse-sql-tokens tokens)
     (when (zerop (length (string-trim '(#\Space #\Tab) sql)))
-      (format *error-output* "~&Usage: ,sql [-o NAME] [--plist] <query>~%")
+      (format *error-output* "~&Usage: ,sql [-o NAME] [--plist|--df|--vellum] <query>~%")
       (return-from cmd-sql))
     (handler-case
         ;; Run the query IN THE BACKEND (same self-contained form the notebook
         ;; uses): session data-frames are read in-process, and the result lands
-        ;; in the backend's `*' (backend-eval updates history) — a data-frame
-        ;; when Lisp-Stat is loaded (unless --plist), else a list of plists. For
-        ;; the text table we normalize `*' back to plists via an internal eval,
-        ;; since a data-frame does not print readably.
+        ;; in the backend's `*' (backend-eval updates history) — a data-frame or
+        ;; vellum table when that library is loaded (per FMT), else a list of
+        ;; plists. For the text table we normalize `*' back to plists via an
+        ;; internal eval, since those tables do not print readably.
         (let* ((form (sql-cell-form (%interpolate-sql sql)
                                     (%sources-prologue (%global-sources))
-                                    (not plistp)))
+                                    fmt))
                (vals (backend-eval form))
-               (disp (if plistp vals
+               (disp (if (eq fmt :plist) vals
                          (ignore-errors (backend-eval-internal +sql-display-rows-form+))))
                (rows (ignore-errors
                       (let ((*read-eval* nil)) (read-from-string (or (first disp) ""))))))
