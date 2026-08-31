@@ -44,6 +44,10 @@ joinable in one query.
   plists) in `*` for your next form (`-o NAME` also binds `*NAME*`); in a notebook
   cell it returns rows that render as an interactive grid. Cells are
   syntax-highlighted as SQL.
+- **Parameterize with Lisp values.** `${LISP-FORM}` in a query is evaluated in
+  the backend and spliced as a SQL literal (numbers inline, strings quoted, lists
+  as `(a, b)` for `IN`) — always a literal, so a string value can't inject SQL:
+  `,sql SELECT * FROM 'people.csv' WHERE age > ${*min-age*}`.
 - **Attach other databases.** DuckDB federates, so one query can reach SQLite,
   Postgres, and DuckDB files alongside your files and data frames — joinable
   together. Register sources two ways:

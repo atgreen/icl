@@ -1267,10 +1267,13 @@ and lazily define cl-user::out so notebook cells can retrieve prior values with
     (multiple-value-bind (sqlp query) (sql-cell-magic-p source)
       (cond
         (sqlp
-         (let ((prologue (%sources-prologue
-                          (append (%global-sources)
-                                  (notebook-sql-sources *current-notebook*)))))
-           (setf source (sql-cell-form query prologue))))
+         (handler-case
+             (let ((prologue (%sources-prologue
+                              (append (%global-sources)
+                                      (notebook-sql-sources *current-notebook*)))))
+               (setf source (sql-cell-form (%interpolate-sql query) prologue)))
+           ;; a bad ${...} form shows as the cell's error rather than crashing.
+           (error (e) (setf source (format nil "(error ~S)" (princ-to-string e))))))
         (t
          (let ((decl (sql-source-magic-p source)))
            (when decl

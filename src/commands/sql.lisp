@@ -123,6 +123,47 @@
       (destructuring-bind (name type conninfo) src
         (write-string (%source-attach-sql name type conninfo) s)))))
 
+;;; ─── ${...} interpolation: splice backend Lisp values into the query ─────────
+;;;
+;;; `,sql SELECT * FROM 'people.csv' WHERE age > ${*min-age*}' evaluates the Lisp
+;;; form inside ${...} in the backend and substitutes its value as a SQL literal
+;;; (numbers inline, strings quoted, lists as `(a, b)' for IN). Values are always
+;;; rendered as literals, so a string value can't inject SQL.
+
+(defun %sql-literal (value)
+  "Render a Lisp VALUE as a DuckDB SQL literal."
+  (cond ((null value) "NULL")
+        ((eq value t) "TRUE")
+        ((numberp value) (princ-to-string value))
+        ((listp value) (format nil "(~{~A~^, ~})" (mapcar #'%sql-literal value)))
+        (t (format nil "'~A'" (%sql-quote (if (stringp value) value (princ-to-string value)))))))
+
+(defun %backend-value (expr-string)
+  "Evaluate EXPR-STRING in the backend (without touching *) and return its value."
+  (unless *slynk-connected-p*
+    (error "a running backend is needed for ${...} interpolation"))
+  (let ((*read-eval* nil))
+    (read-from-string (or (first (backend-eval-internal expr-string)) "nil"))))
+
+(defun %interpolate-sql (query &optional (resolver #'%backend-value))
+  "Replace each ${LISP-FORM} in QUERY with the SQL literal of RESOLVER's value for
+   that form (RESOLVER takes the form's source text and returns a Lisp value)."
+  (if (not (search "${" query))
+      query
+      (with-output-to-string (o)
+        (let ((i 0) (n (length query)))
+          (loop while (< i n) do
+            (let ((c (char query i)))
+              (if (and (char= c #\$) (< (1+ i) n) (char= (char query (1+ i)) #\{))
+                  (let ((close (position #\} query :start (+ i 2))))
+                    (if close
+                        (progn
+                          (write-string
+                           (%sql-literal (funcall resolver (subseq query (+ i 2) close))) o)
+                          (setf i (1+ close)))
+                        (progn (write-char c o) (incf i))))
+                  (progn (write-char c o) (incf i)))))))))
+
 ;;; ─── The engine ──────────────────────────────────────────────────────────────
 
 (defun run-sql (sql &key views sources (program *duckdb-program*))
@@ -371,10 +412,12 @@ Lisp-Stat dependency, so it works in any notebook.")
   "Query data with SQL (DuckDB).
 Examples:
   ,sql SELECT * FROM 'data.csv' LIMIT 5
+  ,sql SELECT * FROM df WHERE age > ${*min-age*}        ; splice a Lisp value
   ,sql -o hot SELECT comm, count(*) AS n FROM df GROUP BY comm ORDER BY n DESC
 Reference a CSV/Parquet/JSON file in quotes, or a session data-frame by name.
-The result is left in `*' (usable by your next form); -o NAME also binds *NAME*.
-Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
+${LISP-FORM} evaluates in the backend and is spliced as a SQL literal (numbers
+inline, strings quoted, lists as (a, b) for IN). The result is left in `*'
+(usable by your next form); -o NAME also binds *NAME*. Needs the `duckdb' CLI."
   (unless *slynk-connected-p*
     (format *error-output* "~&,sql needs a running backend.~%")
     (return-from cmd-sql))
@@ -392,7 +435,8 @@ Requires the `duckdb' CLI on your PATH (https://duckdb.org/)."
         ;; uses): session data-frames are read in-process, and the result — a
         ;; list of plists — lands in the backend's `*' (backend-eval updates
         ;; history). We read the printed value back only to render the table.
-        (let* ((form (sql-cell-form sql (%sources-prologue (%global-sources))))
+        (let* ((form (sql-cell-form (%interpolate-sql sql)
+                                    (%sources-prologue (%global-sources))))
                (vals (backend-eval form))
                (rows (ignore-errors
                       (let ((*read-eval* nil)) (read-from-string (or (first vals) ""))))))

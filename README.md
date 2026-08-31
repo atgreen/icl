@@ -391,6 +391,16 @@ extensions auto-install on first use. Attach databases in three scopes:
 Conninfo may use `${ENV_VARS}`; passwords come from the environment (`PGPASSWORD`)
 or `~/.pgpass`, never the notebook file.
 
+**Parameterize with Lisp values.** `${LISP-FORM}` inside a query is evaluated in
+the backend and spliced as a SQL literal — numbers inline, strings quoted, lists
+as `(a, b)` for `IN` (always a literal, so a string value can't inject SQL):
+
+```lisp
+(defparameter *min-age* 40)
+,sql SELECT * FROM 'people.csv' WHERE age > ${*min-age*}
+,sql SELECT * FROM 'people.csv' WHERE city IN ${(list "London" "NYC")}
+```
+
 ### Debugging
 
 | Command | Description |
