@@ -3198,7 +3198,9 @@ class GraphvizPanel {
     this._panelId = null;
     this._className = null;
     this._packageName = null;
-    this._nodes = new Map();  // name -> {pkg, slots, expanded}
+    // key -> {name, pkg, slots, expanded}. A class's key is PKG::NAME: two classes may
+    // share a name (TRIVIAL-GRAY-STREAMS:FUNDAMENTAL-STREAM and the SB-GRAY class it refines).
+    this._nodes = new Map();
     this._edges = new Set();  // 'from->to'
     this._rootClass = null;
     this._focusNode = null;  // Node to center on after render
@@ -3426,9 +3428,12 @@ class GraphvizPanel {
     dot += '  edge [arrowhead=empty, color="' + colors.edge + '"];\n';
     dot += '\n';
 
-    // Add nodes (simple labels - slots shown via hover tooltip)
+    // Add nodes (simple labels - slots shown via hover tooltip). A name two nodes share
+    // is shown with its package.
+    const nameCounts = new Map();
+    for (const info of this._nodes.values()) nameCounts.set(info.name, (nameCounts.get(info.name) || 0) + 1);
     for (const [name, info] of this._nodes) {
-      const escName = this._escapeLabel(name);
+      const escName = this._escapeLabel(nameCounts.get(info.name) > 1 ? info.pkg + ':' + info.name : info.name);
       const isRoot = name === this._rootClass;
       const fillColor = isRoot ? colors.rootFill : colors.nodeFill;
       const textColor = isRoot ? colors.rootText : colors.text;
@@ -3554,7 +3559,7 @@ class GraphvizPanel {
             this._highlightAncestors(name, true);
 
             // Show tooltip
-            let content = '<strong>' + name + '</strong>';
+            let content = '<strong>' + info.name + '</strong>';
             if (info.pkg) content += '<br><span style="color:var(--fg-muted);">' + info.pkg + '</span>';
             if (info.slots && info.slots.length > 0) {
               const slotList = info.slots.slice(0, 15).join('\n');
@@ -3610,14 +3615,14 @@ class GraphvizPanel {
     if (!info) return;
 
     // Send symbol click for info panel (with source to prevent tab switching)
-    ws.send(JSON.stringify({type: 'symbol-click', symbol: info.pkg + '::' + name, source: 'class-graph'}));
+    ws.send(JSON.stringify({type: 'symbol-click', symbol: info.pkg + '::' + info.name, source: 'class-graph'}));
 
     // Request children list for selector popup (if not already expanded)
     if (!info.expanded) {
-      this._pendingParent = { name, pkg: info.pkg, x: mouseX, y: mouseY };
+      this._pendingParent = { name: info.name, pkg: info.pkg, x: mouseX, y: mouseY };
       ws.send(JSON.stringify({
         type: 'list-class-children',
-        className: name,
+        className: info.name,
         packageName: info.pkg,
         panelId: this._panelId
       }));
@@ -3628,12 +3633,13 @@ class GraphvizPanel {
     const children = msg.children || [];
     const parentName = msg['parent-name'] || msg.parentName;
     const parentPkg = msg['parent-package'] || msg.parentPackage;
+    const parentKey = parentPkg + '::' + parentName;
 
     // Hide selector if no children
     if (children.length === 0) {
       this._childSelector.style.display = 'none';
       // Mark as expanded (no children to show)
-      const info = this._nodes.get(parentName);
+      const info = this._nodes.get(parentKey);
       if (info) info.expanded = true;
       return;
     }
@@ -3647,7 +3653,7 @@ class GraphvizPanel {
     this._childSelector.innerHTML = '';
     children.forEach(([childName, childPkg]) => {
       // Skip if already in graph
-      if (this._nodes.has(childName)) return;
+      if (this._nodes.has(childPkg + '::' + childName)) return;
 
       const item = document.createElement('div');
       item.style.cssText = 'padding:6px 12px;cursor:pointer;white-space:nowrap;';
@@ -3664,10 +3670,11 @@ class GraphvizPanel {
         e.stopPropagation();
         this._childSelector.style.display = 'none';
         // Add just this child
-        this._focusNode = childName;
+        this._focusNode = childPkg + '::' + childName;
         ws.send(JSON.stringify({
           type: 'add-class-child',
           parentName: parentName,
+          parentPackage: parentPkg,
           childName: childName,
           childPackage: childPkg,
           panelId: this._panelId
@@ -3678,7 +3685,7 @@ class GraphvizPanel {
 
     // If all children already in graph, mark as expanded
     if (this._childSelector.children.length === 0) {
-      const info = this._nodes.get(parentName);
+      const info = this._nodes.get(parentKey);
       if (info) info.expanded = true;
       return;
     }
@@ -3708,18 +3715,21 @@ class GraphvizPanel {
       return;
     }
 
-    this._rootClass = msg['class-name'] || msg.className;
-    this._focusNode = this._rootClass;  // Center on root initially
     this._nodes.clear();
     this._edges.clear();
 
-    // Add nodes - format: [name, pkg, [slot1, slot2, ...]]
+    // Add nodes - format: [name, pkg, [slot1, slot2, ...]], each known by its key PKG::NAME
     (msg.nodes || []).forEach((nodeData) => {
       const name = nodeData[0];
       const pkg = nodeData[1];
       const slots = Array.isArray(nodeData[2]) ? nodeData[2] : [];
-      this._nodes.set(name, { pkg, slots, expanded: false });
+      this._nodes.set(pkg + '::' + name, { name, pkg, slots, expanded: false });
     });
+    // The root's key; an older ICL backend names only the class, so find it by name.
+    const className = msg['class-name'] || msg.className;
+    this._rootClass = msg.root ||
+      [...this._nodes.keys()].find((key) => this._nodes.get(key).name === className) || className;
+    this._focusNode = this._rootClass;  // Center on root initially
 
     // Add edges (from superclass to subclass in msg, stored as 'from->to')
     (msg.edges || []).forEach(([from, to]) => {
@@ -3747,8 +3757,9 @@ class GraphvizPanel {
     let changed = false;
 
     (msg.nodes || []).forEach(([name, pkg, slots]) => {
-      if (!this._nodes.has(name)) {
-        this._nodes.set(name, { pkg, slots: slots || [], expanded: false });
+      const key = pkg + '::' + name;
+      if (!this._nodes.has(key)) {
+        this._nodes.set(key, { name, pkg, slots: slots || [], expanded: false });
         changed = true;
       }
     });

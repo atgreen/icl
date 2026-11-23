@@ -160,8 +160,11 @@
       (format nil "~A::~A" package-name symbol-name)))
 
 (defun get-class-hierarchy (class-name package-name &key (depth 3))
-  "Get class hierarchy graph data for CLASS-NAME.
-   Returns (:nodes ((name pkg (slot-names...)) ...) :edges ((from to) ...))."
+  "Get class hierarchy graph data for CLASS-NAME: all its ancestors, up to T, and its
+   descendants DEPTH levels down.
+   Returns (:root key :nodes ((name pkg (slot-names...)) ...) :edges ((from-key to-key) ...)).
+   A class is known by its key, PKG::NAME: two classes may share a name, such as
+   TRIVIAL-GRAY-STREAMS:FUNDAMENTAL-STREAM and the SB-GRAY class it refines."
   (let ((sym-ref (format-symbol-ref package-name class-name)))
     (browser-log "get-class-hierarchy: class=~S pkg=~S sym-ref=~S"
                  class-name package-name sym-ref)
@@ -170,7 +173,10 @@
              "(let ((root (find-class '~A nil)))
                 (when root
                   (let ((nodes nil) (edges nil) (seen (make-hash-table)))
-                    (labels ((get-slot-names (class)
+                    (labels ((pkg (name) (let ((p (symbol-package name))) (if p (package-name p) \"#\")))
+                             (key (class) (let ((name (class-name class)))
+                                            (format nil \"~~A::~~A\" (pkg name) (symbol-name name))))
+                             (get-slot-names (class)
                                (handler-case
                                    (or (mapcar (lambda (slot)
                                                  (symbol-name (sb-mop:slot-definition-name slot)))
@@ -180,37 +186,36 @@
                              (add-node (class)
                                (let ((name (class-name class)))
                                  (push (list (symbol-name name)
-                                             (package-name (symbol-package name))
+                                             (pkg name)
                                              (get-slot-names class))
                                        nodes)))
-                             (walk-up (class d)
-                               (unless (or (gethash class seen) (< d 0))
+                             ;; Every ancestor, however far: a class's ancestry is short.
+                             (walk-up (class)
+                               (unless (gethash class seen)
                                  (setf (gethash class seen) t)
                                  (add-node class)
                                  (dolist (super (sb-mop:class-direct-superclasses class))
-                                   (push (list (symbol-name (class-name super))
-                                               (symbol-name (class-name class)))
-                                         edges)
-                                   (walk-up super (1- d)))))
+                                   (push (list (key super) (key class)) edges)
+                                   (walk-up super))))
                              (walk-down (class d)
                                (unless (or (gethash class seen) (< d 0))
                                  (setf (gethash class seen) t)
                                  (dolist (sub (sb-mop:class-direct-subclasses class))
                                    (add-node sub)
-                                   (push (list (symbol-name (class-name class))
-                                               (symbol-name (class-name sub)))
-                                         edges)
+                                   (push (list (key class) (key sub)) edges)
                                    (walk-down sub (1- d))))))
-                      (walk-up root ~D)
+                      (walk-up root)
                       (setf (gethash root seen) nil)
-                      (walk-down root ~D))
-                    (list :nodes (remove-duplicates nodes :test #'equal :key #'car)
-                          :edges (remove-duplicates edges :test #'equal)))))"
-             sym-ref depth depth))))
+                      (walk-down root ~D)
+                      (list :root (key root)
+                            :nodes (remove-duplicates nodes :test #'equal
+                                                            :key (lambda (node) (cons (first node) (second node))))
+                            :edges (remove-duplicates edges :test #'equal))))))"
+             sym-ref depth))))
 
 (defun get-class-children (class-name package-name)
   "Get direct subclasses and superclasses for CLASS-NAME.
-   Returns (:nodes ((name pkg slots) ...) :edges ((from to) ...)).
+   Returns (:nodes ((name pkg slots) ...) :edges ((from-key to-key) ...)), keys PKG::NAME.
    Includes both children (for expansion) and parents (for multiple inheritance)."
   (let ((sym-ref (format-symbol-ref package-name class-name)))
     (browser-log "get-class-children: class=~S pkg=~S sym-ref=~S"
@@ -219,34 +224,33 @@
      (format nil
              "(let ((root (find-class '~A nil)))
                 (when root
-                  (let ((nodes nil) (edges nil)
-                        (root-name (class-name root)))
+                  (let* ((nodes nil) (edges nil)
+                         (root-name (class-name root)))
+                   (flet ((pkg (name) (let ((p (symbol-package name))) (if p (package-name p) \"#\")))
+                          (key (name) (format nil \"~~A::~~A\" (let ((p (symbol-package name))) (if p (package-name p) \"#\")) (symbol-name name))))
                     ;; Add direct subclasses
                     (dolist (sub (sb-mop:class-direct-subclasses root))
                       (let ((sub-name (class-name sub)))
                         (push (list (symbol-name sub-name)
-                                    (package-name (symbol-package sub-name))
+                                    (pkg sub-name)
                                     (handler-case
                                         (mapcar (lambda (s) (symbol-name (sb-mop:slot-definition-name s)))
                                                 (sb-mop:class-direct-slots sub))
                                       (error () nil)))
                               nodes)
-                        (push (list (symbol-name root-name)
-                                    (symbol-name sub-name))
-                              edges)))
+                        (push (list (key root-name) (key sub-name)) edges)))
                     ;; Add direct superclasses (for multiple inheritance support)
                     (dolist (super (sb-mop:class-direct-superclasses root))
                       (let ((super-name (class-name super)))
                         (push (list (symbol-name super-name)
-                                    (package-name (symbol-package super-name))
+                                    (pkg super-name)
                                     (handler-case
                                         (mapcar (lambda (s) (symbol-name (sb-mop:slot-definition-name s)))
                                                 (sb-mop:class-direct-slots super))
                                       (error () nil)))
                               nodes)
-                        (push (list (symbol-name super-name)
-                                    (symbol-name root-name))
-                              edges)))
-                    (list :nodes (remove-duplicates nodes :test #'equal :key #'car)
-                          :edges (remove-duplicates edges :test #'equal)))))"
+                        (push (list (key super-name) (key root-name)) edges)))
+                    (list :nodes (remove-duplicates nodes :test #'equal
+                                                          :key (lambda (node) (cons (first node) (second node))))
+                          :edges (remove-duplicates edges :test #'equal))))))"
              sym-ref))))

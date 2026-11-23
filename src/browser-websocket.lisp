@@ -362,13 +362,14 @@
           ;; Add single child to graph
           ((string= type "add-class-child")
            (let ((parent-name (gethash "parentName" json))
+                 (parent-pkg (gethash "parentPackage" json))
                  (child-name (gethash "childName" json))
                  (child-pkg (gethash "childPackage" json))
                  (panel-id (gethash "panelId" json)))
              (when (and parent-name child-name)
                (bt:make-thread
                 (lambda ()
-                  (send-single-child client parent-name child-name child-pkg panel-id))
+                  (send-single-child client parent-name parent-pkg child-name child-pkg panel-id))
                 :name "add-child-handler"))))
 
           ;; Refresh hash-table data
@@ -711,6 +712,7 @@
             (ws-send client "class-graph"
                      :panel-id panel-id
                      :class-name class-name
+                     :root (getf data :root)
                      :nodes (getf data :nodes)
                      :edges (getf data :edges))
             (ws-send client "class-graph"
@@ -769,8 +771,9 @@
                :panel-id panel-id
                :error (format nil "~A" e)))))
 
-(defun send-single-child (client parent-name child-name child-pkg panel-id)
-  "Send a single child node and edge to the graph."
+(defun send-single-child (client parent-name parent-pkg child-name child-pkg panel-id)
+  "Send a single child node and edge to the graph; the edge names each class by its
+   key, PKG::NAME."
   (browser-log "send-single-child: parent=~S child=~S pkg=~S" parent-name child-name child-pkg)
   (handler-case
       (let* ((sym-ref (format-symbol-ref child-pkg child-name))
@@ -787,7 +790,8 @@
                  :panel-id panel-id
                  :class-name child-name
                  :nodes (list (list child-name child-pkg (or slots nil)))
-                 :edges (list (list parent-name child-name))))
+                 :edges (list (list (format nil "~A::~A" parent-pkg parent-name)
+                                    (format nil "~A::~A" child-pkg child-name)))))
     (error (e)
       (browser-log "send-single-child: ERROR ~A" e)
       (ws-send client "class-graph-expand"
