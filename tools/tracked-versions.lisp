@@ -12,7 +12,7 @@
 (defparameter *tracked-libraries*
   '(;; Dockview - panel layout system (v7 renamed the core package to "dockview")
     (:name "dockview"
-     :current-version "8.1.0"
+     :current-version "8.9.1"
      :npm-package "dockview"
      :notes "Dockable panel layout manager")
 
@@ -36,13 +36,13 @@
 
     ;; Vega-Lite - high-level Vega grammar
     (:name "vega-lite"
-     :current-version "6.4.3"
+     :current-version "6.5.0"
      :npm-package "vega-lite"
      :notes "Simplified Vega for common chart types")
 
     ;; Vega-Embed - embedding Vega visualizations
     (:name "vega-embed"
-     :current-version "7.1.0"
+     :current-version "7.4.0"
      :npm-package "vega-embed"
      :notes "Embedding helper for Vega/Vega-Lite")
 
@@ -54,7 +54,7 @@
 
     ;; Monaco Editor - code editor component
     (:name "monaco-editor"
-     :current-version "0.56.0"
+     :current-version "0.57.0"
      :npm-package "monaco-editor"
      :notes "Code editor for browser visualization")
 

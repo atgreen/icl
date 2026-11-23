@@ -538,8 +538,8 @@
   color: inherit;
 }
 .dv-tab-group-chip.dv-tab-group-chip--shifting {
-  will-change: margin-left;
-  transition: margin-left var(--dv-transition-duration, 200ms) ease-out;
+  will-change: margin-left, margin-top;
+  transition: margin-left var(--dv-transition-duration, 200ms) ease-out, margin-top var(--dv-transition-duration, 200ms) ease-out;
 }
 .dv-tab-group-chip.dv-tab-group-chip--dragging {
   width: 0 !important;
@@ -597,6 +597,13 @@
 
 .dv-tabs-container-vertical .dv-tab-group-chip {
   margin: 8px 0 8px 0;
+}
+.dv-tabs-container-vertical .dv-tab-group-chip.dv-tab-group-chip--dragging {
+  height: 0 !important;
+  min-height: 0 !important;
+  width: auto !important;
+  min-width: initial !important;
+  transition: height var(--dv-transition-duration, 200ms) ease-out, padding var(--dv-transition-duration, 200ms) ease-out, margin var(--dv-transition-duration, 200ms) ease-out, opacity var(--dv-transition-duration, 200ms) ease-out;
 }
 .dv-tabs-container-vertical .dv-tab {
   padding: 0.5rem 0.25rem;
@@ -957,6 +964,23 @@
   box-shadow: 0 0 6px var(--dv-edge-dock-indicator-color);
 }
 
+.dv-edge-drop-strip {
+  position: absolute;
+  z-index: var(--dv-overlay-z-index, 999);
+}
+.dv-edge-drop-strip--top, .dv-edge-drop-strip--bottom {
+  height: var(--dv-edge-drop-strip-size, 8px);
+}
+.dv-edge-drop-strip--left, .dv-edge-drop-strip--right {
+  width: var(--dv-edge-drop-strip-size, 8px);
+}
+.dv-edge-drop-strip--bottom {
+  transform: translateY(-100%);
+}
+.dv-edge-drop-strip--right {
+  transform: translateX(-100%);
+}
+
 .dv-edge-peek-header {
   display: flex;
   align-items: center;
@@ -1241,7 +1265,7 @@
   background-color: transparent !important;
 }
 .dv-pane-container .dv-view:not(:first-child) .dv-pane > .dv-pane-header {
-  border-top: 1px solid var(--dv-paneview-header-border-color);
+  border-top: 1px solid var(--dv-paneview-header-border-color, var(--dv-separator-border));
 }
 .dv-pane-container .dv-view .dv-default-header {
   background-color: var(--dv-group-view-background-color);
@@ -1499,6 +1523,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -1545,6 +1570,7 @@
   transition: none;
 }
 .dockview-theme-dark {
+  color-scheme: dark;
   --dv-group-view-background-color: #1e1e1e;
   --dv-tabs-and-actions-container-background-color: #252526;
   --dv-activegroup-visiblepanel-tab-background-color: #1e1e1e;
@@ -1567,6 +1593,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -1613,6 +1640,7 @@
   transition: none;
 }
 .dockview-theme-light {
+  color-scheme: light;
   --dv-group-view-background-color: white;
   --dv-tabs-and-actions-container-background-color: #f3f3f3;
   --dv-activegroup-visiblepanel-tab-background-color: white;
@@ -1639,6 +1667,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -1685,6 +1714,7 @@
   transition: none;
 }
 .dockview-theme-vs {
+  color-scheme: dark;
   --dv-group-view-background-color: #1e1e1e;
   --dv-tabs-and-actions-container-background-color: #252526;
   --dv-activegroup-visiblepanel-tab-background-color: #1e1e1e;
@@ -1736,6 +1766,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -1782,6 +1813,7 @@
   transition: none;
 }
 .dockview-theme-abyss {
+  color-scheme: dark;
   --dv-color-abyss-dark: #000c18;
   --dv-color-abyss: #10192c;
   --dv-color-abyss-light: #1c1c2a;
@@ -1818,6 +1850,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -1864,6 +1897,7 @@
   transition: none;
 }
 .dockview-theme-dracula {
+  color-scheme: dark;
   --dv-group-view-background-color: #282a36;
   --dv-tabs-and-actions-container-background-color: #191a21;
   --dv-activegroup-visiblepanel-tab-background-color: #282a36;
@@ -1913,6 +1947,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -1959,6 +1994,7 @@
   transition: none;
 }
 .dockview-theme-nord {
+  color-scheme: dark;
   --dv-color-nord-polar-0: #2e3440;
   --dv-color-nord-polar-1: #3b4252;
   --dv-color-nord-polar-2: #434c5e;
@@ -1988,6 +2024,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: #8a9bbf;
   --dv-inactivegroup-hiddenpanel-tab-color: #5e6f8e;
   --dv-separator-border: var(--dv-color-nord-polar-3);
+  --dv-paneview-header-border-color: var(--dv-color-nord-polar-3);
   --dv-paneview-active-outline-color: var(--dv-color-nord-frost);
   --dv-active-sash-color: var(--dv-color-nord-frost);
   --dv-scrollbar-background-color: rgba(76, 86, 106, 0.5);
@@ -2026,6 +2063,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2160,6 +2198,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-nord-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-nord-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-nord-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-nord-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-nord-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-nord-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-nord-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -2186,6 +2242,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-nord-spaced {
+  color-scheme: dark;
   --dv-color-nord-polar-0: #2e3440;
   --dv-color-nord-polar-1: #3b4252;
   --dv-color-nord-polar-2: #434c5e;
@@ -2215,6 +2272,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: #8a9bbf;
   --dv-inactivegroup-hiddenpanel-tab-color: #5e6f8e;
   --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--dv-color-nord-polar-3);
   --dv-paneview-active-outline-color: var(--dv-color-nord-frost);
   --dv-active-sash-color: var(--dv-color-nord-frost);
   --dv-scrollbar-background-color: rgba(76, 86, 106, 0.5);
@@ -2228,6 +2286,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2274,6 +2333,7 @@
   transition: none;
 }
 .dockview-theme-catppuccin-mocha {
+  color-scheme: dark;
   --dv-color-mocha-crust: #11111b;
   --dv-color-mocha-mantle: #181825;
   --dv-color-mocha-base: #1e1e2e;
@@ -2305,6 +2365,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--dv-color-mocha-subtext0);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(166, 173, 200, 0.5);
   --dv-separator-border: var(--dv-color-mocha-surface1);
+  --dv-paneview-header-border-color: var(--dv-color-mocha-surface1);
   --dv-paneview-active-outline-color: var(--dv-color-mocha-mauve);
   --dv-active-sash-color: var(--dv-color-mocha-mauve);
   --dv-scrollbar-background-color: rgba(49, 50, 68, 0.8);
@@ -2343,6 +2404,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2477,6 +2539,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-catppuccin-mocha-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -2503,6 +2583,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-catppuccin-mocha-spaced {
+  color-scheme: dark;
   --dv-color-mocha-crust: #11111b;
   --dv-color-mocha-mantle: #181825;
   --dv-color-mocha-base: #1e1e2e;
@@ -2534,6 +2615,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--dv-color-mocha-subtext0);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(166, 173, 200, 0.5);
   --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--dv-color-mocha-surface1);
   --dv-paneview-active-outline-color: var(--dv-color-mocha-mauve);
   --dv-active-sash-color: var(--dv-color-mocha-mauve);
   --dv-scrollbar-background-color: rgba(49, 50, 68, 0.8);
@@ -2547,6 +2629,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2593,6 +2676,7 @@
   transition: none;
 }
 .dockview-theme-monokai {
+  color-scheme: dark;
   --dv-color-monokai-bg: #272822;
   --dv-color-monokai-bg-light: #3e3d32;
   --dv-color-monokai-comment: #75715e;
@@ -2615,6 +2699,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: rgba(248, 248, 242, 0.5);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(117, 113, 94, 0.5);
   --dv-separator-border: var(--dv-color-monokai-bg-light);
+  --dv-paneview-header-border-color: var(--dv-color-monokai-bg-light);
   --dv-paneview-active-outline-color: var(--dv-color-monokai-green);
   --dv-active-sash-color: var(--dv-color-monokai-green);
   --dv-scrollbar-background-color: rgba(117, 113, 94, 0.5);
@@ -2653,6 +2738,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2699,6 +2785,7 @@
   transition: none;
 }
 .dockview-theme-solarized-light {
+  color-scheme: light;
   --dv-color-sol-base3: #fdf6e3;
   --dv-color-sol-base2: #eee8d5;
   --dv-color-sol-base1: #93a1a1;
@@ -2720,6 +2807,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--dv-color-sol-base1);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(147, 161, 161, 0.6);
   --dv-separator-border: var(--dv-color-sol-base2);
+  --dv-paneview-header-border-color: var(--dv-color-sol-base2);
   --dv-paneview-active-outline-color: var(--dv-color-sol-blue);
   --dv-active-sash-color: var(--dv-color-sol-blue);
   --dv-scrollbar-background-color: rgba(101, 123, 131, 0.25);
@@ -2736,6 +2824,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2870,6 +2959,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-solarized-light-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-solarized-light-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-solarized-light-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-solarized-light-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-solarized-light-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-solarized-light-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-solarized-light-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -2896,6 +3003,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-solarized-light-spaced {
+  color-scheme: light;
   --dv-color-sol-base3: #fdf6e3;
   --dv-color-sol-base2: #eee8d5;
   --dv-color-sol-base1: #93a1a1;
@@ -2918,6 +3026,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--dv-color-sol-base1);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(147, 161, 161, 0.6);
   --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--dv-color-sol-base2);
   --dv-paneview-active-outline-color: var(--dv-color-sol-blue);
   --dv-active-sash-color: var(--dv-color-sol-blue);
   --dv-floating-box-shadow:
@@ -2934,6 +3043,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -2980,6 +3090,7 @@
   transition: none;
 }
 .dockview-theme-github-dark {
+  color-scheme: dark;
   --dv-color-gh-canvas-default: #0d1117;
   --dv-color-gh-canvas-subtle: #161b22;
   --dv-color-gh-canvas-inset: #010409;
@@ -3010,6 +3121,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--dv-color-gh-fg-subtle);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(110, 118, 129, 0.5);
   --dv-separator-border: var(--dv-color-gh-border);
+  --dv-paneview-header-border-color: var(--dv-color-gh-border);
   --dv-paneview-active-outline-color: var(--dv-color-gh-accent);
   --dv-active-sash-color: var(--dv-color-gh-accent);
   --dv-scrollbar-background-color: rgba(48, 54, 61, 0.7);
@@ -3023,6 +3135,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -3157,6 +3270,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-github-dark-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-github-dark-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-github-dark-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-github-dark-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-github-dark-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-github-dark-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-github-dark-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -3183,6 +3314,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-github-dark-spaced {
+  color-scheme: dark;
   --dv-color-gh-canvas-default: #0d1117;
   --dv-color-gh-canvas-subtle: #161b22;
   --dv-color-gh-canvas-inset: #010409;
@@ -3214,6 +3346,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--dv-color-gh-fg-subtle);
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(110, 118, 129, 0.5);
   --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--dv-color-gh-border);
   --dv-paneview-active-outline-color: var(--dv-color-gh-accent);
   --dv-active-sash-color: var(--dv-color-gh-accent);
   --dv-scrollbar-background-color: rgba(48, 54, 61, 0.7);
@@ -3227,6 +3360,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -3273,6 +3407,7 @@
   transition: none;
 }
 .dockview-theme-github-light {
+  color-scheme: light;
   --dv-color-gh-light-canvas-default: #ffffff;
   --dv-color-gh-light-canvas-subtle: #f6f8fa;
   --dv-color-gh-light-canvas-inset: #f0f6ff;
@@ -3306,6 +3441,7 @@
   );
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(110, 118, 129, 0.4);
   --dv-separator-border: var(--dv-color-gh-light-border);
+  --dv-paneview-header-border-color: var(--dv-color-gh-light-border);
   --dv-paneview-active-outline-color: var(--dv-color-gh-light-accent);
   --dv-active-sash-color: var(--dv-color-gh-light-accent);
   --dv-scrollbar-background-color: rgba(208, 215, 222, 0.5);
@@ -3322,6 +3458,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -3456,6 +3593,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-github-light-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-github-light-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-github-light-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-github-light-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-github-light-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-github-light-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-github-light-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -3482,6 +3637,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-github-light-spaced {
+  color-scheme: light;
   --dv-color-gh-light-canvas-default: #ffffff;
   --dv-color-gh-light-canvas-subtle: #f6f8fa;
   --dv-color-gh-light-border: #d0d7de;
@@ -3515,6 +3671,7 @@
   );
   --dv-inactivegroup-hiddenpanel-tab-color: rgba(110, 118, 129, 0.4);
   --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--dv-color-gh-light-border);
   --dv-paneview-active-outline-color: var(--dv-color-gh-light-accent);
   --dv-active-sash-color: var(--dv-color-gh-light-accent);
   --dv-floating-box-shadow:
@@ -3531,6 +3688,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -3665,6 +3823,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-abyss-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-abyss-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-abyss-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-abyss-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-abyss-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-abyss-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-abyss-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -3691,6 +3867,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-abyss-spaced {
+  color-scheme: dark;
   --dv-color-abyss-dark: rgb(11, 6, 17);
   --dv-color-abyss: #16121f;
   --dv-color-abyss-light: #201d2b;
@@ -3737,6 +3914,7 @@
   --dv-drag-over-background-color: rgba(83, 89, 93, 0.5);
   --dv-drag-over-border-color: transparent;
   --dv-edge-dock-indicator-color: rgba(56, 139, 253, 0.9);
+  --dv-edge-drop-strip-size: 8px;
   --dv-tabs-container-scrollbar-color: #888;
   --dv-icon-hover-background-color: rgba(90, 93, 94, 0.31);
   --dv-floating-box-shadow:
@@ -3871,6 +4049,24 @@
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
 }
+.dockview-theme-light-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-theme-light-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-theme-light-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-theme-light-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-light-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-theme-light-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
 .dockview-theme-light-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
   border-top-right-radius: var(--dv-border-radius);
@@ -3897,6 +4093,7 @@
   border-top-right-radius: var(--dv-border-radius);
 }
 .dockview-theme-light-spaced {
+  color-scheme: light;
   --dv-drag-over-background-color: '';
   --dv-group-view-background-color: #f6f5f9;
   --dv-tabs-and-actions-container-background-color: white;
@@ -4013,6 +4210,24 @@
   background-color: var(--dv-tabs-and-actions-container-background-color);
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
+}
+.dockview-spaced .dv-groupview.dv-groupview-header-bottom > .dv-tabs-and-actions-container {
+  border-radius: 0 0 var(--dv-border-radius) var(--dv-border-radius);
+}
+.dockview-spaced .dv-groupview.dv-groupview-header-bottom > .dv-content-container {
+  border-radius: var(--dv-border-radius) var(--dv-border-radius) 0 0;
+}
+.dockview-spaced .dv-groupview.dv-groupview-header-left > .dv-tabs-and-actions-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
+}
+.dockview-spaced .dv-groupview.dv-groupview-header-left > .dv-content-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-spaced .dv-groupview.dv-groupview-header-right > .dv-tabs-and-actions-container {
+  border-radius: 0 var(--dv-border-radius) var(--dv-border-radius) 0;
+}
+.dockview-spaced .dv-groupview.dv-groupview-header-right > .dv-content-container {
+  border-radius: var(--dv-border-radius) 0 0 var(--dv-border-radius);
 }
 .dockview-spaced .dv-groupview.dv-edge-tool-window .dv-edge-peek-header {
   border-top-left-radius: var(--dv-border-radius);
