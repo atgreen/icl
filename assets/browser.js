@@ -1989,6 +1989,23 @@ function openInspector(form, pkg) {
   ws.send(JSON.stringify({type: 'inspect', form: form, panelId: panelId, package: pkg}));
 }
 
+// Place TOOLTIP, already showing, near the pointer at (X, Y) and wholly inside the
+// window: below and right of it, or above or left of it when that would run off an edge.
+function placeTooltip(tooltip, x, y) {
+  const gap = 10, margin = 8;
+  tooltip.style.boxSizing = 'border-box';  // so the cap includes padding and border
+  tooltip.style.maxHeight = (window.innerHeight - 2 * margin) + 'px';
+  tooltip.style.overflow = 'hidden';
+  const width = tooltip.offsetWidth, height = tooltip.offsetHeight;
+  let left = x + gap, top = y + gap;
+  if (left + width > window.innerWidth - margin) left = x - gap - width;
+  if (top + height > window.innerHeight - margin) top = y - gap - height;
+  left = Math.max(margin, Math.min(left, window.innerWidth - margin - width));
+  top = Math.max(margin, Math.min(top, window.innerHeight - margin - height));
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = top + 'px';
+}
+
 // Lisp symbol constituents, as the terminal highlighter's CONSTITUENT-CHAR-P has them:
 // anything but whitespace and ( ) ' ` , " ; |, so gr8s.controllers:foo is one symbol.
 const isSymbolChar = (c) => c !== undefined && !/[\s()'`,";|]/.test(c);
@@ -3548,14 +3565,12 @@ class GraphvizPanel {
             }
             this._tooltip.innerHTML = content;
             this._tooltip.style.display = 'block';
-            this._tooltip.style.left = (e.clientX + 10) + 'px';
-            this._tooltip.style.top = (e.clientY + 10) + 'px';
+            placeTooltip(this._tooltip, e.clientX, e.clientY);
           });
 
           g.addEventListener('mousemove', (e) => {
             if (this._tooltip.style.display === 'block') {
-              this._tooltip.style.left = (e.clientX + 10) + 'px';
-              this._tooltip.style.top = (e.clientY + 10) + 'px';
+              placeTooltip(this._tooltip, e.clientX, e.clientY);
             }
           });
 
