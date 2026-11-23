@@ -1318,7 +1318,7 @@ Examples:
                                                                         collect (if (numberp v)
                                                                                     v
                                                                                     (princ-to-string v))))))))
-                                        (list :unknown (type-of obj) (princ-to-string obj))))
+                                        (list :unknown (princ-to-string (type-of obj)) (princ-to-string obj))))
                                    ((symbolp obj)
                                     (if (find-class obj nil)
                                         (list :class
@@ -1453,9 +1453,11 @@ Examples:
                                       (list :image-bytes mime (icl-runtime:usb8-array-to-base64-string obj))))
                                    ;; Tabular value (list of plists / alists) -> columns + rows
                                    (table-desc table-desc)
-                                   (t (list :unknown (type-of obj) (princ-to-string obj))))))))"
+                                   (t (list :unknown (princ-to-string (type-of obj)) (princ-to-string obj))))))))"
   "Backend query that evaluates ~A and returns a classified
-   (:type ...) visualization descriptor for it.")
+   (:type ...) visualization descriptor for it. ICL reads the descriptor back, so it
+   holds only keywords, strings and numbers: a symbol of a package only the backend
+   has, such as an application's type, would not read.")
 
 (defun classify-viz-value (expr-string)
   "Evaluate EXPR-STRING in the backend and classify it for visualization.
