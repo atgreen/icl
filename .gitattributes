@@ -1,0 +1,5 @@
+# Lisp sources keep LF line endings everywhere: a FORMAT string with ~ at the end
+# of a line (the ~<newline> directive) would otherwise end in ~<CR> on a Windows
+# checkout, which SBCL rejects as an unknown directive.
+*.lisp text eol=lf
+*.asd text eol=lf
