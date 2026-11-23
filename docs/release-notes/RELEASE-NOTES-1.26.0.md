@@ -128,7 +128,6 @@ applications' own packages.
 - Windows builds again: Lisp sources are now checked out with LF line endings
   on every platform. With CRLF, a `FORMAT` string ending a line in `~` failed to
   compile.
-
 - The Makefile and the `embedded-assets` ASDF component now treat
   `assets/*.js`/`*.css` as build inputs, so editing a browser asset (e.g.
   `notebook.js`) re-embeds it on the next `make` — previously a JS-only edit was
