@@ -219,7 +219,13 @@
       (icl::buffer-insert-char buf c))
     (icl::handle-mouse buf '(:mouse :press :left 4 1))
     (icl::handle-mouse buf '(:mouse :drag :left 7 1))
-    (icl::handle-mouse buf '(:mouse :release :left 7 1))
+    ;; Releasing copies the selection to the clipboard: keep that from running
+    ;; wl-copy or xclip, which would replace the clipboard of whoever runs the
+    ;; tests, and can wait for a clipboard owner that never comes.
+    (let ((clipboard-command (fdefinition 'icl::%clipboard-command)))
+      (setf (fdefinition 'icl::%clipboard-command) (constantly nil))
+      (unwind-protect (icl::handle-mouse buf '(:mouse :release :left 7 1))
+        (setf (fdefinition 'icl::%clipboard-command) clipboard-command)))
     (is (icl::buffer-has-selection-p buf))
     (is (string= "hel" (icl::buffer-selection-text buf)))))
 
