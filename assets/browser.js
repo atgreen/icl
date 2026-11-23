@@ -1989,8 +1989,9 @@ function openInspector(form, pkg) {
   ws.send(JSON.stringify({type: 'inspect', form: form, panelId: panelId, package: pkg}));
 }
 
-// Lisp symbol characters: alphanumeric, -, *, +, /, <, >, =, ?, !, $, %, &, :
-const isSymbolChar = (c) => /[a-zA-Z0-9\-*+/<>=?!$%&:_]/.test(c);
+// Lisp symbol constituents, as the terminal highlighter's CONSTITUENT-CHAR-P has them:
+// anything but whitespace and ( ) ' ` , " ; |, so gr8s.controllers:foo is one symbol.
+const isSymbolChar = (c) => c !== undefined && !/[\s()'`,";|]/.test(c);
 
 // Extract Lisp symbol at position in terminal buffer
 function getSymbolAtPosition(col, row) {
