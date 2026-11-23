@@ -922,37 +922,23 @@ Example: ,dis mapcar"
       (format *error-output* "~&Error: ~A~%" e))))
 
 (defun slynk-disassemble (name)
-  "Disassemble function NAME via Slynk.
-Accepts both symbol names (foo) and function designators (#'foo)."
+  "Disassemble NAME via Slynk: a symbol (foo, 'foo) or a form that evaluates to a
+function (#'foo, (lambda ...)). The backend reads NAME, in the REPL's package: its
+packages, such as an application's, need not exist in ICL."
   (unless *slynk-connected-p*
     (error "Not connected to Slynk server"))
-  ;; Read the form in user's current package context
-  (let* ((form (let ((*package* (or *icl-package* *package*)))
-                 (read-from-string (string-upcase name))))
-         ;; Build the disassemble form based on input type
-         (disasm-arg
-           (cond
-             ;; Function designator like #'foo - use directly
-             ((and (listp form) (eq (first form) 'function))
-              form)
-             ;; Symbol - quote it and resolve package
-             ((symbolp form)
-              (let ((full-name (if (symbol-package form)
-                                   (format nil "~A::~A"
-                                           (package-name (symbol-package form))
-                                           (symbol-name form))
-                                   (symbol-name form))))
-                `(cl:quote ,(read-from-string full-name))))
-             ;; Lambda or other form - use directly
-             (t form))))
-    ;; Wrap in handler-case to catch errors for undefined/non-function symbols
-    (slynk-client:slime-eval
-     `(cl:handler-case
-          (cl:with-output-to-string (cl:*standard-output*)
-            (cl:disassemble ,disasm-arg))
+  (slynk-client:slime-eval
+   `(cl:let ((cl:*package* (cl:or (cl:find-package ,*icl-package-name*) cl:*package*)))
+      (cl:handler-case
+          (cl:let ((cl-user::form (cl:read-from-string ,name)))
+            (cl:with-output-to-string (cl:*standard-output*)
+              ;; 'foo and #'foo evaluate to what DISASSEMBLE takes, as does a lambda.
+              (cl:disassemble (cl:if (cl:symbolp cl-user::form)
+                                     cl-user::form
+                                     (cl:eval cl-user::form)))))
         (cl:error (cl-user::e)
-          (cl:format cl:nil "Error: ~A" cl-user::e)))
-     *slynk-connection*)))
+          (cl:format cl:nil "Error: ~A" cl-user::e))))
+   *slynk-connection*))
 
 ;;; ─────────────────────────────────────────────────────────────────────────────
 ;;; Profiling Commands
