@@ -5,7 +5,9 @@
 Feature release: `--notebook` scaffolds a notebook straight from a data file
 (extensible per extension), and a new `,sql` command queries data with DuckDB —
 files, session data frames, and attached SQLite/Postgres/DuckDB databases,
-joinable in one query.
+joinable in one query. The browser interface can be embedded in a local page
+(`--embed-origin`), and `,dis`, `,viz` and the class graph work with
+applications' own packages.
 
 ## New Features
 
@@ -94,6 +96,32 @@ joinable in one query.
 - Highlighting uses the **ICL editor's own theme colors** (Lisp *and* SQL) and
   font, so the resting and editing views match. `,sql` cells are highlighted as
   SQL. No Monaco dependency — a self-contained tokenizer.
+
+### Embedding the browser interface
+
+- `--embed-origin ORIGIN` (repeatable) lets a page at that loopback origin show
+  ICL's browser interface in a frame, such as a local dashboard that hosts ICL
+  in a tab (`icl -b --no-open --embed-origin http://127.0.0.1:8080`). ICL
+  otherwise allows only itself to frame the page. Only `127.0.0.1`,
+  `localhost` and `[::1]` origins are accepted, so no remote site can be let
+  frame a REPL.
+
+## Bug Fixes
+
+- `,dis` works on symbols of packages only the backend has, such as an
+  application's (`,dis 'myapp.server:main`). ICL read the name in its own image
+  and failed with "Package ... does not exist"; the backend now reads it.
+- `,viz` of an object of an application's type says it doesn't know how to
+  visualize it instead of failing: the type no longer comes back as a symbol
+  ICL can't read.
+- Class graph: two classes with one name (`TRIVIAL-GRAY-STREAMS:FUNDAMENTAL-STREAM`
+  and the `SB-GRAY` class it refines) are separate nodes, labelled with their
+  packages, instead of one node with an edge to itself; and the graph shows every
+  ancestor, up to `T`.
+- Class graph: a node's slot tooltip stays inside the window near the bottom or
+  right edge.
+- Browser REPL: the symbol under the cursor includes `.` and every other symbol
+  constituent, so `my.package:sym` is one symbol.
 
 ## Build
 
