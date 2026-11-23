@@ -703,7 +703,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build repodata
-        run: createrepo_c /tmp/rpms
+        # gzip, which the next step rewrites: createrepo_c 1.x defaults to zstd.
+        run: createrepo_c --general-compress-type=gz /tmp/rpms
 
       - name: Rewrite package locations to release asset URLs
         run: |
