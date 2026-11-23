@@ -553,7 +553,9 @@ jobs:
 
   build-macos-amd64:
     needs: [fetch-deps, extract-version]
-    runs-on: macos-14
+    # An Intel runner: the build is native, so an Apple-silicon runner (macos-14,
+    # macos-latest) would package an arm64 binary as darwin-amd64.
+    runs-on: macos-15-intel
     env:
       VERSION: ${{ needs.extract-version.outputs.version }}
     steps:
@@ -584,6 +586,11 @@ jobs:
             echo "::error::Version string contains 'dirty': $VERSION"
             exit 1
           fi
+
+      - name: Verify the binary is x86-64
+        run: |
+          file icl
+          file icl | grep -q x86_64 || { echo "::error::darwin-amd64 build is not x86-64"; exit 1; }
 
       - name: Package macOS binary
         run: |
