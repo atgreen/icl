@@ -185,7 +185,7 @@ Download from [GitHub Releases](https://github.com/atgreen/icl/releases):
 | Platform | Formats |
 |----------|---------|
 | Linux | RPM, DEB, tarball |
-| macOS | tarball (arm64, amd64) |
+| macOS | tarball (Apple silicon, arm64) |
 | Windows | ZIP, EXE installer, MSI installer, Chocolatey |
 
 [Roswell](https://roswell.github.io/) users can install with:

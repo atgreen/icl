@@ -551,69 +551,11 @@ jobs:
           name: darwin-arm64-package
           path: ./*.tar.gz
 
-  build-macos-amd64:
-    needs: [fetch-deps, extract-version]
-    # An Intel runner: the build is native, so an Apple-silicon runner (macos-14,
-    # macos-latest) would package an arm64 binary as darwin-amd64.
-    runs-on: macos-15-intel
-    env:
-      VERSION: ${{ needs.extract-version.outputs.version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Download ocicl dependencies
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ocicl-deps
-          path: ocicl
-
-      - name: Remove .git to prevent dirty version detection
-        run: rm -rf .git
-
-      - name: Install dependencies
-        run: |
-          brew install sbcl libfixposix
-
-      - name: Build
-        run: make
-
-      - name: Verify version is not dirty
-        run: |
-          VERSION=$(./icl --version 2>&1 || true)
-          echo "icl version: $VERSION"
-          if echo "$VERSION" | grep -qi dirty; then
-            echo "::error::Version string contains 'dirty': $VERSION"
-            exit 1
-          fi
-
-      - name: Verify the binary is x86-64
-        run: |
-          file icl
-          file icl | grep -q x86_64 || { echo "::error::darwin-amd64 build is not x86-64"; exit 1; }
-
-      - name: Package macOS binary
-        run: |
-          mkdir -p dist
-          cp icl dist/
-          cp README.md LICENSE assets/OPEN-SOURCE-NOTICES.txt dist/
-          # Include slynk for backend support
-          cp -r ocicl/sly-*/slynk dist/
-          # Include bundled ASDF (for Lisps that don't bundle it)
-          cp -r 3rd-party dist/
-          cd dist && tar czf ../icl-${VERSION}-darwin-amd64.tar.gz *
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: darwin-amd64-package
-          path: ./*.tar.gz
-
   # ========================================
   # Sign release tarballs with Cosign
   # ========================================
   sign-artifacts:
-    needs: [build-linux-tarball, build-macos-arm64, build-macos-amd64, extract-version]
+    needs: [build-linux-tarball, build-macos-arm64, extract-version]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -630,12 +572,6 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: darwin-arm64-package
-          path: ./artifacts
-
-      - name: Download macOS AMD64 tarball
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: darwin-amd64-package
           path: ./artifacts
 
       - name: Install Cosign
@@ -658,7 +594,7 @@ jobs:
   # Generate SLSA Level 3 provenance
   # ========================================
   generate-provenance-subjects:
-    needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-macos-arm64, build-macos-amd64, extract-version]
+    needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-macos-arm64, extract-version]
     runs-on: ubuntu-latest
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
@@ -696,7 +632,7 @@ jobs:
   release:
     # Publish only for real tag pushes; manual dry-runs build but don't release.
     if: ${{ github.event_name == 'push' }}
-    needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-chocolatey, build-macos-arm64, build-macos-amd64, sign-artifacts, slsa-provenance, extract-version]
+    needs: [build-rpm, build-deb, build-linux-tarball, build-windows, build-chocolatey, build-macos-arm64, sign-artifacts, slsa-provenance, extract-version]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -736,7 +672,6 @@ jobs:
             artifacts/windows-package/*.msi
             artifacts/chocolatey-package/*.nupkg
             artifacts/darwin-arm64-package/*.tar.gz
-            artifacts/darwin-amd64-package/*.tar.gz
             artifacts/cosign-bundles/*.bundle
             artifacts/sbom/icl-sbom.json
             checksums.sha256

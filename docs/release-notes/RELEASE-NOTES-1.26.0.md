@@ -133,6 +133,11 @@ applications' own packages.
   `notebook.js`) re-embeds it on the next `make` — previously a JS-only edit was
   silently missed.
 
+## Breaking Changes
+
+- No more macOS amd64 (Intel) tarball: macOS releases are Apple silicon
+  (arm64) only. The 1.25.x `darwin-amd64` tarball held an arm64 binary anyway.
+
 ## Dependencies
 
 - Browser components: dockview 8.9.1, Vega-Lite 6.5.0, Vega-Embed 7.4.0 and
