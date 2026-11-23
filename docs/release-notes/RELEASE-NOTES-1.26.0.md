@@ -125,10 +125,22 @@ applications' own packages.
 
 ## Build
 
+- Windows builds again: Lisp sources are now checked out with LF line endings
+  on every platform. With CRLF, a `FORMAT` string ending a line in `~` failed to
+  compile.
+
 - The Makefile and the `embedded-assets` ASDF component now treat
   `assets/*.js`/`*.css` as build inputs, so editing a browser asset (e.g.
   `notebook.js`) re-embeds it on the next `make` — previously a JS-only edit was
   silently missed.
+
+## Dependencies
+
+- Browser components: dockview 8.9.1, Vega-Lite 6.5.0, Vega-Embed 7.4.0 and
+  Monaco 0.57.0. Mermaid stays at 11.16.1.
+- Lisp dependencies brought to their latest ocicl versions: chipz, cl-cancel,
+  float-features, idna, ironclad, pure-tls, serapeum, slynk, trivial-garbage,
+  trivial-indent and tuition.
 
 ## Public API
 
