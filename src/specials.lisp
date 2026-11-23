@@ -95,6 +95,10 @@
 (defvar *mouse-tracking-enabled* nil
   "T when mouse tracking sequences have been sent to the terminal.")
 
+(defvar *embed-origins* nil
+  "Loopback origins, besides ICL's own, whose pages may frame the browser
+   interface (--embed-origin), such as a local dashboard that shows ICL in a tab.")
+
 (defvar *unsafe-visualizations* nil
   "When T, disable security restrictions on visualizations (HTML, Mermaid, Vega).
    Allows JavaScript execution in custom visualize methods.

@@ -58,3 +58,25 @@
       ;; A dotted tail here would make getf signal "malformed property list"
       (is (string= "test-lisp" (getf (rest entry) :program)))
       (is (string= "--eval" (getf (rest entry) :eval-arg))))))
+
+;;; --embed-origin: another loopback page may frame the browser interface
+
+(test embed-origin-accepts-only-loopback-origins
+  "Only a loopback page, such as a local dashboard, may be named."
+  (is-true (icl::valid-embed-origin-p "http://127.0.0.1:8080"))
+  (is-true (icl::valid-embed-origin-p "http://localhost:3000"))
+  (is-true (icl::valid-embed-origin-p "https://[::1]:8443"))
+  (is-true (icl::valid-embed-origin-p "http://127.0.0.1"))
+  (is-false (icl::valid-embed-origin-p "http://example.com:8080"))
+  (is-false (icl::valid-embed-origin-p "http://127.0.0.1:8080/path"))
+  (is-false (icl::valid-embed-origin-p "http://127.0.0.1.evil.example"))
+  (is-false (icl::valid-embed-origin-p "*"))
+  (is-false (icl::valid-embed-origin-p "http://127.0.0.1:8080 https://evil.example")))
+
+(test browser-policy-frames-only-self-unless-embedded
+  "frame-ancestors names ICL itself, and each embed origin."
+  (let ((icl::*embed-origins* nil))
+    (is (search "frame-ancestors 'self';" (icl::browser-content-security-policy))))
+  (let ((icl::*embed-origins* '("http://127.0.0.1:8080" "http://localhost:9090")))
+    (is (search "frame-ancestors 'self' http://127.0.0.1:8080 http://localhost:9090;"
+                (icl::browser-content-security-policy)))))

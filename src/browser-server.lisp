@@ -166,22 +166,35 @@
             (setf (hunchentoot:return-code*) 404)
             "Profile not found")))))
 
+(defun valid-embed-origin-p (origin)
+  "True when ORIGIN is a loopback origin, scheme://host[:port] with host
+   127.0.0.1, localhost or [::1]: only a page on this machine may frame ICL."
+  (and (stringp origin)
+       (cl-ppcre:scan "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:[0-9]{1,5})?$" origin)
+       t))
+
+(defun browser-content-security-policy ()
+  "The Content-Security-Policy for every response:
+   - 'self' allows resources from same origin
+   - 'unsafe-inline' needed for inline styles (Dockview, Vega, xterm.js)
+   - 'unsafe-eval' needed for Vega expression evaluation (sandboxed by Vega)
+   - blob: needed for Vega image export
+   - data: needed for embedded images and Monaco's embedded codicon font
+   - api.github.com needed for \"Check for Updates\" feature
+   - cdn.jsdelivr.net needed for Monaco editor (coverage panel)
+   - frame-ancestors: ICL itself (the flame graph panel), and each *EMBED-ORIGINS*"
+  (format nil "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'~{ ~A~}; worker-src 'self' blob: https://cdn.jsdelivr.net;"
+          *embed-origins*))
+
 (defun set-security-headers ()
   "Set security headers for HTTP responses.
    Content-Security-Policy restricts resource loading to prevent XSS.
    Other headers provide defense-in-depth."
-  ;; Content Security Policy - defense in depth against XSS
-  ;; - 'self' allows resources from same origin
-  ;; - 'unsafe-inline' needed for inline styles (Dockview, Vega, xterm.js)
-  ;; - 'unsafe-eval' needed for Vega expression evaluation (sandboxed by Vega)
-  ;; - blob: needed for Vega image export
-  ;; - data: needed for embedded images and Monaco's embedded codicon font
-  ;; - api.github.com needed for "Check for Updates" feature
-  ;; - cdn.jsdelivr.net needed for Monaco editor (coverage panel)
-  (setf (hunchentoot:header-out :content-security-policy)
-        "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws://127.0.0.1:* wss://127.0.0.1:* https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'; worker-src 'self' blob: https://cdn.jsdelivr.net;")
-  ;; Allow same-origin framing (needed for flame graph panel)
-  (setf (hunchentoot:header-out :x-frame-options) "SAMEORIGIN")
+  (setf (hunchentoot:header-out :content-security-policy) (browser-content-security-policy))
+  ;; Allow same-origin framing (needed for flame graph panel). X-Frame-Options
+  ;; can't name another origin, so with --embed-origin frame-ancestors alone decides.
+  (unless *embed-origins*
+    (setf (hunchentoot:header-out :x-frame-options) "SAMEORIGIN"))
   ;; Prevent MIME type sniffing
   (setf (hunchentoot:header-out :x-content-type-options) "nosniff")
   ;; Referrer policy - don't leak URLs

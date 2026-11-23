@@ -112,6 +112,14 @@
    :key :no-open
    :description "Don't automatically open browser (use with -b)"))
 
+(defun make-embed-origin-option ()
+  "Create --embed-origin option to let a loopback page frame the browser interface."
+  (clingon:make-option
+   :list
+   :long-name "embed-origin"
+   :key :embed-origin
+   :description "Let a page at this loopback origin (e.g. http://127.0.0.1:8080) show the browser interface in a frame; repeatable"))
+
 (defun make-notebook-option ()
   "Create --notebook option to start in a browser notebook."
   (clingon:make-option
@@ -313,6 +321,7 @@ declared with DEFVAR pick up the override. Returns the output path."
                              (t nil)))
         (unsafe-viz (clingon:getopt cmd :unsafe-visualizations))
         (no-open (clingon:getopt cmd :no-open))
+        (embed-origins (clingon:getopt cmd :embed-origin))
         ;; The notebook file is not an inferior-Lisp argument — don't forward it
         ;; to SBCL, where a stray path breaks startup (Slynk never comes up).
         (inferior-args (if (or (clingon:getopt cmd :notebook)
@@ -333,6 +342,12 @@ declared with DEFVAR pick up the override. Returns the output path."
     (setf *verbose* verbose)
     ;; Set unsafe visualizations mode
     (setf *unsafe-visualizations* unsafe-viz)
+    ;; Only a page on this machine may frame ICL.
+    (dolist (origin embed-origins)
+      (unless (valid-embed-origin-p origin)
+        (format *error-output* "~&--embed-origin must be a loopback origin such as http://127.0.0.1:8080, not ~A~%" origin)
+        (uiop:quit 1)))
+    (setf *embed-origins* embed-origins)
     ;; Load config FIRST so *default-lisp* can be set
     ;; (command line --lisp will override it below)
     (unless no-config
@@ -488,6 +503,7 @@ and an extensible command system."
                   (make-mcp-server-option)
                   (make-browser-option)
                   (make-no-open-option)
+                  (make-embed-origin-option)
                   (make-notebook-option)
                   (make-execute-option)
                   (make-param-option)
